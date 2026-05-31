@@ -4,6 +4,7 @@
 #include "toolcontroller.h"
 #include "exporter.h"
 #include <QGraphicsScene>
+#include <cstdio>
 #include <QGraphicsPixmapItem>
 #include <QUndoStack>
 #include <QVBoxLayout>
@@ -19,6 +20,7 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     : QWidget(parent), m_bg(image), m_cfg(cfg), m_cli(cli) {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
     setWindowTitle("eddy");
+    setFocusPolicy(Qt::StrongFocus);
 
     m_scene = new QGraphicsScene(this);
     m_scene->setSceneRect(0,0,m_bg.width(),m_bg.height());
@@ -59,7 +61,8 @@ void EditorWindow::save() {
                  : m_cli.output.toStdout ? QString("-")
                  : QDir(m_cfg.saveDir).filePath(
                        "eddy-" + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss") + ".png");
-    writePng(img, path);
+    auto res = writePng(img, path);
+    if (!res.ok) std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
     if (m_cfg.copyOnSave) copy();
     if (m_cfg.earlyExit) close();
 }
