@@ -16,8 +16,9 @@ public slots:
     void copy();   // to clipboard
 protected:
     void keyPressEvent(QKeyEvent *e) override;
+    void showEvent(QShowEvent *e) override;
 private:
-    QImage m_bg; Config m_cfg; CliOptions m_cli;
+    QImage m_bg; Config m_cfg; CliOptions m_cli; bool m_shown = false;
     QGraphicsScene *m_scene; QUndoStack *m_undo;
     ToolController *m_tools; Canvas *m_canvas; Toolbar *m_toolbar;
 };
