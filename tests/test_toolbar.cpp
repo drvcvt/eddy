@@ -11,8 +11,23 @@ private slots:
         QSignalSpy spy(&tb, &Toolbar::toolChosen);
         auto buttons = tb.findChildren<QToolButton*>();
         QVERIFY(!buttons.isEmpty());
-        buttons[1]->click(); // Arrow (index 0 = Move)
+        buttons[1]->click();              // index 0 = Move, 1 = Arrow
         QCOMPARE(spy.count(), 1);
+    }
+    void syncToolChecksButtonAndPlacesPill() {
+        Toolbar tb;
+        tb.setAnimationsEnabled(false);
+        tb.resize(520, 46);
+        tb.show();                        // lay out so geometries are real
+        QVERIFY(QTest::qWaitForWindowExposed(&tb));
+        tb.syncTool(ToolType::Rect);
+        auto *pill = tb.findChild<QWidget*>("Pill");
+        QVERIFY(pill);
+        QToolButton *rectBtn = nullptr;
+        for (auto *b : tb.findChildren<QToolButton*>())
+            if (b->isChecked()) rectBtn = b;
+        QVERIFY(rectBtn);
+        QCOMPARE(pill->geometry(), rectBtn->geometry());
     }
 };
 QTEST_MAIN(TestToolbar)
