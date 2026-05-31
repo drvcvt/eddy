@@ -38,6 +38,12 @@ private slots:
         auto r = parseArgs({"shot.png", "--no-copy"});
         QVERIFY(r.ok);
         QVERIFY(!r.options.output.copyToClipboard);
+        QVERIFY(r.options.output.copyFlagSet);
+    }
+    void copyFlagUnsetByDefault() {
+        auto r = parseArgs({"shot.png"});
+        QVERIFY(r.ok);
+        QVERIFY(!r.options.output.copyFlagSet);
     }
     void earlyExitFlag() {
         auto r = parseArgs({"shot.png", "--early-exit"});

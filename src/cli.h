@@ -15,6 +15,7 @@ struct InputSpec {
 // Where the result goes when the user saves.
 struct OutputSpec {
     bool copyToClipboard = true;   // default action copies
+    bool copyFlagSet = false;      // true once --copy/--no-copy was seen
     bool toFile = false;
     bool toStdout = false;
     QString filePath;              // valid when toFile

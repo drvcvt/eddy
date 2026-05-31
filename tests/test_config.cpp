@@ -11,7 +11,7 @@ private slots:
     void missingFileGivesDefaults() {
         Config c = loadConfig("/nonexistent/eddy/config");
         QCOMPARE(c.defaultTool, QString("arrow"));
-        QVERIFY(c.lineWidth > 0.0);
+        QCOMPARE(c.lineWidth, 4.0);
     }
     void readsValuesFromIni() {
         QTemporaryFile f; QVERIFY(f.open());
@@ -28,11 +28,18 @@ private slots:
         QCOMPARE(c.lineWidth, 8.0);
         QCOMPARE(c.saveDir, QString("/tmp/shots"));
     }
+    void iniCopyOnSaveSurvivesWithoutCliFlag() {
+        Config c; c.copyOnSave = false;          // as if INI said copy_on_save=false
+        CliOptions cli;                          // default: copyFlagSet=false
+        applyCli(c, cli);
+        QVERIFY(!c.copyOnSave);                  // INI value preserved
+    }
     void cliOverridesConfig() {
         Config c; c.defaultTool = "rect"; c.copyOnSave = true;
         CliOptions cli;
         cli.startTool = "blur";
         cli.output.copyToClipboard = false;
+        cli.output.copyFlagSet = true;
         cli.output.saveDir = "/tmp/x";
         applyCli(c, cli);
         QCOMPARE(c.defaultTool, QString("blur"));

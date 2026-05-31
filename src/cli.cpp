@@ -35,8 +35,10 @@ ParseResult parseArgs(const QStringList &args) {
             o.output.saveDir = next(a); if (!r.ok) return r;
         } else if (a == "--copy") {
             o.output.copyToClipboard = true;
+            o.output.copyFlagSet = true;
         } else if (a == "--no-copy") {
             o.output.copyToClipboard = false;
+            o.output.copyFlagSet = true;
         } else if (a == "--tool") {
             o.startTool = next(a); if (!r.ok) return r;
         } else if (a == "--config") {
