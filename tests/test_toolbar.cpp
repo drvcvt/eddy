@@ -9,10 +9,25 @@ private slots:
     void emitsToolChosen() {
         Toolbar tb;
         QSignalSpy spy(&tb, &Toolbar::toolChosen);
-        auto buttons = tb.findChildren<QToolButton*>();
-        QVERIFY(!buttons.isEmpty());
-        buttons[1]->click();              // index 0 = Move, 1 = Arrow
+        QList<QToolButton*> tools;
+        for (auto *b : tb.findChildren<QToolButton*>())
+            if (b->isCheckable() && !b->objectName().startsWith("Width")) tools << b;
+        QVERIFY(tools.size() >= 2);
+        tools[1]->click();              // tools are Move(0), Arrow(1), ...
         QCOMPARE(spy.count(), 1);
+    }
+    void undoRedoButtonsEmit() {
+        Toolbar tb;
+        QSignalSpy us(&tb, &Toolbar::undoRequested);
+        QSignalSpy rs(&tb, &Toolbar::redoRequested);
+        auto *u = tb.findChild<QToolButton*>("Undo");
+        auto *r = tb.findChild<QToolButton*>("Redo");
+        QVERIFY(u); QVERIFY(r);
+        // Buttons start disabled (empty stack); enable for signal emission test.
+        tb.setUndoEnabled(true); tb.setRedoEnabled(true);
+        u->click(); r->click();
+        QCOMPARE(us.count(), 1);
+        QCOMPARE(rs.count(), 1);
     }
     void syncToolChecksButtonAndPlacesPill() {
         Toolbar tb;
