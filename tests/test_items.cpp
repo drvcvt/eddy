@@ -3,6 +3,10 @@
 #include <QImage>
 #include <QPainter>
 #include "items/arrowitem.h"
+#include "items/rectitem.h"
+#include "items/ellipseitem.h"
+#include "items/highlightitem.h"
+#include "items/redactitem.h"
 
 using namespace eddy;
 
@@ -39,6 +43,31 @@ private slots:
         QRectF br = a.boundingRect();
         QVERIFY(br.contains(QPointF(0,0)));
         QVERIFY(br.contains(QPointF(40,30)));
+    }
+    void rectStrokesBorderNotCenter() {
+        QGraphicsScene scene(0,0,100,100);
+        auto *r = new RectItem(QRectF(20,20,60,60));
+        r->setStrokeColor(QColor(0,128,255)); r->setStrokeWidth(4);
+        scene.addItem(r);
+        QImage img = renderScene(scene, QSize(100,100));
+        QVERIFY(img.pixelColor(20,50).alpha() > 150); // on the left border
+        QVERIFY(img.pixelColor(50,50).alpha() < 40);  // hollow center
+    }
+    void redactIsOpaque() {
+        QGraphicsScene scene(0,0,60,60);
+        auto *r = new RedactItem(QRectF(10,10,40,40));
+        scene.addItem(r);
+        QImage img = renderScene(scene, QSize(60,60));
+        QColor c = img.pixelColor(30,30);
+        QCOMPARE(c.alpha(), 255);
+    }
+    void highlightIsTranslucent() {
+        QGraphicsScene scene(0,0,60,60);
+        auto *h = new HighlightItem(QRectF(10,10,40,40));
+        scene.addItem(h);
+        QImage img = renderScene(scene, QSize(60,60));
+        int a = img.pixelColor(30,30).alpha();
+        QVERIFY(a > 0 && a < 200); // translucent
     }
 };
 
