@@ -1,5 +1,14 @@
 <RCC>
   <qresource prefix="/">
     <file>eddy.qss</file>
+    <file>icons/move.svg</file>
+    <file>icons/arrow.svg</file>
+    <file>icons/pen.svg</file>
+    <file>icons/rect.svg</file>
+    <file>icons/ellipse.svg</file>
+    <file>icons/highlight.svg</file>
+    <file>icons/text.svg</file>
+    <file>icons/blur.svg</file>
+    <file>icons/redact.svg</file>
   </qresource>
 </RCC>

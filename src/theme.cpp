@@ -4,6 +4,12 @@
 #include <QPixmap>
 #include <QSvgRenderer>
 
+// Force the AUTORCC static-library resources to register at start-up.
+// Without this call a static lib's qrc initialiser can be discarded by the
+// linker when no other symbol from qrc_eddy.cpp.o is directly referenced.
+static void initResources() { Q_INIT_RESOURCE(eddy); }
+static const bool kResourcesInited = (initResources(), true);
+
 namespace eddy::theme {
 
 QPalette darkPalette() {
