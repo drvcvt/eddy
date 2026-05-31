@@ -1,9 +1,9 @@
 #include "toolbar.h"
+#include "colorpopover.h"
 #include "theme.h"
 #include <QHBoxLayout>
 #include <QToolButton>
 #include <QButtonGroup>
-#include <QColorDialog>
 #include <QFrame>
 #include <QPropertyAnimation>
 #include <QShowEvent>
@@ -67,9 +67,13 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     color->setObjectName("Swatch");
     color->setText(QString::fromUtf8("\xE2\x97\x8F"));   // round swatch
     color->setToolTip("Stroke colour");
-    connect(color, &QToolButton::clicked, this, [this]{
-        QColor c = QColorDialog::getColor();
-        if (c.isValid()) emit colorChosen(c);
+    connect(color, &QToolButton::clicked, this, [this, color]{
+        auto *pop = new ColorPopover(this);
+        pop->setAttribute(Qt::WA_DeleteOnClose);   // don't accumulate popovers on repeated opens
+        connect(pop, &ColorPopover::picked, this, [this](const QColor &c){ emit colorChosen(c); });
+        pop->adjustSize();
+        pop->move(color->mapToGlobal(QPoint(0, color->height() + 4)));
+        pop->show();
     });
     lay->addWidget(color);
 

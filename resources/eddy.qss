@@ -31,3 +31,10 @@ QToolButton#Save, QToolButton#Copy {
 }
 
 QFrame#Sep { color: #2a2a2a; }
+
+QWidget#ColorPopover { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 9px; }
+QWidget#ColorPopover QToolButton#Custom {
+    color: #d0d0d0; border: 1px solid #2a2a2a; border-radius: 5px;
+    font-family: "Inter","sans-serif"; font-size: 11px;
+}
+QWidget#ColorPopover QToolButton#Custom:hover { background-color: rgba(255,255,255,0.06); }
