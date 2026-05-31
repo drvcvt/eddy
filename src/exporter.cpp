@@ -26,14 +26,17 @@ QByteArray encodePng(const QImage &img) {
 DeliverResult writePng(const QImage &img, const QString &pathOrDash) {
     DeliverResult r;
     const QByteArray png = encodePng(img);
+    if (png.isEmpty()) { r.error = "failed to encode PNG"; return r; }
     if (pathOrDash == "-") {
         QFile out;
         if (!out.open(stdout, QIODevice::WriteOnly)) { r.error = "cannot open stdout"; return r; }
-        out.write(png); out.flush(); r.ok = true; return r;
+        if (out.write(png) != png.size() || !out.flush()) { r.error = "write to stdout failed"; return r; }
+        r.ok = true; return r;
     }
     QFile f(pathOrDash);
     if (!f.open(QIODevice::WriteOnly)) { r.error = "cannot write " + pathOrDash + ": " + f.errorString(); return r; }
-    f.write(png); r.ok = true; return r;
+    if (f.write(png) != png.size() || !f.flush()) { r.error = "write failed: " + f.errorString(); return r; }
+    r.ok = true; return r;
 }
 
 }

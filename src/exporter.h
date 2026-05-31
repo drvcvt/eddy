@@ -1,11 +1,14 @@
 #pragma once
 #include <QImage>
 #include <QGraphicsScene>
-#include "config.h"
+#include <QByteArray>
+#include <QString>
 
 namespace eddy {
 
-// Render the scene (background + annotations) at native pixel size.
+// Renders at 1:1 native resolution. The caller MUST set
+// scene.setSceneRect(QRectF(QPointF(), nativeSize)) before calling, or the
+// source rect will not match the scene and the output will be scaled/cropped.
 QImage renderToImage(QGraphicsScene &scene, const QSize &nativeSize);
 
 QByteArray encodePng(const QImage &img);
