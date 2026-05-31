@@ -59,6 +59,11 @@ private slots:
         auto r = parseArgs({"--frobnicate"});
         QVERIFY(!r.ok);
     }
+    void parsesNoAnim() {
+        auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--no-anim")});
+        QVERIFY(r.ok);
+        QVERIFY(r.options.noAnim);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestCli)

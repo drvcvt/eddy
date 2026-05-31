@@ -24,6 +24,7 @@ Config loadConfig(const QString &path) {
     c.textFont    = s.value("text_font", c.textFont).toString();
     c.earlyExit   = s.value("early_exit", c.earlyExit).toBool();
     c.copyOnSave  = s.value("copy_on_save", c.copyOnSave).toBool();
+    c.animations  = s.value("animations", c.animations).toBool();
     if (s.contains("stroke_color"))
         c.strokeColor = QColor(s.value("stroke_color").toString());
     s.endGroup();
@@ -35,6 +36,7 @@ void applyCli(Config &cfg, const CliOptions &cli) {
     if (!cli.output.saveDir.isEmpty()) cfg.saveDir = cli.output.saveDir;
     if (cli.output.copyFlagSet) cfg.copyOnSave = cli.output.copyToClipboard;
     if (cli.earlyExit) cfg.earlyExit = true;
+    if (cli.noAnim) cfg.animations = false;
 }
 
 }

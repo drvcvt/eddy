@@ -46,6 +46,20 @@ private slots:
         QVERIFY(!c.copyOnSave);
         QCOMPARE(c.saveDir, QString("/tmp/x"));
     }
+    void animationsDefaultTrueAndIniOff() {
+        Config d = loadConfig("/nonexistent/eddy/config");
+        QVERIFY(d.animations);
+        QTemporaryFile f; QVERIFY(f.open());
+        { QTextStream ts(&f); ts << "[eddy]\nanimations=false\n"; }
+        f.flush();
+        Config c = loadConfig(f.fileName());
+        QVERIFY(!c.animations);
+    }
+    void noAnimCliDisablesAnimations() {
+        Config c; CliOptions cli; cli.noAnim = true;
+        applyCli(c, cli);
+        QVERIFY(!c.animations);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestConfig)

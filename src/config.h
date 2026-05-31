@@ -13,6 +13,7 @@ struct Config {
     QString textFont = "Sans";
     bool earlyExit = false;
     bool copyOnSave = true;
+    bool animations = true;
 };
 
 // Loads from `path` (INI). If path is empty, uses the default location

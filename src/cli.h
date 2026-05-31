@@ -28,6 +28,7 @@ struct CliOptions {
     QString startTool;             // empty = config/default
     QString configPath;            // empty = default location
     bool earlyExit = false;
+    bool noAnim = false;
     bool useGpuViewport = false;
 };
 

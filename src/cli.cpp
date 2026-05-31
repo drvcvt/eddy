@@ -45,6 +45,8 @@ ParseResult parseArgs(const QStringList &args) {
             o.configPath = next(a); if (!r.ok) return r;
         } else if (a == "--early-exit") {
             o.earlyExit = true;
+        } else if (a == "--no-anim") {
+            o.noAnim = true;
         } else if (a == "--gpu") {
             o.useGpuViewport = true;
         } else if (a.startsWith('-') && a != "-") {
