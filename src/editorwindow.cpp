@@ -18,6 +18,8 @@
 #include <QDateTime>
 #include <QPropertyAnimation>
 #include <QShowEvent>
+#include <QMouseEvent>
+#include <QResizeEvent>
 
 namespace eddy {
 
@@ -71,6 +73,10 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     // size to image, capped
     const int maxW = 1700, maxH = 1000;
     resize(qMin(m_bg.width(), maxW), qMin(m_bg.height()+40, maxH));
+    m_toolbar->adjustSize();
+    const int barW = m_toolbar->sizeHint().width();
+    const int barH = m_toolbar->sizeHint().height();
+    setMinimumSize(qMax(barW, 360), barH + 120);   // bar never clipped; usable image strip
 }
 
 void EditorWindow::showEvent(QShowEvent *e) {
@@ -82,6 +88,49 @@ void EditorWindow::showEvent(QShowEvent *e) {
     a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
     a->setEasingCurve(QEasingCurve::OutCubic);
     a->start(QAbstractAnimation::DeleteWhenStopped);
+}
+
+void EditorWindow::resizeEvent(QResizeEvent *e) {
+    QWidget::resizeEvent(e);
+    updateCompactMode();
+}
+
+void EditorWindow::updateCompactMode() {
+    const int barH = m_toolbar->sizeHint().height();
+    const bool compact = height() < barH + 90;       // too short for strip + image
+    if (compact == m_compact) return;
+    m_compact = compact;
+    auto *lay = static_cast<QVBoxLayout*>(layout());
+    if (compact) {
+        // Detach the bar from the layout (removeWidget — setParent alone leaves it
+        // managed) and float it as a top auto-hide overlay.
+        lay->removeWidget(m_toolbar);
+        m_toolbar->setParent(this);                   // keep it a child for geometry/raise
+        m_toolbar->raise();
+        m_toolbar->setGeometry(0, 0, width(), barH);
+        m_toolbar->hide();                            // canvas gets full height; bar on hover
+        setMouseTracking(true);
+        m_canvas->setMouseTracking(true);
+    } else {
+        // Re-dock the bar at the top of the layout.
+        lay->insertWidget(0, m_toolbar);
+        m_toolbar->show();
+        setMouseTracking(false);
+        m_canvas->setMouseTracking(false);
+    }
+}
+
+void EditorWindow::mouseMoveEvent(QMouseEvent *e) {
+    if (m_compact) {
+        const int barH = m_toolbar->sizeHint().height();
+        if (e->position().y() <= 12) {
+            m_toolbar->setGeometry(0, 0, width(), barH);
+            m_toolbar->raise(); m_toolbar->show();
+        } else if (e->position().y() > barH + 8) {
+            m_toolbar->hide();
+        }
+    }
+    QWidget::mouseMoveEvent(e);
 }
 
 QImage EditorWindow::exportComposite() {

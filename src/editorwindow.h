@@ -3,7 +3,7 @@
 #include <QImage>
 #include "config.h"
 #include "cli.h"
-class QGraphicsScene; class QUndoStack;
+class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent;
 namespace eddy {
 class Canvas; class Toolbar; class ToolController;
 class EditorWindow : public QWidget {
@@ -17,8 +17,12 @@ public slots:
 protected:
     void keyPressEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
+    void mouseMoveEvent(QMouseEvent *e) override;
 private:
+    void updateCompactMode();
     QImage m_bg; Config m_cfg; CliOptions m_cli; bool m_shown = false;
+    bool m_compact = false;
     QGraphicsScene *m_scene; QUndoStack *m_undo;
     ToolController *m_tools; Canvas *m_canvas; Toolbar *m_toolbar;
 };
