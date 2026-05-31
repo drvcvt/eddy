@@ -19,7 +19,8 @@ LoadResult loadImageBytes(const QByteArray &bytes) {
 
 static QByteArray readAllStdin() {
     QFile in;
-    in.open(stdin, QIODevice::ReadOnly);
+    if (!in.open(stdin, QIODevice::ReadOnly))
+        return {};
     return in.readAll();
 }
 

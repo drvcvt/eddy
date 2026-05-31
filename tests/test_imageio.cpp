@@ -22,6 +22,7 @@ private slots:
         QVERIFY(r.ok);
         QCOMPARE(r.image.width(), 20);
         QCOMPARE(r.image.height(), 10);
+        QCOMPARE(r.image.format(), QImage::Format_ARGB32_Premultiplied);
     }
     void rejectsGarbage() {
         auto r = loadImageBytes(QByteArray("not an image"));
@@ -40,6 +41,8 @@ private slots:
         InputSpec spec; spec.kind = InputSpec::File; spec.path = "/no/such.png";
         auto r = loadInput(spec);
         QVERIFY(!r.ok);
+        QVERIFY(!r.error.isEmpty());
+        QVERIFY(r.error.contains("cannot open"));
     }
 };
 
