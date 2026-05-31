@@ -1,6 +1,7 @@
 #pragma once
 #include <QGraphicsItem>
 #include <QColor>
+#include <QRectF>
 
 namespace eddy {
 
@@ -14,6 +15,9 @@ public:
     QColor strokeColor() const { return m_stroke; }
     void setStrokeWidth(double w) { prepareGeometryChange(); m_width = w; update(); }
     double strokeWidth() const { return m_width; }
+
+    virtual QRectF rect() const { return QRectF(); }     // overridden by rect-shaped items
+    virtual void setRect(const QRectF &) {}              // no-op for arrow/pen
 
 protected:
     QColor m_stroke = QColor("#ff3b30");

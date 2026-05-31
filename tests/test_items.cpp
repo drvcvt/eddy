@@ -2,6 +2,7 @@
 #include <QGraphicsScene>
 #include <QImage>
 #include <QPainter>
+#include <QUndoStack>
 #include "items/arrowitem.h"
 #include "items/rectitem.h"
 #include "items/ellipseitem.h"
@@ -9,6 +10,7 @@
 #include "items/redactitem.h"
 #include "items/penpathitem.h"
 #include "items/textitem.h"
+#include "undocommands.h"
 
 using namespace eddy;
 
@@ -93,6 +95,21 @@ private slots:
             for (int x=0;x<120;++x)
                 if (img.pixelColor(x,y).alpha() > 100) { inked = true; break; }
         QVERIFY(inked);
+    }
+    void arrowSetStartMovesStart() {
+        ArrowItem a({0,0}, {10,10});
+        a.setStart({3,4});
+        QCOMPARE(a.start(), QPointF(3,4));
+        QCOMPARE(a.end(), QPointF(10,10));
+    }
+    void resizeRectCommandUndoRedo() {
+        RectItem *r = new RectItem(QRectF(0,0,10,10));
+        QUndoStack undo;
+        undo.push(new ResizeRectCommand(r, QRectF(0,0,10,10), QRectF(0,0,40,30)));
+        QCOMPARE(r->rect(), QRectF(0,0,40,30));
+        undo.undo();
+        QCOMPARE(r->rect(), QRectF(0,0,10,10));
+        delete r;
     }
 };
 

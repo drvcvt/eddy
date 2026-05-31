@@ -8,6 +8,7 @@ namespace eddy {
 class ArrowItem : public AnnotationItem {
 public:
     ArrowItem(const QPointF &start, const QPointF &end);
+    void setStart(const QPointF &start);
     void setEnd(const QPointF &end);
     QPointF start() const { return m_start; }
     QPointF end() const { return m_end; }

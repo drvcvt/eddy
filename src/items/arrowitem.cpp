@@ -7,6 +7,7 @@ namespace eddy {
 ArrowItem::ArrowItem(const QPointF &start, const QPointF &end)
     : m_start(start), m_end(end) {}
 
+void ArrowItem::setStart(const QPointF &start) { prepareGeometryChange(); m_start = start; update(); }
 void ArrowItem::setEnd(const QPointF &end) { prepareGeometryChange(); m_end = end; update(); }
 
 QRectF ArrowItem::boundingRect() const {
