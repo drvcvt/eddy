@@ -7,6 +7,7 @@
 #include "items/redactitem.h"
 #include "items/penpathitem.h"
 #include "items/rasteritem.h"
+#include "items/textitem.h"
 #include <QGraphicsScene>
 #include <QUndoStack>
 
@@ -74,6 +75,15 @@ void ToolController::finish(const QPointF &p) {
     m_scene->removeItem(m_active);
     m_undo->push(new AddItemCommand(m_scene, m_active));
     m_active = nullptr;
+}
+
+QGraphicsItem *ToolController::placeText(const QPointF &p) {
+    auto *t = new TextItem(QString(), m_color, qMax(14.0, m_width * 4.0));
+    t->setPos(p);
+    t->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+    t->setTextInteractionFlags(Qt::TextEditorInteraction);
+    m_undo->push(new AddItemCommand(m_scene, t));
+    return t;
 }
 
 }

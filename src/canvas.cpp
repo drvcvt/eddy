@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QGraphicsItem>
 
 namespace eddy {
 
@@ -31,14 +32,21 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         m_dragging = true; setDragMode(QGraphicsView::ScrollHandDrag);
         QGraphicsView::mousePressEvent(e); return;
     }
-    if (e->button() == Qt::LeftButton && m_tools->tool() != ToolType::Move) {
+    if (e->button() == Qt::LeftButton && m_tools->tool() == ToolType::Text) {
+        // Stamp an editable text box at the click and focus it for typing.
+        QGraphicsItem *t = m_tools->placeText(mapToScene(e->pos()));
+        setFocus();
+        if (t) t->setFocus();
+        e->accept(); return;
+    }
+    if (e->button() == Qt::LeftButton && !isPointerTool()) {
         m_tools->begin(mapToScene(e->pos())); e->accept(); return;
     }
-    QGraphicsView::mousePressEvent(e); // Move tool: native selection/drag
+    QGraphicsView::mousePressEvent(e); // Move/Text: native selection/edit
 }
 
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
-    if (!m_dragging && (e->buttons() & Qt::LeftButton) && m_tools->tool() != ToolType::Move) {
+    if (!m_dragging && (e->buttons() & Qt::LeftButton) && !isPointerTool()) {
         m_tools->update(mapToScene(e->pos())); e->accept(); return;
     }
     QGraphicsView::mouseMoveEvent(e);
@@ -49,7 +57,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
         m_dragging = false; setDragMode(QGraphicsView::NoDrag);
         QGraphicsView::mouseReleaseEvent(e); return;
     }
-    if (e->button() == Qt::LeftButton && m_tools->tool() != ToolType::Move) {
+    if (e->button() == Qt::LeftButton && !isPointerTool()) {
         m_tools->finish(mapToScene(e->pos())); e->accept(); return;
     }
     QGraphicsView::mouseReleaseEvent(e);

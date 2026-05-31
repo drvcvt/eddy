@@ -5,6 +5,7 @@
 #include "items/arrowitem.h"
 #include "items/rectitem.h"
 #include "items/rasteritem.h"
+#include "items/textitem.h"
 
 using namespace eddy;
 
@@ -60,6 +61,18 @@ private slots:
             }
         }
         QVERIFY(sawRaster);
+    }
+    void placeTextAddsEditableItem() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
+        auto *t = tc.placeText({10,10});
+        QVERIFY(t);
+        QVERIFY(scene.items().contains(t));
+        QVERIFY(dynamic_cast<TextItem*>(t));
+        QVERIFY(t->flags() & QGraphicsItem::ItemIsMovable);
+        QVERIFY(t->flags() & QGraphicsItem::ItemIsSelectable);
+        undo.undo();
+        QVERIFY(!scene.items().contains(t));
     }
 };
 

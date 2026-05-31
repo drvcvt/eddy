@@ -3,7 +3,9 @@
 #include "toolbar.h"
 #include "toolcontroller.h"
 #include "exporter.h"
+#include "items/textitem.h"
 #include <QGraphicsScene>
+#include <QGraphicsTextItem>
 #include <cstdio>
 #include <QGraphicsPixmapItem>
 #include <QUndoStack>
@@ -57,13 +59,22 @@ QImage EditorWindow::exportComposite() {
 
 void EditorWindow::save() {
     QImage img = exportComposite();
-    QString path = m_cli.output.toFile ? m_cli.output.filePath
-                 : m_cli.output.toStdout ? QString("-")
-                 : QDir(m_cfg.saveDir).filePath(
-                       "eddy-" + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss") + ".png");
-    auto res = writePng(img, path);
-    if (!res.ok) std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
-    if (m_cfg.copyOnSave) copy();
+    // Write a file only when an explicit target was requested: -o FILE, -o -,
+    // or --save-dir DIR. The default (Enter) is clipboard-only — no file is
+    // dropped into ~/Pictures unless the user asked for it.
+    QString path;
+    if (m_cli.output.toFile)            path = m_cli.output.filePath;
+    else if (m_cli.output.toStdout)     path = QStringLiteral("-");
+    else if (!m_cli.output.saveDir.isEmpty())
+        path = QDir(m_cli.output.saveDir).filePath(
+                   "eddy-" + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss") + ".png");
+
+    if (!path.isEmpty()) {
+        auto res = writePng(img, path);
+        if (!res.ok) std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
+    }
+    if (m_cfg.copyOnSave || path.isEmpty())
+        QApplication::clipboard()->setImage(img);   // always at least copy
     if (m_cfg.earlyExit) close();
 }
 
@@ -72,6 +83,15 @@ void EditorWindow::copy() {
 }
 
 void EditorWindow::keyPressEvent(QKeyEvent *e) {
+    // While a text annotation is being edited, don't hijack letter keys as tool
+    // hotkeys — let them type into the text box. Esc commits and leaves editing.
+    QGraphicsItem *fi = m_scene->focusItem();
+    if (fi && fi->type() == TextItem::Type
+        && (static_cast<QGraphicsTextItem *>(fi)->textInteractionFlags() & Qt::TextEditorInteraction)) {
+        if (e->key() == Qt::Key_Escape) { m_scene->clearFocus(); e->accept(); return; }
+        QWidget::keyPressEvent(e);
+        return;
+    }
     switch (e->key()) {
         case Qt::Key_A: m_tools->setTool(ToolType::Arrow); break;
         case Qt::Key_P: m_tools->setTool(ToolType::Pen); break;

@@ -13,6 +13,10 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
 private:
+    // Tools that use native view interaction instead of drag-to-draw.
+    bool isPointerTool() const {
+        return m_tools->tool() == ToolType::Move || m_tools->tool() == ToolType::Text;
+    }
     ToolController *m_tools; double m_zoom = 1.0; bool m_dragging = false;
 };
 }

@@ -24,6 +24,10 @@ public:
     void update(const QPointF &p);
     void finish(const QPointF &p);
 
+    // Text tool: create an editable text item at p (committed to the undo
+    // stack) and return it so the view can give it keyboard focus.
+    QGraphicsItem *placeText(const QPointF &p);
+
 private:
     QGraphicsScene *m_scene; QUndoStack *m_undo; QImage m_bg;
     ToolType m_tool = ToolType::Arrow;
