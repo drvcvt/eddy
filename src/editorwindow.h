@@ -5,7 +5,7 @@
 #include "cli.h"
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent;
 namespace eddy {
-class Canvas; class Toolbar; class ToolController;
+class Canvas; class Toolbar; class ToolController; class SelectionHandles;
 class EditorWindow : public QWidget {
     Q_OBJECT
 public:
@@ -25,5 +25,6 @@ private:
     bool m_compact = false;
     QGraphicsScene *m_scene; QUndoStack *m_undo;
     ToolController *m_tools; Canvas *m_canvas; Toolbar *m_toolbar;
+    SelectionHandles *m_handles = nullptr;
 };
 }

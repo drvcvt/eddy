@@ -3,6 +3,7 @@
 #include "toolbar.h"
 #include "toolcontroller.h"
 #include "exporter.h"
+#include "selectionhandles.h"
 #include "undocommands.h"
 #include "items/textitem.h"
 #include <QGraphicsScene>
@@ -60,6 +61,7 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     connect(m_toolbar, &Toolbar::redoRequested, m_undo, &QUndoStack::redo);
     connect(m_undo, &QUndoStack::canUndoChanged, m_toolbar, &Toolbar::setUndoEnabled);
     connect(m_undo, &QUndoStack::canRedoChanged, m_toolbar, &Toolbar::setRedoEnabled);
+    m_handles = new SelectionHandles(m_scene, m_undo, this);
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_toolbar->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);
@@ -134,6 +136,7 @@ void EditorWindow::mouseMoveEvent(QMouseEvent *e) {
 }
 
 QImage EditorWindow::exportComposite() {
+    m_scene->clearSelection();          // drop selection handles so they aren't baked into the image
     return renderToImage(*m_scene, m_bg.size());
 }
 

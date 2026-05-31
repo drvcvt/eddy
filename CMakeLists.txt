@@ -16,6 +16,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Test Svg)
 add_library(eddy_core STATIC
     src/canvas.cpp
     src/colorpopover.cpp
+    src/selectionhandles.cpp
     src/cli.cpp
     src/compositor.cpp
     src/config.cpp
@@ -67,3 +68,4 @@ eddy_test(test_compositor)
 eddy_test(test_toolbar)
 eddy_test(test_editorwindow)
 eddy_test(test_theme)
+eddy_test(test_selectionhandles)
