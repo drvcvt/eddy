@@ -13,6 +13,8 @@ add_library(eddy_core STATIC
     src/config.cpp
     src/exporter.cpp
     src/imageio.cpp
+    src/undocommands.cpp
+    src/toolcontroller.cpp
     src/items/arrowitem.cpp
     src/items/rectitem.cpp
     src/items/ellipseitem.cpp
@@ -42,3 +44,4 @@ eddy_test(test_exporter)
 eddy_test(test_imageio)
 eddy_test(test_items)
 eddy_test(test_raster)
+eddy_test(test_toolcontroller)
