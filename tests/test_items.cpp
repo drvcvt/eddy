@@ -7,6 +7,7 @@
 #include "items/ellipseitem.h"
 #include "items/highlightitem.h"
 #include "items/redactitem.h"
+#include "items/penpathitem.h"
 
 using namespace eddy;
 
@@ -68,6 +69,17 @@ private slots:
         QImage img = renderScene(scene, QSize(60,60));
         int a = img.pixelColor(30,30).alpha();
         QVERIFY(a > 0 && a < 200); // translucent
+    }
+    void penFollowsPoints() {
+        QGraphicsScene scene(0,0,100,100);
+        auto *pen = new PenPathItem(QPointF(10,10));
+        pen->addPoint(QPointF(50,50));
+        pen->addPoint(QPointF(90,10));
+        pen->setStrokeColor(QColor(0,0,0)); pen->setStrokeWidth(3);
+        scene.addItem(pen);
+        QImage img = renderScene(scene, QSize(100,100));
+        QVERIFY(img.pixelColor(50,50).alpha() > 150); // a vertex is inked
+        QCOMPARE(pen->pointCount(), 3);
     }
 };
 

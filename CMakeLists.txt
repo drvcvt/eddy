@@ -17,6 +17,7 @@ add_library(eddy_core STATIC
     src/items/ellipseitem.cpp
     src/items/highlightitem.cpp
     src/items/redactitem.cpp
+    src/items/penpathitem.cpp
 )
 target_include_directories(eddy_core PUBLIC src)
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets)
