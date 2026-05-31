@@ -33,7 +33,7 @@ Config loadConfig(const QString &path) {
 void applyCli(Config &cfg, const CliOptions &cli) {
     if (!cli.startTool.isEmpty()) cfg.defaultTool = cli.startTool;
     if (!cli.output.saveDir.isEmpty()) cfg.saveDir = cli.output.saveDir;
-    cfg.copyOnSave = cli.output.copyToClipboard;
+    if (cli.output.copyFlagSet) cfg.copyOnSave = cli.output.copyToClipboard;
     if (cli.earlyExit) cfg.earlyExit = true;
 }
 
