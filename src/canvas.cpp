@@ -18,7 +18,7 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
     // Clean look: no scrollbars; pan via middle-drag, navigate via zoom.
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setBackgroundBrush(QColor("#0e0f13"));
+    setBackgroundBrush(QColor("#121212"));
 }
 
 void Canvas::wheelEvent(QWheelEvent *e) {

@@ -14,8 +14,8 @@ namespace eddy::theme {
 
 QPalette darkPalette() {
     QPalette p;
-    const QColor bg("#16171d"), base("#101116"), text("#d8dae3"),
-                 disabled("#6b6e7a"), btn("#1b1d24");
+    const QColor bg("#121212"), base("#0e0e0e"), text("#d0d0d0"),
+                 disabled("#666666"), btn("#1a1a1a");
     p.setColor(QPalette::Window, bg);
     p.setColor(QPalette::WindowText, text);
     p.setColor(QPalette::Base, base);

@@ -1,33 +1,33 @@
-/* eddy — minimal dark, floating pill toolbar */
-QWidget#EditorRoot { background-color: #0e0f13; }
+/* eddy — flat integrated toolbar, quickshell "mono" palette */
+QWidget#EditorRoot { background-color: #121212; }
 
 QWidget#Toolbar {
-    background-color: #191b24;
-    border: 1px solid #383c50;
-    border-radius: 14px;
+    background-color: #1a1a1a;
+    border: none;
+    border-bottom: 1px solid #2a2a2a;
 }
 QWidget#Pill {
     background-color: #cccccc;
-    border-radius: 8px;
+    border-radius: 7px;
 }
 
 QToolButton {
     background-color: transparent;
-    color: #b7bac6;
+    color: #a8a8a8;
     border: none;
-    border-radius: 8px;
+    border-radius: 7px;
     font-family: "Inter", "sans-serif";
     font-size: 12px;
     font-weight: 600;
 }
-QToolButton:hover  { background-color: rgba(255,255,255,0.07); color: #ffffff; }
+QToolButton:hover  { background-color: rgba(255,255,255,0.06); color: #ffffff; }
 /* Active state is the sliding pill, not a per-button background. */
 QToolButton:checked { background-color: transparent; }
 
 QToolButton#Swatch { color: #ff3b30; font-size: 16px; }
-QToolButton#Swatch:hover { background-color: rgba(255,255,255,0.07); }
+QToolButton#Swatch:hover { background-color: rgba(255,255,255,0.06); }
 QToolButton#Save, QToolButton#Copy {
-    padding-left: 12px; padding-right: 12px; color: #cdd0db;
+    padding-left: 12px; padding-right: 12px; color: #d0d0d0;
 }
 
-QFrame#Sep { color: #2c2e3a; }
+QFrame#Sep { color: #2a2a2a; }

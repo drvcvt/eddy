@@ -43,7 +43,7 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     m_toolbar = new Toolbar(this);
 
     auto *lay = new QVBoxLayout(this);
-    lay->setContentsMargins(8, 8, 8, 8); lay->setSpacing(6);
+    lay->setContentsMargins(0, 0, 0, 0); lay->setSpacing(0);
     lay->addWidget(m_toolbar);
     lay->addWidget(m_canvas, 1);
 

@@ -6,7 +6,6 @@
 #include <QColorDialog>
 #include <QFrame>
 #include <QPropertyAnimation>
-#include <QGraphicsDropShadowEffect>
 #include <QShowEvent>
 #include <QResizeEvent>
 
@@ -87,11 +86,6 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     copy->setText("Copy"); copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
-
-    // Soft shadow so the bar reads as a floating card.
-    auto *shadow = new QGraphicsDropShadowEffect(this);
-    shadow->setBlurRadius(24); shadow->setColor(QColor(0,0,0,115)); shadow->setOffset(0, 6);
-    setGraphicsEffect(shadow);
 
     syncTool(ToolType::Arrow);   // sensible default highlight (snaps on first show)
 }
