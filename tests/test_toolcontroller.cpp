@@ -35,6 +35,12 @@ private slots:
     void toolFromNameMaps() {
         QCOMPARE(toolFromName("blur"), ToolType::Blur);
         QCOMPARE(toolFromName("nonsense"), ToolType::Arrow); // fallback
+        QCOMPARE(toolFromName("box"), ToolType::Rect);
+        QCOMPARE(toolFromName("rectangle"), ToolType::Rect);
+        QCOMPARE(toolFromName("circle"), ToolType::Ellipse);
+        QCOMPARE(toolFromName("redact"), ToolType::Redact);
+        QCOMPARE(toolFromName("pixelate"), ToolType::Pixelate);
+        QCOMPARE(toolFromName("move"), ToolType::Move);
     }
     void shapeMovableRasterNot() {
         QGraphicsScene scene; QUndoStack undo;

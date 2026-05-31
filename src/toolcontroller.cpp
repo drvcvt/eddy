@@ -35,6 +35,7 @@ template <class T> static void style(T *it, const QColor &c, double w) {
 }
 
 void ToolController::begin(const QPointF &p) {
+    if (m_active) { m_scene->removeItem(m_active); delete m_active; m_active = nullptr; }
     m_start = p; m_active = nullptr;
     bool isRaster = false;
     switch (m_tool) {
