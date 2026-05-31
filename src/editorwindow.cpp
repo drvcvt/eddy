@@ -52,6 +52,7 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     connect(m_toolbar, &Toolbar::saveRequested, this, &EditorWindow::save);
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
     connect(m_tools, &ToolController::toolChanged, m_toolbar, &Toolbar::syncTool);
+    connect(m_toolbar, &Toolbar::widthChosen, m_tools, &ToolController::setWidth);
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_toolbar->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);

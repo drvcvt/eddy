@@ -17,7 +17,7 @@ private slots:
     void syncToolChecksButtonAndPlacesPill() {
         Toolbar tb;
         tb.setAnimationsEnabled(false);
-        tb.resize(520, 46);
+        tb.resize(700, 46);
         tb.show();                        // lay out so geometries are real
         QVERIFY(QTest::qWaitForWindowExposed(&tb));
         tb.syncTool(ToolType::Rect);
@@ -25,9 +25,18 @@ private slots:
         QVERIFY(pill);
         QToolButton *rectBtn = nullptr;
         for (auto *b : tb.findChildren<QToolButton*>())
-            if (b->isChecked()) rectBtn = b;
+            if (b->isChecked() && !b->objectName().startsWith("Width")) rectBtn = b;  // exclude the width chooser (M is default-checked)
         QVERIFY(rectBtn);
         QCOMPARE(pill->geometry(), rectBtn->geometry());
+    }
+    void widthButtonsEmit() {
+        Toolbar tb;
+        QSignalSpy spy(&tb, &Toolbar::widthChosen);
+        auto *L = tb.findChild<QToolButton*>("WidthL");
+        QVERIFY(L);
+        L->click();
+        QCOMPARE(spy.count(), 1);
+        QCOMPARE(spy.at(0).at(0).toDouble(), 8.0);
     }
 };
 QTEST_MAIN(TestToolbar)

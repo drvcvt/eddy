@@ -16,6 +16,7 @@ signals:
     void colorChosen(const QColor &c);
     void saveRequested();
     void copyRequested();
+    void widthChosen(double w);
 protected:
     void showEvent(QShowEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;

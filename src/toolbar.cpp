@@ -61,6 +61,24 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         lay->addWidget(b);
     }
 
+    auto *wsep = new QFrame; wsep->setObjectName("Sep");
+    wsep->setFrameShape(QFrame::VLine); wsep->setFixedHeight(20);
+    lay->addWidget(wsep);
+
+    auto *wgroup = new QButtonGroup(this); wgroup->setExclusive(true);
+    struct W { const char *id; const char *label; double w; };
+    const QVector<W> widths = { {"WidthS","S",2.0}, {"WidthM","M",4.0}, {"WidthL","L",8.0} };
+    for (const W &x : widths) {
+        auto *b = mkBtn(true, true);
+        b->setObjectName(x.id);
+        b->setText(x.label);
+        b->setToolTip(QString("Line width %1").arg(x.label));
+        if (x.w == 4.0) b->setChecked(true);             // default M
+        wgroup->addButton(b);
+        connect(b, &QToolButton::clicked, this, [this, w=x.w]{ emit widthChosen(w); });
+        lay->addWidget(b);
+    }
+
     lay->addStretch(1);
 
     auto *color = mkBtn(false, true);
