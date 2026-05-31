@@ -41,6 +41,22 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     lay->setSpacing(4);
     auto *group = new QButtonGroup(this); group->setExclusive(true);
 
+    m_undoBtn = mkBtn(false, true); m_undoBtn->setObjectName("Undo");
+    m_undoBtn->setText(QString::fromUtf8("\xE2\x86\xB6"));   // ↶
+    m_undoBtn->setToolTip("Undo \xC2\xB7 Ctrl+Z"); m_undoBtn->setEnabled(false);
+    connect(m_undoBtn, &QToolButton::clicked, this, [this]{ emit undoRequested(); });
+    lay->addWidget(m_undoBtn);
+
+    m_redoBtn = mkBtn(false, true); m_redoBtn->setObjectName("Redo");
+    m_redoBtn->setText(QString::fromUtf8("\xE2\x86\xB7"));   // ↷
+    m_redoBtn->setToolTip("Redo \xC2\xB7 Ctrl+Shift+Z"); m_redoBtn->setEnabled(false);
+    connect(m_redoBtn, &QToolButton::clicked, this, [this]{ emit redoRequested(); });
+    lay->addWidget(m_redoBtn);
+
+    auto *usep = new QFrame; usep->setObjectName("Sep");
+    usep->setFrameShape(QFrame::VLine); usep->setFixedHeight(20);
+    lay->addWidget(usep);
+
     struct T { ToolType type; const char *id; const char *name; const char *key; };
     const QVector<T> tools = {
         {ToolType::Move,"move","Move","M"}, {ToolType::Arrow,"arrow","Arrow","A"},
@@ -144,5 +160,8 @@ void Toolbar::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
     if (m_active) movePillTo(m_active, false);
 }
+
+void Toolbar::setUndoEnabled(bool on) { if (m_undoBtn) m_undoBtn->setEnabled(on); }
+void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on); }
 
 }

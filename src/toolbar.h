@@ -11,12 +11,16 @@ public:
     void setAnimationsEnabled(bool on) { m_anim = on; }
 public slots:
     void syncTool(ToolType t);            // reflect external (keyboard) tool change
+    void setUndoEnabled(bool on);
+    void setRedoEnabled(bool on);
 signals:
     void toolChosen(ToolType t);
     void colorChosen(const QColor &c);
     void saveRequested();
     void copyRequested();
     void widthChosen(double w);
+    void undoRequested();
+    void redoRequested();
 protected:
     void showEvent(QShowEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
@@ -27,5 +31,7 @@ private:
     QPropertyAnimation *m_pillAnim = nullptr;
     QToolButton *m_active = nullptr;
     bool m_anim = true;
+    QToolButton *m_undoBtn = nullptr;
+    QToolButton *m_redoBtn = nullptr;
 };
 }
