@@ -9,6 +9,7 @@ set(CMAKE_AUTORCC ON)
 find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 
 add_library(eddy_core STATIC
+    src/canvas.cpp
     src/cli.cpp
     src/compositor.cpp
     src/config.cpp
@@ -39,6 +40,7 @@ function(eddy_test name)
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endfunction()
 
+eddy_test(test_canvas)
 eddy_test(test_cli)
 eddy_test(test_config)
 eddy_test(test_exporter)
