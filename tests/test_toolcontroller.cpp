@@ -1,0 +1,61 @@
+#include <QtTest>
+#include <QGraphicsScene>
+#include <QUndoStack>
+#include "toolcontroller.h"
+#include "items/arrowitem.h"
+#include "items/rectitem.h"
+#include "items/rasteritem.h"
+
+using namespace eddy;
+
+class TestToolController : public QObject {
+    Q_OBJECT
+private slots:
+    void arrowDragAddsItem() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tc.setTool(ToolType::Arrow);
+        tc.begin({10,10}); tc.update({40,40}); tc.finish({80,80});
+        QCOMPARE(scene.items().size(), 1);
+        auto *a = dynamic_cast<ArrowItem*>(scene.items().first());
+        QVERIFY(a);
+        QCOMPARE(a->end(), QPointF(80,80));
+    }
+    void undoRemovesItem() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
+        tc.setTool(ToolType::Rect);
+        tc.begin({5,5}); tc.finish({25,25});
+        QCOMPARE(scene.items().size(), 1);
+        undo.undo();
+        QCOMPARE(scene.items().size(), 0);
+        undo.redo();
+        QCOMPARE(scene.items().size(), 1);
+    }
+    void toolFromNameMaps() {
+        QCOMPARE(toolFromName("blur"), ToolType::Blur);
+        QCOMPARE(toolFromName("nonsense"), ToolType::Arrow); // fallback
+    }
+    void shapeMovableRasterNot() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(60,60,QImage::Format_ARGB32_Premultiplied));
+        tc.setTool(ToolType::Arrow);
+        tc.begin({1,1}); tc.finish({20,20});
+        auto *arrow = scene.items().first();
+        QVERIFY(arrow->flags() & QGraphicsItem::ItemIsMovable);
+        QVERIFY(arrow->flags() & QGraphicsItem::ItemIsSelectable);
+        tc.setTool(ToolType::Blur);
+        tc.begin({5,5}); tc.finish({25,25});
+        bool sawRaster = false;
+        for (auto *it : scene.items()) {
+            if (auto *ri = dynamic_cast<RasterItem*>(it)) {
+                sawRaster = true;
+                QVERIFY(!(ri->flags() & QGraphicsItem::ItemIsMovable));
+            }
+        }
+        QVERIFY(sawRaster);
+    }
+};
+
+QTEST_MAIN(TestToolController)
+#include "test_toolcontroller.moc"
