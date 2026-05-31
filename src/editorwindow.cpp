@@ -3,6 +3,7 @@
 #include "toolbar.h"
 #include "toolcontroller.h"
 #include "exporter.h"
+#include "undocommands.h"
 #include "items/textitem.h"
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
@@ -138,6 +139,17 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_C: if (e->modifiers() & Qt::ControlModifier) copy(); break;
         case Qt::Key_S: if (e->modifiers() & Qt::ControlModifier) save(); break;
         case Qt::Key_Return: case Qt::Key_Enter: save(); break;
+        case Qt::Key_Delete: case Qt::Key_Backspace: {
+            const auto sel = m_scene->selectedItems();
+            bool removed = false;
+            for (QGraphicsItem *it : sel) {
+                if (it->zValue() <= -1000) continue;     // never the background
+                m_undo->push(new RemoveItemCommand(m_scene, it));
+                removed = true;
+            }
+            if (!removed) QWidget::keyPressEvent(e);
+            break;
+        }
         case Qt::Key_Escape: close(); break;
         default: QWidget::keyPressEvent(e);
     }

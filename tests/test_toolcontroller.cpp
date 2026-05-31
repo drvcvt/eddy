@@ -1,8 +1,10 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include <QGraphicsScene>
+#include <QGraphicsRectItem>
 #include <QUndoStack>
 #include "toolcontroller.h"
+#include "undocommands.h"
 #include "items/arrowitem.h"
 #include "items/rectitem.h"
 #include "items/rasteritem.h"
@@ -102,6 +104,18 @@ private slots:
         auto items = scene.items();             // top-first: [B, A]
         QCOMPARE(items.size(), 2);
         QCOMPARE(items.last()->opacity(), 1.0); // A (first committed) settled to fully opaque
+    }
+    void removeItemCommandUndoRedo() {
+        QGraphicsScene scene; QUndoStack undo;
+        auto *r = new QGraphicsRectItem(0,0,10,10);
+        scene.addItem(r);
+        QCOMPARE(scene.items().size(), 1);
+        undo.push(new RemoveItemCommand(&scene, r));   // redo() removes
+        QCOMPARE(scene.items().size(), 0);
+        undo.undo();                                   // re-adds
+        QCOMPARE(scene.items().size(), 1);
+        undo.redo();
+        QCOMPARE(scene.items().size(), 0);
     }
 };
 
