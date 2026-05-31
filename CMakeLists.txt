@@ -10,6 +10,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 
 add_library(eddy_core STATIC
     src/cli.cpp
+    src/compositor.cpp
     src/config.cpp
     src/exporter.cpp
     src/imageio.cpp
@@ -45,3 +46,4 @@ eddy_test(test_imageio)
 eddy_test(test_items)
 eddy_test(test_raster)
 eddy_test(test_toolcontroller)
+eddy_test(test_compositor)
