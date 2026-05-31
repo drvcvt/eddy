@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/">
+    <file>eddy.qss</file>
+  </qresource>
+</RCC>
