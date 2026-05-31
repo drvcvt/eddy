@@ -17,6 +17,7 @@ add_library(eddy_core STATIC
     src/imageio.cpp
     src/undocommands.cpp
     src/toolcontroller.cpp
+    src/toolbar.cpp
     src/items/arrowitem.cpp
     src/items/rectitem.cpp
     src/items/ellipseitem.cpp
@@ -25,6 +26,7 @@ add_library(eddy_core STATIC
     src/items/penpathitem.cpp
     src/items/rasteritem.cpp
     src/items/textitem.cpp
+    resources/eddy.qrc
 )
 target_include_directories(eddy_core PUBLIC src)
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets)
@@ -49,3 +51,4 @@ eddy_test(test_items)
 eddy_test(test_raster)
 eddy_test(test_toolcontroller)
 eddy_test(test_compositor)
+eddy_test(test_toolbar)

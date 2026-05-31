@@ -1,0 +1,4 @@
+QWidget#Toolbar { background: #1e1e24; border-radius: 10px; }
+QToolButton { background: transparent; border: none; padding: 6px; border-radius: 8px; }
+QToolButton:hover { background: #2c2c36; }
+QToolButton:checked { background: #3b82f6; }
