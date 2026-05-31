@@ -1,4 +1,25 @@
-QWidget#Toolbar { background: #1e1e24; border-radius: 10px; }
-QToolButton { background: transparent; border: none; padding: 6px; border-radius: 8px; }
-QToolButton:hover { background: #2c2c36; }
-QToolButton:checked { background: #3b82f6; }
+/* eddy — minimal dark toolbar */
+QWidget#Toolbar {
+    background-color: #15161c;
+    border-bottom: 1px solid #282a35;
+}
+
+QToolButton {
+    background-color: transparent;
+    color: #b7bac6;
+    border: none;
+    border-radius: 7px;
+    font-family: "Inter", "sans-serif";
+    font-size: 12px;
+    font-weight: 600;
+}
+QToolButton:hover  { background-color: #242633; color: #ffffff; }
+QToolButton:checked { background-color: #3b82f6; color: #ffffff; }
+
+QToolButton#Swatch { color: #ff3b30; font-size: 16px; }
+QToolButton#Save, QToolButton#Copy {
+    padding-left: 12px; padding-right: 12px;
+    color: #cdd0db;
+}
+
+QFrame#Sep { color: #2c2e3a; }

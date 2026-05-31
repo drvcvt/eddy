@@ -13,6 +13,10 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setDragMode(QGraphicsView::NoDrag);
     setFrameShape(QFrame::NoFrame);
+    // Clean look: no scrollbars; pan via middle-drag, navigate via zoom.
+    setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    setBackgroundBrush(QColor("#0e0f13"));
 }
 
 void Canvas::wheelEvent(QWheelEvent *e) {
