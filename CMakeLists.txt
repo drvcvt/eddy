@@ -11,6 +11,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 add_library(eddy_core STATIC
     src/cli.cpp
     src/config.cpp
+    src/imageio.cpp
 )
 target_include_directories(eddy_core PUBLIC src)
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets)
@@ -28,3 +29,4 @@ endfunction()
 
 eddy_test(test_cli)
 eddy_test(test_config)
+eddy_test(test_imageio)
