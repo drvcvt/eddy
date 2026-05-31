@@ -8,6 +8,7 @@
 #include "items/highlightitem.h"
 #include "items/redactitem.h"
 #include "items/penpathitem.h"
+#include "items/textitem.h"
 
 using namespace eddy;
 
@@ -80,6 +81,18 @@ private slots:
         QImage img = renderScene(scene, QSize(100,100));
         QVERIFY(img.pixelColor(50,50).alpha() > 150); // a vertex is inked
         QCOMPARE(pen->pointCount(), 3);
+    }
+    void textRendersInk() {
+        QGraphicsScene scene(0,0,120,60);
+        auto *t = new eddy::TextItem("Hi", QColor(0,0,0), 24);
+        t->setPos(10,10);
+        scene.addItem(t);
+        QImage img = renderScene(scene, QSize(120,60));
+        bool inked = false;
+        for (int y=0;y<60 && !inked;++y)
+            for (int x=0;x<120;++x)
+                if (img.pixelColor(x,y).alpha() > 100) { inked = true; break; }
+        QVERIFY(inked);
     }
 };
 

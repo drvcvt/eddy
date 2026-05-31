@@ -19,6 +19,7 @@ add_library(eddy_core STATIC
     src/items/redactitem.cpp
     src/items/penpathitem.cpp
     src/items/rasteritem.cpp
+    src/items/textitem.cpp
 )
 target_include_directories(eddy_core PUBLIC src)
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets)
