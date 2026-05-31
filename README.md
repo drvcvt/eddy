@@ -13,15 +13,17 @@ Takes an image (from a file or stdin), opens a frameless floating editor, lets y
 | Move | `M` | Select and reposition any annotation |
 | Arrow | `A` | Directional arrow |
 | Pen | `P` | Freehand path |
-| Rectangle | `R` | Filled/stroked rectangle |
-| Ellipse | `E` | Filled/stroked ellipse |
+| Rectangle | `R` | Stroked rectangle outline |
+| Ellipse | `E` | Stroked ellipse outline |
 | Highlight | `H` | Semi-transparent highlight band |
 | Text | `T` | Text stamp with inline edit |
-| Blur | `B` | Gaussian blur region |
+| Blur | `B` | Box blur region |
 | Pixelate | — | Pixelate region (via `--tool pixelate`) |
 | Redact | `X` | Solid redaction block |
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
+
+The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no letter labels.
 
 ---
 
@@ -60,6 +62,7 @@ eddy -f IMAGE
 | `--copy` / `--no-copy` | Copy result to clipboard (default: copy) |
 | `--tool NAME` | Start with a specific tool active (e.g. `--tool blur`) |
 | `--early-exit` | Exit after the first save |
+| `--no-anim` | Disable all animations (window fade, smooth zoom, sliding pill, commit fade-in) |
 | `--config PATH` | Alternate config file |
 
 swappy-compatible aliases (`-f`, `-o`, `--early-exit`) are supported, so replacing `swappy` with `eddy` in existing keybinds and scripts works without changes.
@@ -93,6 +96,7 @@ boltsnap area --no-copy -o - | eddy -f -
 | `stroke_color` | Default stroke color |
 | `early_exit` | Exit after first save (`true`/`false`) |
 | `copy_on_save` | Copy to clipboard on save (`true`/`false`) |
+| `animations` | Enable window/tool animations (default: `true`) |
 
 ---
 
@@ -119,7 +123,6 @@ cmake --build build-rel
 
 - **Pixelate** is reachable only via `--tool pixelate`; there is no toolbar button or hotkey yet.
 - The **Move tool** repositions items but has no resize handles yet.
-- The toolbar's active-tool highlight does not follow keyboard tool switches.
 - **Text** editing is single-box stamp with inline edit; no multi-line layout.
 
 ---

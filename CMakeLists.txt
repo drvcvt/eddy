@@ -42,6 +42,9 @@ add_executable(eddy src/main.cpp)
 target_link_libraries(eddy PRIVATE eddy_core)
 target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:-O2>)
 
+add_executable(eddy_preview tools/eddy_preview.cpp)
+target_link_libraries(eddy_preview PRIVATE eddy_core)
+
 enable_testing()
 function(eddy_test name)
     add_executable(${name} tests/${name}.cpp)
