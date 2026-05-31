@@ -15,6 +15,8 @@
 #include <QApplication>
 #include <QDir>
 #include <QDateTime>
+#include <QPropertyAnimation>
+#include <QShowEvent>
 
 namespace eddy {
 
@@ -22,6 +24,8 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     : QWidget(parent), m_bg(image), m_cfg(cfg), m_cli(cli) {
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
     setWindowTitle("eddy");
+    setObjectName("EditorRoot");
+    setAttribute(Qt::WA_StyledBackground, true);
     setFocusPolicy(Qt::StrongFocus);
 
     m_scene = new QGraphicsScene(this);
@@ -39,7 +43,7 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     m_toolbar = new Toolbar(this);
 
     auto *lay = new QVBoxLayout(this);
-    lay->setContentsMargins(0,0,0,0); lay->setSpacing(0);
+    lay->setContentsMargins(8, 8, 8, 8); lay->setSpacing(6);
     lay->addWidget(m_toolbar);
     lay->addWidget(m_canvas, 1);
 
@@ -47,10 +51,31 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     connect(m_toolbar, &Toolbar::colorChosen, m_tools, &ToolController::setColor);
     connect(m_toolbar, &Toolbar::saveRequested, this, &EditorWindow::save);
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
+    connect(m_tools, &ToolController::toolChanged, m_toolbar, &Toolbar::syncTool);
+    m_canvas->setAnimationsEnabled(cfg.animations);
+    m_toolbar->setAnimationsEnabled(cfg.animations);
+    m_tools->setAnimationsEnabled(cfg.animations);
+    // Sync the toolbar to the configured default explicitly: the earlier
+    // m_tools->setTool() ran before this connect existed (its toolChanged was
+    // dropped), and setTool only emits on a *change* — so a default of "arrow"
+    // (the controller's default) would emit nothing at all. Keep this call.
+    m_toolbar->syncTool(toolFromName(cfg.defaultTool));
+    if (cfg.animations) setWindowOpacity(0.0);   // entrance fade starts transparent
 
     // size to image, capped
     const int maxW = 1700, maxH = 1000;
     resize(qMin(m_bg.width(), maxW), qMin(m_bg.height()+40, maxH));
+}
+
+void EditorWindow::showEvent(QShowEvent *e) {
+    QWidget::showEvent(e);
+    if (m_shown) return;
+    m_shown = true;
+    if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
+    auto *a = new QPropertyAnimation(this, "windowOpacity", this);
+    a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
+    a->setEasingCurve(QEasingCurve::OutCubic);
+    a->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 QImage EditorWindow::exportComposite() {

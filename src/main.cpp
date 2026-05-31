@@ -3,12 +3,15 @@
 #include "imageio.h"
 #include "compositor.h"
 #include "editorwindow.h"
+#include "theme.h"
 #include <QApplication>
 #include <QFile>
 #include <cstdio>
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
+    QApplication::setStyle("Fusion");
+    app.setPalette(eddy::theme::darkPalette());
     app.setApplicationName("eddy");
     app.setDesktopFileName("eddy");
 
