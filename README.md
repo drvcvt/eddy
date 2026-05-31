@@ -25,6 +25,18 @@ Every annotation is a retained scene item — select and move it with the Move t
 
 The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no letter labels.
 
+**Toolbar controls:**
+
+| Control | Description |
+|---------|-------------|
+| ↶ / ↷ | Undo / Redo buttons (same as `Ctrl+Z` / `Ctrl+Shift+Z`) |
+| **S / M / L** | Line-width chooser: 2 px / 4 px / 8 px stroke |
+| Colour swatch | Opens a **colour popover** with preset swatches and a *Custom…* entry that opens the full colour dialog |
+
+If the window is made very short, the toolbar **auto-hides** and reappears when the cursor moves to the top edge, keeping the image at full height.
+
+With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact) shows **8 drag handles** to resize it. Selecting an Arrow shows **2 endpoint handles**. Pen, Text, and Blur are move-only.
+
 ---
 
 ## Keyboard shortcuts
@@ -34,6 +46,7 @@ The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no lette
 | `A` `P` `R` `E` `H` `T` `B` `X` `M` | Switch tool |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
+| `Delete` / `Backspace` | Remove selected annotation (undoable) |
 | `Enter` | Save (copy to clipboard; also write file if `-o` / `--save-dir` is set) |
 | `Ctrl+S` | Save |
 | `Ctrl+C` | Copy to clipboard |
@@ -122,8 +135,8 @@ cmake --build build-rel
 ## Known v1 limitations
 
 - **Pixelate** is reachable only via `--tool pixelate`; there is no toolbar button or hotkey yet.
-- The **Move tool** repositions items but has no resize handles yet.
 - **Text** editing is single-box stamp with inline edit; no multi-line layout.
+- **Pen and Blur** annotations are move-only; resize handles are not supported for those item types.
 
 ---
 
