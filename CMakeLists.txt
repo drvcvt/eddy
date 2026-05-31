@@ -11,13 +11,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Test Svg)
 
 add_library(eddy_core STATIC
     src/canvas.cpp
     src/cli.cpp
     src/compositor.cpp
     src/config.cpp
+    src/theme.cpp
     src/editorwindow.cpp
     src/exporter.cpp
     src/imageio.cpp
@@ -35,7 +36,7 @@ add_library(eddy_core STATIC
     resources/eddy.qrc
 )
 target_include_directories(eddy_core PUBLIC src)
-target_link_libraries(eddy_core PUBLIC Qt6::Widgets)
+target_link_libraries(eddy_core PUBLIC Qt6::Widgets Qt6::Svg)
 
 add_executable(eddy src/main.cpp)
 target_link_libraries(eddy PRIVATE eddy_core)
@@ -60,3 +61,4 @@ eddy_test(test_toolcontroller)
 eddy_test(test_compositor)
 eddy_test(test_toolbar)
 eddy_test(test_editorwindow)
+eddy_test(test_theme)
