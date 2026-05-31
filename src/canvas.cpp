@@ -3,6 +3,7 @@
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QGraphicsItem>
+#include <QVariantAnimation>
 
 namespace eddy {
 
@@ -21,9 +22,24 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
 }
 
 void Canvas::wheelEvent(QWheelEvent *e) {
-    const double factor = e->angleDelta().y() > 0 ? 1.15 : 1/1.15;
-    m_zoom *= factor;
-    scale(factor, factor);
+    const double step = e->angleDelta().y() > 0 ? 1.15 : 1.0/1.15;
+    m_targetZoom *= step;
+    if (!m_animations) { m_zoom *= step; scale(step, step); e->accept(); return; }
+    if (!m_zoomAnim) {
+        m_zoomAnim = new QVariantAnimation(this);
+        m_zoomAnim->setDuration(110);
+        m_zoomAnim->setEasingCurve(QEasingCurve::OutCubic);
+        connect(m_zoomAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &v){
+            const double target = v.toDouble();
+            const double inc = target / m_zoom;       // AnchorUnderMouse keeps cursor fixed
+            m_zoom = target;
+            scale(inc, inc);
+        });
+    }
+    m_zoomAnim->stop();
+    m_zoomAnim->setStartValue(m_zoom);
+    m_zoomAnim->setEndValue(m_targetZoom);
+    m_zoomAnim->start();
     e->accept();
 }
 
