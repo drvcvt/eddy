@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.21)
 project(eddy LANGUAGES CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -35,6 +39,7 @@ target_link_libraries(eddy_core PUBLIC Qt6::Widgets)
 
 add_executable(eddy src/main.cpp)
 target_link_libraries(eddy PRIVATE eddy_core)
+target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:-O2>)
 
 enable_testing()
 function(eddy_test name)
