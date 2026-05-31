@@ -23,6 +23,10 @@ QToolButton {
 QToolButton:hover  { background-color: rgba(255,255,255,0.06); color: #ffffff; }
 /* Active state is the sliding pill, not a per-button background. */
 QToolButton:checked { background-color: transparent; }
+/* The width chooser has no pill, so its active size needs a visible marker. */
+QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:checked {
+    background-color: rgba(255,255,255,0.10); color: #ffffff;
+}
 
 QToolButton#Swatch { color: #ff3b30; font-size: 16px; }
 QToolButton#Swatch:hover { background-color: rgba(255,255,255,0.06); }
