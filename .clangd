@@ -1,0 +1,10 @@
+# Keep clangd lightweight on this machine:
+# - Background: Skip disables the whole-project background index crawl
+#   (indexing the Qt header graph was driving RAM into heavy swap).
+# - Remove the GCC-only flag that clang/clangd does not understand
+#   (comes from build/compile_commands.json), which spammed errors.
+CompileFlags:
+  Remove:
+    - -mno-direct-extern-access
+Index:
+  Background: Skip
