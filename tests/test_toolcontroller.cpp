@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QSignalSpy>
 #include <QGraphicsScene>
 #include <QUndoStack>
 #include "toolcontroller.h"
@@ -73,6 +74,34 @@ private slots:
         QVERIFY(t->flags() & QGraphicsItem::ItemIsSelectable);
         undo.undo();
         QVERIFY(!scene.items().contains(t));
+    }
+    void toolChangedEmittedOnlyOnChange() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(10,10,QImage::Format_ARGB32_Premultiplied));
+        QSignalSpy spy(&tc, &ToolController::toolChanged);
+        tc.setTool(ToolType::Rect);
+        tc.setTool(ToolType::Rect);   // no-op, no emit
+        tc.setTool(ToolType::Pen);
+        QCOMPARE(spy.count(), 2);
+    }
+    void committedItemOpaqueWhenAnimationsOff() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(20,20,QImage::Format_ARGB32_Premultiplied));
+        tc.setAnimationsEnabled(false);
+        tc.setTool(ToolType::Arrow);
+        tc.begin({1,1}); tc.finish({10,10});
+        QCOMPARE(scene.items().first()->opacity(), 1.0);
+    }
+    void priorFadeSettledOnNextCommit() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(30,30,QImage::Format_ARGB32_Premultiplied));
+        tc.setAnimationsEnabled(true);
+        tc.setTool(ToolType::Arrow);
+        tc.begin({1,1}); tc.finish({5,5});      // item A: fade started (opacity ~0)
+        tc.begin({6,6}); tc.finish({10,10});    // item B commit -> finalizeFade snaps A to 1.0
+        auto items = scene.items();             // top-first: [B, A]
+        QCOMPARE(items.size(), 2);
+        QCOMPARE(items.last()->opacity(), 1.0); // A (first committed) settled to fully opaque
     }
 };
 

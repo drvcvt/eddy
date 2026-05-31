@@ -10,6 +10,7 @@
 #include "items/textitem.h"
 #include <QGraphicsScene>
 #include <QUndoStack>
+#include <QVariantAnimation>
 
 namespace eddy {
 
@@ -30,6 +31,33 @@ ToolType toolFromName(const QString &name) {
 
 ToolController::ToolController(QGraphicsScene *scene, QUndoStack *undo, QImage bg, QObject *parent)
     : QObject(parent), m_scene(scene), m_undo(undo), m_bg(std::move(bg)) {}
+
+void ToolController::setTool(ToolType t) {
+    if (m_tool == t) return;
+    m_tool = t;
+    emit toolChanged(t);
+}
+
+void ToolController::finalizeFade() {
+    if (m_fadeAnim) m_fadeAnim->stop();                 // DeleteWhenStopped frees it; QPointer nulls
+    if (m_fadingItem && m_fadingItem->scene())
+        m_fadingItem->setOpacity(1.0);                  // snap any in-flight fade fully opaque
+    m_fadingItem = nullptr;
+}
+
+void ToolController::fadeIn(QGraphicsItem *it) {
+    if (!m_animations) { it->setOpacity(1.0); return; }
+    it->setOpacity(0.0);
+    m_fadingItem = it;
+    auto *a = new QVariantAnimation(this);
+    a->setStartValue(0.0); a->setEndValue(1.0);
+    a->setDuration(130); a->setEasingCurve(QEasingCurve::OutCubic);
+    QObject::connect(a, &QVariantAnimation::valueChanged, this, [it](const QVariant &v){
+        if (it->scene()) it->setOpacity(v.toDouble());  // guard: undone mid-fade (item still alive)
+    });
+    m_fadeAnim = a;
+    a->start(QAbstractAnimation::DeleteWhenStopped);
+}
 
 template <class T> static void style(T *it, const QColor &c, double w) {
     it->setStrokeColor(c); it->setStrokeWidth(w);
@@ -71,10 +99,12 @@ void ToolController::update(const QPointF &p) {
 void ToolController::finish(const QPointF &p) {
     if (!m_active) return;
     update(p);
-    // Hand ownership to an undo command (remove the live preview, let redo re-add).
+    finalizeFade();                  // settle prior fade before push() can discard the redo branch
+    QGraphicsItem *committed = m_active;
     m_scene->removeItem(m_active);
     m_undo->push(new AddItemCommand(m_scene, m_active));
     m_active = nullptr;
+    fadeIn(committed);
 }
 
 QGraphicsItem *ToolController::placeText(const QPointF &p) {
@@ -82,7 +112,9 @@ QGraphicsItem *ToolController::placeText(const QPointF &p) {
     t->setPos(p);
     t->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
     t->setTextInteractionFlags(Qt::TextEditorInteraction);
+    finalizeFade();
     m_undo->push(new AddItemCommand(m_scene, t));
+    fadeIn(t);
     return t;
 }
 
