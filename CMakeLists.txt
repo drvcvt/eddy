@@ -11,6 +11,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
 add_library(eddy_core STATIC
     src/cli.cpp
     src/config.cpp
+    src/exporter.cpp
     src/imageio.cpp
     src/items/arrowitem.cpp
     src/items/rectitem.cpp
@@ -37,6 +38,7 @@ endfunction()
 
 eddy_test(test_cli)
 eddy_test(test_config)
+eddy_test(test_exporter)
 eddy_test(test_imageio)
 eddy_test(test_items)
 eddy_test(test_raster)
