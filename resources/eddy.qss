@@ -2,9 +2,9 @@
 QWidget#EditorRoot { background-color: #0e0f13; }
 
 QWidget#Toolbar {
-    background-color: #15161c;
-    border: 1px solid #282a35;
-    border-radius: 13px;
+    background-color: #191b24;
+    border: 1px solid #383c50;
+    border-radius: 14px;
 }
 QWidget#Pill {
     background-color: #cccccc;
