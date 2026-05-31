@@ -11,6 +11,13 @@ private slots:
         QImage out = w.exportComposite();
         QCOMPARE(out.size(), QSize(64,48));
     }
+    void hasMinimumSize() {
+        QImage bg(64,48,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
+        Config cfg; CliOptions cli;
+        EditorWindow w(bg, cfg, cli);
+        QVERIFY(w.minimumWidth() > 0);
+        QVERIFY(w.minimumHeight() > 0);
+    }
 };
 QTEST_MAIN(TestEditorWindow)
 #include "test_editorwindow.moc"
