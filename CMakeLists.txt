@@ -15,6 +15,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Test Svg)
 
 add_library(eddy_core STATIC
     src/canvas.cpp
+    src/colorpopover.cpp
     src/cli.cpp
     src/compositor.cpp
     src/config.cpp
@@ -54,6 +55,7 @@ function(eddy_test name)
 endfunction()
 
 eddy_test(test_canvas)
+eddy_test(test_colorpopover)
 eddy_test(test_cli)
 eddy_test(test_config)
 eddy_test(test_exporter)
