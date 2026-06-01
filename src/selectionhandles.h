@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QVector>
+#include <QPointF>
 class QGraphicsScene; class QGraphicsItem; class QUndoStack;
 namespace eddy {
 class HandleItem;
@@ -10,11 +11,15 @@ class HandleItem;
 // (high zValue) and are never part of the saved image.
 class SelectionHandles : public QObject {
     Q_OBJECT
+    friend class HandleItem;
 public:
     explicit SelectionHandles(QGraphicsScene *scene, QUndoStack *undo = nullptr, QObject *parent = nullptr);
     int handleCount() const;
+    QPointF handleScenePos(int i) const;
     void refresh();        // rebuild handles for the current selection (on selectionChanged)
     void reposition();     // move existing handles to the target's current geometry (during drag)
+signals:
+    void resizeFinished(QGraphicsItem *item);
 private:
     QGraphicsScene *m_scene;
     QUndoStack *m_undo;

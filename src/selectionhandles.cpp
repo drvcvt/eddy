@@ -9,8 +9,20 @@
 #include <QBrush>
 #include <QPen>
 #include <QCursor>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
 
 namespace eddy {
+
+static QCursor cursorForRole(int role) {
+    switch (role) {
+        case 0: case 4: return QCursor(Qt::SizeFDiagCursor);  // TL / BR
+        case 2: case 6: return QCursor(Qt::SizeBDiagCursor);  // TR / BL
+        case 1: case 5: return QCursor(Qt::SizeVerCursor);    // T / B
+        case 3: case 7: return QCursor(Qt::SizeHorCursor);    // L / R
+        default:        return QCursor(Qt::SizeAllCursor);    // arrow endpoints
+    }
+}
 
 // One draggable handle. role 0..7 = TL,T,TR,R,BR,B,BL,L for rects; 0/1 = start/end for arrows.
 class HandleItem : public QGraphicsRectItem {
@@ -23,7 +35,13 @@ public:
         setZValue(10000);
         setFlag(ItemIgnoresTransformations, true);   // constant on-screen size
         setAcceptedMouseButtons(Qt::LeftButton);
-        setCursor(QCursor(Qt::SizeAllCursor));
+        setCursor(cursorForRole(role));
+    }
+    void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override {
+        p->setRenderHint(QPainter::Antialiasing, true);
+        p->setBrush(brush());
+        p->setPen(pen());
+        p->drawRoundedRect(rect(), 3, 3);   // squircle handle
     }
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *e) override { captureBefore(); e->accept(); }
@@ -32,7 +50,11 @@ protected:
         if (m_owner) m_owner->reposition();          // move handles, do NOT rebuild (no self-delete)
         e->accept();
     }
-    void mouseReleaseEvent(QGraphicsSceneMouseEvent *e) override { pushCommand(); e->accept(); }
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *e) override {
+        pushCommand();
+        if (m_owner) emit m_owner->resizeFinished(m_target);   // HandleItem is a friend
+        e->accept();
+    }
 private:
     SelectionHandles *m_owner; QGraphicsItem *m_target; int m_role; QUndoStack *m_undo;
     QRectF m_beforeRect, m_afterRect;
@@ -83,9 +105,15 @@ private:
 SelectionHandles::SelectionHandles(QGraphicsScene *scene, QUndoStack *undo, QObject *parent)
     : QObject(parent), m_scene(scene), m_undo(undo) {
     connect(scene, &QGraphicsScene::selectionChanged, this, &SelectionHandles::refresh);
+    connect(scene, &QGraphicsScene::changed, this, &SelectionHandles::reposition);
 }
 
 int SelectionHandles::handleCount() const { return m_handles.size(); }
+
+QPointF SelectionHandles::handleScenePos(int i) const {
+    if (i < 0 || i >= m_handles.size()) return {};
+    return m_handles[i]->scenePos();
+}
 
 void SelectionHandles::clear() {
     for (auto *h : m_handles) { m_scene->removeItem(h); delete h; }
