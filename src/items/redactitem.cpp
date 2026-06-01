@@ -30,6 +30,12 @@ void RedactItem::setMode(RedactMode m) {
 // so no rebuild is needed here. Empty rects => OCR modes cover nothing (safe default).
 void RedactItem::setTextRects(const QVector<QRectF> &rects) { m_textRects = rects; update(); }
 
+void RedactItem::setDetecting(bool detecting) {
+    if (m_detecting == detecting) return;
+    m_detecting = detecting;
+    update();
+}
+
 QRectF RedactItem::boundingRect() const { return m_region; }
 
 void RedactItem::rebuildCache() {
@@ -40,7 +46,9 @@ void RedactItem::rebuildCache() {
 }
 
 QVector<QRectF> RedactItem::coverRects() const {
-    if (!isOcr(m_mode)) return { m_region };
+    // Non-OCR, or an OCR mode still detecting: cover the WHOLE region — never expose
+    // source while detection is pending. Once detection completes, narrow to text rects.
+    if (!isOcr(m_mode) || m_detecting) return { m_region };
     QVector<QRectF> out;
     for (const QRectF &tr : m_textRects) {
         const QRectF c = tr.intersected(m_region);

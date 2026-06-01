@@ -167,6 +167,21 @@ private slots:
         QVERIFY(img.pixelColor(30,24).alpha() > 0);        // inside the text rect -> blurred content
         QCOMPARE(img.pixelColor(62,62).alpha(), 0);        // inside region, outside text rect -> untouched
     }
+    void redactDetectingCoversWholeRegionThenNarrows() {
+        QGraphicsScene scene(0,0,80,80);
+        QImage src(80,80,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::OcrBlacken, src, QRectF(10,10,60,60));
+        r->setTextRects({ QRectF(20,20,30,10) });
+        r->setDetecting(true);                              // pending → cover whole region (no leak)
+        scene.addItem(r);
+        QImage img = renderScene(scene, QSize(80,80));
+        QVERIFY(r->isDetecting());
+        QCOMPARE(img.pixelColor(62,62).alpha(), 255);       // outside text rect, still covered while detecting
+        r->setDetecting(false);                             // done → narrow to text rects
+        QImage img2 = renderScene(scene, QSize(80,80));
+        QVERIFY(!r->isDetecting());
+        QCOMPARE(img2.pixelColor(62,62).alpha(), 0);        // now uncovered (only the text rect is)
+    }
 };
 
 QTEST_MAIN(TestItems)

@@ -26,6 +26,9 @@ public:
     QVector<QRectF> textRects() const { return m_textRects; }
     void setTextRects(const QVector<QRectF> &rects);
 
+    bool isDetecting() const { return m_detecting; }
+    void setDetecting(bool detecting);
+
     static bool isOcr(RedactMode m)  { return m == RedactMode::OcrBlur || m == RedactMode::OcrBlacken; }
     static bool isBlur(RedactMode m) { return m == RedactMode::Blur    || m == RedactMode::OcrBlur; }
 
@@ -37,6 +40,7 @@ private:
     QImage m_source;        // full background in scene coords (shared, copy-on-write)
     QRectF m_region;
     QVector<QRectF> m_textRects;
+    bool m_detecting = false;
     QImage m_cache;         // blurred crop of the region (blur modes only)
     QRect m_cacheRect;      // integer scene rect the cache covers
 };
