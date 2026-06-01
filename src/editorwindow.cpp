@@ -6,6 +6,10 @@
 #include "selectionhandles.h"
 #include "undocommands.h"
 #include "items/textitem.h"
+#include "redactbar.h"
+#include "toast.h"
+#include "redactocrcontroller.h"
+#include "items/redactitem.h"
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <cstdio>
@@ -57,11 +61,24 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
     connect(m_tools, &ToolController::toolChanged, m_toolbar, &Toolbar::syncTool);
     connect(m_toolbar, &Toolbar::widthChosen, m_tools, &ToolController::setWidth);
-    connect(m_toolbar, &Toolbar::undoRequested, m_undo, &QUndoStack::undo);
-    connect(m_toolbar, &Toolbar::redoRequested, m_undo, &QUndoStack::redo);
+    connect(m_toolbar, &Toolbar::undoRequested, this, &EditorWindow::doUndo);
+    connect(m_toolbar, &Toolbar::redoRequested, this, &EditorWindow::doRedo);
     connect(m_undo, &QUndoStack::canUndoChanged, m_toolbar, &Toolbar::setUndoEnabled);
     connect(m_undo, &QUndoStack::canRedoChanged, m_toolbar, &Toolbar::setRedoEnabled);
     m_handles = new SelectionHandles(m_scene, m_undo, this);
+    m_ocr = new RedactOcrController(m_bg, {m_cfg.ocrLang, m_cfg.ocrPsm}, this);
+    m_redactBar = new RedactBar(m_canvas->viewport());
+    m_redactBar->hide();
+    m_toast = new Toast(this);
+
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshRedactBar);
+    connect(m_scene, &QGraphicsScene::changed, this, [this](const QList<QRectF> &){ positionRedactBar(); });
+    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionRedactBar);
+    connect(m_redactBar, &RedactBar::modeChosen, this, &EditorWindow::onRedactModeChosen);
+    connect(m_ocr, &RedactOcrController::noTextDetected, this,
+            [this]{ m_toast->showMessage(QStringLiteral("No text detected")); });
+    connect(m_ocr, &RedactOcrController::ocrFailed, this,
+            [this](const QString &msg){ m_toast->showMessage(QStringLiteral("OCR failed: ") + msg); });
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_toolbar->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);
@@ -135,6 +152,49 @@ void EditorWindow::mouseMoveEvent(QMouseEvent *e) {
     QWidget::mouseMoveEvent(e);
 }
 
+RedactItem *EditorWindow::selectedRedact() const {
+    const auto sel = m_scene->selectedItems();
+    if (sel.size() != 1) return nullptr;
+    return dynamic_cast<RedactItem *>(sel.first());
+}
+
+void EditorWindow::refreshRedactBar() {
+    RedactItem *r = selectedRedact();
+    if (!r) { m_redactBar->hide(); return; }
+    m_redactBar->setMode(r->mode());
+    m_redactBar->adjustSize();
+    m_redactBar->show();
+    m_redactBar->raise();
+    positionRedactBar();
+}
+
+void EditorWindow::positionRedactBar() {
+    if (m_redactBar->isHidden()) return;
+    RedactItem *r = selectedRedact();
+    if (!r) { m_redactBar->hide(); return; }
+    const QRectF rc = r->rect();
+    const QPoint topCenter = m_canvas->mapFromScene(QPointF(rc.center().x(), rc.top()));
+    const QSize vp = m_canvas->viewport()->size();
+    int x = topCenter.x() - m_redactBar->width() / 2;
+    int y = topCenter.y() - m_redactBar->height() - 8;
+    x = qBound(4, x, qMax(4, vp.width() - m_redactBar->width() - 4));
+    if (y < 4) y = topCenter.y() + 8;     // no room above -> just below the top edge
+    m_redactBar->move(x, y);
+}
+
+void EditorWindow::onRedactModeChosen(RedactMode m) {
+    RedactItem *r = selectedRedact();
+    if (!r) return;
+    const RedactMode before = r->mode();
+    if (before != m) m_undo->push(new SetRedactModeCommand(r, before, m));
+    if (RedactItem::isOcr(m)) m_ocr->detectFor(r);   // detecting -> whole-region cover until result
+    m_redactBar->setMode(m);
+    positionRedactBar();
+}
+
+void EditorWindow::doUndo() { m_ocr->cancel(); m_undo->undo(); refreshRedactBar(); }
+void EditorWindow::doRedo() { m_ocr->cancel(); m_undo->redo(); refreshRedactBar(); }
+
 QImage EditorWindow::exportComposite() {
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the image
     return renderToImage(*m_scene, m_bg.size());
@@ -186,7 +246,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_X: m_tools->setTool(ToolType::Redact); break;
         case Qt::Key_M: m_tools->setTool(ToolType::Move); break;
         case Qt::Key_Z: if (e->modifiers() & Qt::ControlModifier) {
-                            (e->modifiers() & Qt::ShiftModifier) ? m_undo->redo() : m_undo->undo();
+                            (e->modifiers() & Qt::ShiftModifier) ? doRedo() : doUndo();
                         } break;
         case Qt::Key_C: if (e->modifiers() & Qt::ControlModifier) copy(); break;
         case Qt::Key_S: if (e->modifiers() & Qt::ControlModifier) save(); break;
@@ -196,6 +256,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             bool removed = false;
             for (QGraphicsItem *it : sel) {
                 if (it->zValue() <= -1000) continue;     // never the background
+                if (auto *r = dynamic_cast<RedactItem *>(it)) m_ocr->forget(r);
                 m_undo->push(new RemoveItemCommand(m_scene, it));
                 removed = true;
             }
