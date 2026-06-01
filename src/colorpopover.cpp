@@ -1,7 +1,9 @@
 #include "colorpopover.h"
+#include "theme.h"
 #include <QGridLayout>
 #include <QToolButton>
 #include <QColorDialog>
+#include <QIcon>
 
 namespace eddy {
 
@@ -40,8 +42,13 @@ ColorPopover::ColorPopover(QWidget *parent) : QWidget(parent, Qt::Popup) {
 
     auto *pipette = new QToolButton;
     pipette->setObjectName("Custom");           // reuse the Custom button styling
-    pipette->setText("\xE2\xA7\xAB Pipette");   // "⧫ Pipette" (eyedropper)
+    pipette->setText("Pipette");
+    pipette->setIcon(theme::tintedIcon(QStringLiteral(":/icons/eyedropper.svg"),
+                                       QColor("#d0d0d0"), QColor("#ffffff")));
+    pipette->setIconSize(QSize(15, 15));
+    pipette->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     pipette->setFixedHeight(24);
+    pipette->setToolTip("Pick a colour from the image");
     pipette->setCursor(Qt::PointingHandCursor);
     connect(pipette, &QToolButton::clicked, this, [this]{
         close();

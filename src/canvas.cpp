@@ -33,6 +33,7 @@ void Canvas::startEyedropper() {
     m_eyeShot = shot.toImage();
     m_eyedropper = true;
     if (!m_loupe) m_loupe = new Loupe(viewport());
+    m_eyeTrackPrev = viewport()->hasMouseTracking();
     viewport()->setMouseTracking(true);           // follow the cursor without a button held
     viewport()->setCursor(Qt::CrossCursor);
     updateLoupe(viewport()->mapFromGlobal(QCursor::pos()));
@@ -44,6 +45,7 @@ void Canvas::cancelEyedropper() {
     m_eyeShot = QImage();
     if (m_loupe) m_loupe->hide();
     viewport()->unsetCursor();
+    viewport()->setMouseTracking(m_eyeTrackPrev);
 }
 
 QPoint Canvas::sourcePixel(const QPoint &viewPos) const {
@@ -56,6 +58,7 @@ void Canvas::updateLoupe(const QPoint &viewPos) {
 }
 
 void Canvas::wheelEvent(QWheelEvent *e) {
+    if (m_eyedropper) { e->accept(); return; }   // don't zoom under a frozen snapshot
     const double step = e->angleDelta().y() > 0 ? 1.15 : 1.0/1.15;
     m_targetZoom *= step;
     if (!m_animations) { m_zoom *= step; scale(step, step); emit viewChanged(); e->accept(); return; }
@@ -139,6 +142,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
 }
 
 void Canvas::resizeEvent(QResizeEvent *e) {
+    if (m_eyedropper) cancelEyedropper();        // snapshot + loupe placement go stale on resize
     QGraphicsView::resizeEvent(e);
     emit viewChanged();
 }

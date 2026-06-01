@@ -137,7 +137,10 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_toolbar, &Toolbar::redoRequested, this, &EditorWindow::doRedo);
     connect(m_undo, &QUndoStack::canUndoChanged, m_toolbar, &Toolbar::setUndoEnabled);
     connect(m_undo, &QUndoStack::canRedoChanged, m_toolbar, &Toolbar::setRedoEnabled);
-    connect(m_toolbar, &Toolbar::eyedropperRequested, m_canvas, &Canvas::startEyedropper);
+    connect(m_toolbar, &Toolbar::eyedropperRequested, this, [this]{
+        m_canvas->startEyedropper();
+        if (m_toast) m_toast->showMessage(QStringLiteral("Click to pick a colour \xC2\xB7 Esc to cancel"));
+    });
     connect(m_canvas, &Canvas::colorPicked, this, [this](const QColor &c){
         m_tools->setColor(c);
         m_toolbar->setSwatchColor(c);

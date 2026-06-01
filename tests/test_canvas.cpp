@@ -45,6 +45,43 @@ private slots:
         QCOMPARE(canvas.horizontalScrollBar()->value(), hx + 40);   // dragging left scrolls right
         QCOMPARE(canvas.verticalScrollBar()->value(), vy + 30);
     }
+    void eyedropperTogglesActiveState() {
+        QGraphicsScene scene(0,0,100,100);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.resize(120,120); canvas.show();
+        QVERIFY(!canvas.eyedropperActive());
+        canvas.startEyedropper();
+        QVERIFY(canvas.eyedropperActive());
+        canvas.cancelEyedropper();
+        QVERIFY(!canvas.eyedropperActive());
+    }
+    void eyedropperLeftClickPicksAndExits() {
+        QGraphicsScene scene(0,0,100,100);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tools.setTool(ToolType::Move);            // release after the pick falls through natively
+        Canvas canvas(&scene, &tools);
+        canvas.resize(120,120); canvas.show();
+        QSignalSpy spy(&canvas, &Canvas::colorPicked);
+        canvas.startEyedropper();
+        QTest::mouseClick(canvas.viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(40,40));
+        QCOMPARE(spy.count(), 1);                 // one colour picked
+        QVERIFY(!canvas.eyedropperActive());      // pick exits the mode
+    }
+    void eyedropperRightClickCancels() {
+        QGraphicsScene scene(0,0,100,100);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.resize(120,120); canvas.show();
+        QSignalSpy spy(&canvas, &Canvas::colorPicked);
+        canvas.startEyedropper();
+        QTest::mouseClick(canvas.viewport(), Qt::RightButton, Qt::NoModifier, QPoint(40,40));
+        QCOMPARE(spy.count(), 0);                 // cancel picks nothing
+        QVERIFY(!canvas.eyedropperActive());
+    }
 };
 QTEST_MAIN(TestCanvas)
 #include "test_canvas.moc"

@@ -43,6 +43,7 @@ private:
     bool m_eyedropper = false;      // eyedropper colour-pick in progress
     QImage m_eyeShot;               // frozen viewport snapshot (device px) being sampled
     qreal m_eyeDpr = 1.0;           // snapshot device-pixel ratio
+    bool m_eyeTrackPrev = false;    // viewport mouse-tracking state to restore on cancel
     Loupe *m_loupe = nullptr;
 };
 }

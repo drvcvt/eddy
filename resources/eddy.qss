@@ -28,10 +28,10 @@ QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:check
     background-color: rgba(255,255,255,0.10); color: #ffffff;
 }
 
-QToolButton#Swatch { color: #ff3b30; font-size: 16px; }
-QToolButton#Swatch:hover { background-color: rgba(255,255,255,0.06); }
+/* Swatch is a painted colour-disc icon (see Toolbar::setSwatchColor); the
+   generic QToolButton:hover already covers its hover background. */
 QToolButton#Save, QToolButton#Copy {
-    padding-left: 12px; padding-right: 12px; color: #d0d0d0;
+    padding-left: 12px; padding-right: 12px;
 }
 
 QFrame#Sep { color: #2a2a2a; }
