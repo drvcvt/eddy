@@ -8,6 +8,7 @@
 #include "items/arrowitem.h"
 #include "items/rectitem.h"
 #include "items/rasteritem.h"
+#include "items/redactitem.h"
 #include "items/textitem.h"
 
 using namespace eddy;
@@ -46,7 +47,7 @@ private slots:
         QCOMPARE(toolFromName("pixelate"), ToolType::Pixelate);
         QCOMPARE(toolFromName("move"), ToolType::Move);
     }
-    void shapeMovableRasterNot() {
+    void pixelateRasterNotMovable() {
         QGraphicsScene scene; QUndoStack undo;
         ToolController tc(&scene, &undo, QImage(60,60,QImage::Format_ARGB32_Premultiplied));
         tc.setTool(ToolType::Arrow);
@@ -54,7 +55,7 @@ private slots:
         auto *arrow = scene.items().first();
         QVERIFY(arrow->flags() & QGraphicsItem::ItemIsMovable);
         QVERIFY(arrow->flags() & QGraphicsItem::ItemIsSelectable);
-        tc.setTool(ToolType::Blur);
+        tc.setTool(ToolType::Pixelate);                       // pixelate stays a raster overlay
         tc.begin({5,5}); tc.finish({25,25});
         bool sawRaster = false;
         for (auto *it : scene.items()) {
@@ -64,6 +65,18 @@ private slots:
             }
         }
         QVERIFY(sawRaster);
+    }
+    void blurToolCreatesMovableRedact() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(60,60,QImage::Format_ARGB32_Premultiplied));
+        tc.setTool(ToolType::Blur);
+        tc.begin({5,5}); tc.finish({25,25});
+        QCOMPARE(scene.items().size(), 1);
+        auto *r = dynamic_cast<RedactItem*>(scene.items().first());
+        QVERIFY(r);
+        QCOMPARE(r->mode(), RedactMode::Blur);
+        QVERIFY(r->flags() & QGraphicsItem::ItemIsMovable);
+        QVERIFY(r->flags() & QGraphicsItem::ItemIsSelectable);
     }
     void placeTextAddsEditableItem() {
         QGraphicsScene scene; QUndoStack undo;
