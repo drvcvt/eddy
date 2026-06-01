@@ -9,5 +9,6 @@ public:
     explicit ColorPopover(QWidget *parent = nullptr);
 signals:
     void picked(const QColor &c);
+    void eyedropperRequested();   // user chose the pipette: sample a colour off the canvas
 };
 }

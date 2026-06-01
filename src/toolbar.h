@@ -22,6 +22,7 @@ signals:
     void widthChosen(double w);
     void undoRequested();
     void redoRequested();
+    void eyedropperRequested();   // user chose the pipette in the colour popover
 protected:
     void showEvent(QShowEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
