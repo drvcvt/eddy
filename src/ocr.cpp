@@ -189,9 +189,29 @@ int chooseScale(const QSize &cropSize) {
     return maxDim <= 1600 ? 2 : 1;
 }
 
-QString chooseTessdataDir(const QString &, const QString &, const QString &,
-                          const QString &, const std::function<bool(const QString &)> &) {
-    return {};
+QString chooseTessdataDir(const QString &explicitDir, const QString &envPrefix,
+                          const QString &home, const QString &language,
+                          const std::function<bool(const QString &)> &exists) {
+    // Explicit/env overrides are trusted without existence checks (caller's responsibility).
+    if (!explicitDir.isEmpty()) return explicitDir;
+    if (!envPrefix.isEmpty()) return envPrefix;
+
+    QVector<QString> candidates;
+    candidates.append(QStringLiteral("/usr/share/tessdata"));
+    if (!home.isEmpty())
+        candidates.append(home + QStringLiteral("/.local/share/tessdata"));
+
+    const QStringList langs = language.split(QLatin1Char('+'), Qt::SkipEmptyParts);
+    auto hasAllLangs = [&](const QString &dir) {
+        for (const QString &lang : langs)
+            if (!exists(dir + QLatin1Char('/') + lang + QStringLiteral(".traineddata")))
+                return false;
+        return true;
+    };
+
+    for (const QString &c : candidates)
+        if (hasAllLangs(c)) return c;
+    return QString();
 }
 
 OcrRunner::OcrRunner(QObject *parent) : QObject(parent) {}

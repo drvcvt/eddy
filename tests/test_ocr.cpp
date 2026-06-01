@@ -100,6 +100,29 @@ private slots:
         QCOMPARE(chooseScale(QSize(1600, 1)), 2);
         QCOMPARE(chooseScale(QSize(1601, 1)), 1);
     }
+    void resolvesTessdataDirInPriorityOrder() {
+        const auto always = [](const QString &) { return true; };
+        QCOMPARE(chooseTessdataDir("/explicit", "/env", "/home/me", "deu", always),
+                 QString("/explicit"));
+
+        const auto sysOrLocalDeu = [](const QString &p) {
+            return p == "/usr/share/tessdata/deu.traineddata"
+                || p == "/home/me/.local/share/tessdata/deu.traineddata";
+        };
+        QCOMPARE(chooseTessdataDir("", "", "/home/me", "deu", sysOrLocalDeu),
+                 QString("/usr/share/tessdata"));
+
+        const auto onlyLocalHasEng = [](const QString &p) {
+            return p == "/usr/share/tessdata/deu.traineddata"
+                || p == "/home/me/.local/share/tessdata/deu.traineddata"
+                || p == "/home/me/.local/share/tessdata/eng.traineddata";
+        };
+        QCOMPARE(chooseTessdataDir("", "", "/home/me", "deu+eng", onlyLocalHasEng),
+                 QString("/home/me/.local/share/tessdata"));
+
+        const auto noneHasLang = [](const QString &) { return false; };
+        QCOMPARE(chooseTessdataDir("", "", "/home/me", "deu", noneHasLang), QString());
+    }
 };
 
 QTEST_MAIN(TestOcr)
