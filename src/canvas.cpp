@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QWheelEvent>
 #include <QMouseEvent>
+#include <QResizeEvent>
 #include <QGraphicsItem>
 #include <QVariantAnimation>
 
@@ -24,7 +25,7 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
 void Canvas::wheelEvent(QWheelEvent *e) {
     const double step = e->angleDelta().y() > 0 ? 1.15 : 1.0/1.15;
     m_targetZoom *= step;
-    if (!m_animations) { m_zoom *= step; scale(step, step); e->accept(); return; }
+    if (!m_animations) { m_zoom *= step; scale(step, step); emit viewChanged(); e->accept(); return; }
     if (!m_zoomAnim) {
         m_zoomAnim = new QVariantAnimation(this);
         m_zoomAnim->setDuration(110);
@@ -34,6 +35,7 @@ void Canvas::wheelEvent(QWheelEvent *e) {
             const double inc = target / m_zoom;       // AnchorUnderMouse keeps cursor fixed
             m_zoom = target;
             scale(inc, inc);
+            emit viewChanged();
         });
     }
     m_zoomAnim->stop();
@@ -66,6 +68,7 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         m_tools->update(mapToScene(e->pos())); e->accept(); return;
     }
     QGraphicsView::mouseMoveEvent(e);
+    if (m_dragging) emit viewChanged();   // middle-drag panning scrolled the view
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
@@ -77,6 +80,11 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
         m_tools->finish(mapToScene(e->pos())); e->accept(); return;
     }
     QGraphicsView::mouseReleaseEvent(e);
+}
+
+void Canvas::resizeEvent(QResizeEvent *e) {
+    QGraphicsView::resizeEvent(e);
+    emit viewChanged();
 }
 
 }
