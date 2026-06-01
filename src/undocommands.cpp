@@ -1,6 +1,7 @@
 #include "undocommands.h"
 #include "items/annotationitem.h"
 #include "items/arrowitem.h"
+#include "items/redactitem.h"
 namespace eddy {
 AddItemCommand::AddItemCommand(QGraphicsScene *scene, QGraphicsItem *item)
     : m_scene(scene), m_item(item) { setText("add annotation"); }
@@ -23,4 +24,9 @@ ResizeArrowCommand::ResizeArrowCommand(ArrowItem *it, QPointF s0, QPointF e0, QP
     : m_it(it), m_s0(s0), m_e0(e0), m_s1(s1), m_e1(e1) { setText("resize"); }
 void ResizeArrowCommand::redo() { m_it->setStart(m_s1); m_it->setEnd(m_e1); }
 void ResizeArrowCommand::undo() { m_it->setStart(m_s0); m_it->setEnd(m_e0); }
+
+SetRedactModeCommand::SetRedactModeCommand(RedactItem *it, RedactMode before, RedactMode after)
+    : m_it(it), m_before(before), m_after(after) { setText("redact mode"); }
+void SetRedactModeCommand::redo() { m_it->setMode(m_after); }
+void SetRedactModeCommand::undo() { m_it->setMode(m_before); }
 }

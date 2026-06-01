@@ -22,7 +22,8 @@ private:
     QGraphicsScene *m_scene; QGraphicsItem *m_item; bool m_inScene = true;
 };
 
-class AnnotationItem; class ArrowItem;
+class AnnotationItem; class ArrowItem; class RedactItem;
+enum class RedactMode;
 
 // Resize for the four rect-shaped items (Rect/Ellipse/Highlight/Redact) through
 // AnnotationItem's virtual rect()/setRect().
@@ -39,5 +40,13 @@ public:
     void undo() override; void redo() override;
 private:
     class ArrowItem *m_it; QPointF m_s0,m_e0,m_s1,m_e1;
+};
+// Undoable redact mode switch (Blur/Blacken/OcrBlur/OcrBlacken).
+class SetRedactModeCommand : public QUndoCommand {
+public:
+    SetRedactModeCommand(class RedactItem *it, RedactMode before, RedactMode after);
+    void undo() override; void redo() override;
+private:
+    class RedactItem *m_it; RedactMode m_before, m_after;
 };
 }

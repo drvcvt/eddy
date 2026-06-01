@@ -182,6 +182,18 @@ private slots:
         QVERIFY(!r->isDetecting());
         QCOMPARE(img2.pixelColor(62,62).alpha(), 0);        // now uncovered (only the text rect is)
     }
+    void setRedactModeCommandUndoRedo() {
+        QImage src(40,40,QImage::Format_ARGB32); src.fill(Qt::white);
+        RedactItem *r = new RedactItem(RedactMode::Blacken, src, QRectF(0,0,20,20));
+        QUndoStack undo;
+        undo.push(new SetRedactModeCommand(r, RedactMode::Blacken, RedactMode::Blur));
+        QCOMPARE(r->mode(), RedactMode::Blur);
+        undo.undo();
+        QCOMPARE(r->mode(), RedactMode::Blacken);
+        undo.redo();
+        QCOMPARE(r->mode(), RedactMode::Blur);
+        delete r;
+    }
 };
 
 QTEST_MAIN(TestItems)
