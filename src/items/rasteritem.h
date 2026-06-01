@@ -6,6 +6,8 @@ namespace eddy {
 // Pure helpers (testable without a scene).
 QImage boxBlur(const QImage &src, int radius);
 QImage pixelate(const QImage &src, int block);
+// Strong, unreadable blur for redaction: downscale then smooth-upscale.
+QImage redactBlur(const QImage &src);
 
 class RasterItem : public AnnotationItem {
 public:
