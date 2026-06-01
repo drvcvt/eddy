@@ -1,6 +1,6 @@
 #include "cli.h"
 #include "config.h"
-#include "imageio.h"
+#include "mediaio.h"
 #include "compositor.h"
 #include "editorwindow.h"
 #include "theme.h"
@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
     if (pr.exitNow) return pr.exitCode;
     if (!pr.ok) { std::fprintf(stderr, "eddy: %s\n", qPrintable(pr.error)); return 2; }
 
-    auto load = eddy::loadInput(pr.options.input);
+    auto load = eddy::loadMediaInput(pr.options.input);
     if (!load.ok) { std::fprintf(stderr, "eddy: %s\n", qPrintable(load.error)); return 1; }
 
     eddy::Config cfg = eddy::loadConfig(pr.options.configPath);
@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
     if (qss.open(QIODevice::ReadOnly)) app.setStyleSheet(QString::fromUtf8(qss.readAll()));
 
     eddy::pushWindowRules("eddy");   // before show → instant float, no fade
-    eddy::EditorWindow win(load.image, cfg, pr.options);
+    eddy::EditorWindow win(load.document, cfg, pr.options);
     win.show();
     return app.exec();
 }

@@ -31,6 +31,50 @@ private slots:
         delete mime;
         QFile::remove(path);
     }
+    void imageMimeKeepsPngBytesAfterTempRemoval() {
+        QImage img(8, 6, QImage::Format_ARGB32);
+        img.fill(Qt::blue);
+        QString path;
+        QMimeData *mime = makeImageDropMime(img, &path);
+        QVERIFY(!path.isEmpty());
+        QVERIFY(QFile::remove(path));
+
+        QVERIFY(mime->hasFormat("image/png"));
+        QVERIFY(mime->data("image/png").startsWith("\x89PNG"));
+        QVERIFY(mime->hasImage());
+        QVERIFY(mime->hasUrls());
+        delete mime;
+    }
+    void fileMimeCarriesFileBackedBytesAndFileUrl() {
+        QTemporaryFile f("XXXXXX.mp4");
+        QVERIFY(f.open());
+        const QByteArray bytes("fake video bytes");
+        QCOMPARE(f.write(bytes), bytes.size());
+        f.flush();
+
+        QMimeData *mime = makeFileDropMime(f.fileName(), QStringLiteral("video/mp4"));
+        QVERIFY(mime->hasFormat("video/mp4"));
+        QCOMPARE(mime->data("video/mp4"), bytes);
+        QVERIFY(mime->hasUrls());
+        QCOMPARE(mime->urls().size(), 1);
+        QCOMPARE(mime->urls().first().toLocalFile(), QFileInfo(f.fileName()).canonicalFilePath());
+        delete mime;
+    }
+    void urlMimeCarriesOnlyFileUrl() {
+        QTemporaryFile f("XXXXXX.mp4");
+        QVERIFY(f.open());
+        const QByteArray bytes("fake video bytes");
+        QCOMPARE(f.write(bytes), bytes.size());
+        f.flush();
+
+        QMimeData *mime = makeUrlDropMime(f.fileName());
+        QVERIFY(mime->hasUrls());
+        QVERIFY(mime->hasFormat("text/uri-list"));
+        QVERIFY(!mime->hasFormat("video/mp4"));
+        QCOMPARE(mime->urls().size(), 1);
+        QCOMPARE(mime->urls().first().toLocalFile(), QFileInfo(f.fileName()).canonicalFilePath());
+        delete mime;
+    }
     void constructsWithLabel() {
         DragPill pill;
         QVERIFY(pill.findChild<QLabel *>() != nullptr);

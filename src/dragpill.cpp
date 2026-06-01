@@ -1,4 +1,5 @@
 #include "dragpill.h"
+#include "waylanddrag.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -16,12 +17,72 @@
 #include <QDir>
 #include <QFile>
 #include <QUrl>
+#include <QVariant>
+#include <utility>
 
 namespace eddy {
 
-// Mirrors boltsnap's drag payload: explicit image/png bytes (for chat/browser/editor
-// targets that look for that exact type) + a text/uri-list pointing to a real PNG file
-// (for file-drop targets). setImageData adds application/x-qt-image for Qt-native apps.
+namespace {
+
+QString canonicalOrAbsolute(const QString &path) {
+    const QFileInfo info(path);
+    const QString canonical = info.canonicalFilePath();
+    return canonical.isEmpty() ? info.absoluteFilePath() : canonical;
+}
+
+class FileBackedMimeData final : public QMimeData {
+public:
+    FileBackedMimeData(QString path, QString mimeType)
+        : m_path(canonicalOrAbsolute(std::move(path))),
+          m_mimeType(std::move(mimeType)) {
+        setUrls({ QUrl::fromLocalFile(m_path) });
+    }
+
+    QStringList formats() const override {
+        QStringList out = QMimeData::formats();
+        if (!out.contains(m_mimeType))
+            out.prepend(m_mimeType);
+        return out;
+    }
+
+    bool hasFormat(const QString &mimeType) const override {
+        return mimeType == m_mimeType || QMimeData::hasFormat(mimeType);
+    }
+
+protected:
+    QVariant retrieveData(const QString &mimeType, QMetaType preferredType) const override {
+        if (mimeType == m_mimeType) {
+            QFile f(m_path);
+            if (!f.open(QIODevice::ReadOnly))
+                return QByteArray();
+            return f.readAll();
+        }
+        return QMimeData::retrieveData(mimeType, preferredType);
+    }
+
+private:
+    QString m_path;
+    QString m_mimeType;
+};
+
+}
+
+QMimeData *makeUrlDropMime(const QString &path) {
+    auto *mime = new QMimeData;
+    mime->setUrls({ QUrl::fromLocalFile(canonicalOrAbsolute(path)) });
+    return mime;
+}
+
+QMimeData *makeFileDropMime(const QString &path, const QString &mimeType) {
+    return new FileBackedMimeData(path, mimeType.isEmpty()
+        ? QStringLiteral("application/octet-stream")
+        : mimeType);
+}
+
+// Mirrors boltsnap's drag payload: explicit image/png bytes on demand (for
+// chat/browser/editor targets that look for that exact type) + a text/uri-list
+// pointing to a real PNG file (for file-drop targets). setImageData adds
+// application/x-qt-image for Qt-native apps.
 QMimeData *makeImageDropMime(const QImage &img, QString *tempPathOut) {
     QByteArray png;
     {
@@ -37,8 +98,8 @@ QMimeData *makeImageDropMime(const QImage &img, QString *tempPathOut) {
     if (tmp.open()) {
         if (tmp.write(png) == png.size()) {
             tmp.close();
-            const QString abs = QFileInfo(tmp.fileName()).canonicalFilePath();
-            mime->setUrls({ QUrl::fromLocalFile(abs) });       // text/uri-list (absolute path)
+            const QString abs = canonicalOrAbsolute(tmp.fileName());
+            mime->setUrls({ QUrl::fromLocalFile(abs) });        // text/uri-list
             if (tempPathOut) *tempPathOut = abs;
         } else {
             const QString p = tmp.fileName();
@@ -65,6 +126,7 @@ DragPill::~DragPill() {
 }
 
 void DragPill::setImageProvider(std::function<QImage()> provider) { m_provider = std::move(provider); }
+void DragPill::setFileProvider(std::function<FileDragPayload()> provider) { m_fileProvider = std::move(provider); }
 
 void DragPill::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) { m_pressPos = e->pos(); e->accept(); }
@@ -82,23 +144,58 @@ void DragPill::mouseMoveEvent(QMouseEvent *e) {
 }
 
 void DragPill::startDrag() {
-    if (!m_provider) return;
-    const QImage img = m_provider();
-    if (img.isNull()) return;
-
+    QImage preview;
+    bool clipboardFallbackImage = false;
+    bool removeAfterUse = true;
+    bool includeBytesInQtMime = true;
+    QString concreteMimeType;
     QString path;
-    QMimeData *mime = makeImageDropMime(img, &path);
+    QMimeData *mime = nullptr;
+
+    if (m_fileProvider) {
+        const FileDragPayload payload = m_fileProvider();
+        if (payload.path.isEmpty()) return;
+        path = canonicalOrAbsolute(payload.path);
+        preview = payload.preview;
+        removeAfterUse = payload.removeAfterUse;
+        includeBytesInQtMime = payload.includeBytesInQtMime;
+        concreteMimeType = payload.mimeType;
+    } else {
+        if (!m_provider) return;
+        const QImage img = m_provider();
+        if (img.isNull()) return;
+        preview = img;
+        clipboardFallbackImage = true;
+        removeAfterUse = false;
+        mime = makeImageDropMime(img, &path);
+        concreteMimeType = QStringLiteral("image/png");
+    }
+
     if (!m_lastTempPath.isEmpty()) QFile::remove(m_lastTempPath);   // keep at most one temp file
-    m_lastTempPath = path;
+    m_lastTempPath = removeAfterUse ? path : QString();
 
     setCursor(Qt::ClosedHandCursor);
+    if (!path.isEmpty() && !concreteMimeType.isEmpty()
+        && startWaylandFileDrag(this, path, {concreteMimeType, QStringLiteral("text/uri-list")})) {
+        delete mime;
+        setCursor(Qt::OpenHandCursor);
+        return;
+    }
+
+    if (!mime) {
+        mime = (!includeBytesInQtMime || concreteMimeType.isEmpty())
+            ? makeUrlDropMime(path)
+            : makeFileDropMime(path, concreteMimeType);
+    }
     auto *drag = new QDrag(this);
     drag->setMimeData(mime);                                       // QDrag takes ownership
-    drag->setPixmap(QPixmap::fromImage(
-        img.scaled(180, 180, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    if (!preview.isNull()) {
+        drag->setPixmap(QPixmap::fromImage(
+            preview.scaled(180, 180, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    }
     const Qt::DropAction result = drag->exec(Qt::CopyAction);
-    if (result == Qt::IgnoreAction)                            // dropped on nothing: don't waste it
-        QGuiApplication::clipboard()->setImage(img);           // (boltsnap's cancel fallback)
+    if (result == Qt::IgnoreAction && clipboardFallbackImage)   // dropped on nothing: don't waste it
+        QGuiApplication::clipboard()->setImage(preview);        // (boltsnap's image cancel fallback)
     setCursor(Qt::OpenHandCursor);
 }
 

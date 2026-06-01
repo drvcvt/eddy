@@ -56,7 +56,7 @@ ParseResult parseArgs(const QStringList &args) {
         }
     }
 
-    if (!haveInput) { r.ok = false; r.error = "no input image (pass a path, -f FILE, or -)"; }
+    if (!haveInput) { r.ok = false; r.error = "no input media (pass a path, -f FILE, or -)"; }
     return r;
 }
 
