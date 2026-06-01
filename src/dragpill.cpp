@@ -1,5 +1,6 @@
 #include "dragpill.h"
 #include "waylanddrag.h"
+#include "theme.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -10,6 +11,7 @@
 #include <QMimeData>
 #include <QImage>
 #include <QPixmap>
+#include <QColor>
 #include <QBuffer>
 #include <QByteArray>
 #include <QTemporaryFile>
@@ -115,8 +117,15 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setCursor(Qt::OpenHandCursor);
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(12, 6, 12, 6);
-    auto *label = new QLabel(QString::fromUtf8("\xE2\xA4\x93  drag out"), this);   // "⤓  drag out"
+    lay->setContentsMargins(12, 6, 14, 6);
+    lay->setSpacing(8);
+    auto *icon = new QLabel(this);
+    icon->setObjectName("DragPillIcon");
+    icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"),
+                                      QColor("#d0d0d0"), QColor("#d0d0d0"))
+                        .pixmap(QSize(16, 16)));   // ↗ box-arrow, boltsnap-style
+    lay->addWidget(icon);
+    auto *label = new QLabel(QStringLiteral("Drag out"), this);
     label->setObjectName("DragPillText");
     lay->addWidget(label);
 }

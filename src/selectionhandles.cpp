@@ -28,10 +28,9 @@ static QCursor cursorForRole(int role) {
 class HandleItem : public QGraphicsRectItem {
 public:
     HandleItem(SelectionHandles *owner, QGraphicsItem *target, int role, QUndoStack *undo)
-        : QGraphicsRectItem(-5, -5, 10, 10), m_owner(owner), m_target(target),
+        : QGraphicsRectItem(-6, -6, 12, 12), m_owner(owner), m_target(target),
           m_role(role), m_undo(undo) {
-        setBrush(QBrush(QColor("#cccccc")));
-        setPen(QPen(QColor("#1a1a1a"), 1));
+        // 12x12 bounds leave 1px room for the drop shadow; the visible grip is 10x10.
         setZValue(10000);
         setFlag(ItemIgnoresTransformations, true);   // constant on-screen size
         setAcceptedMouseButtons(Qt::LeftButton);
@@ -39,9 +38,13 @@ public:
     }
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override {
         p->setRenderHint(QPainter::Antialiasing, true);
-        p->setBrush(brush());
-        p->setPen(pen());
-        p->drawRoundedRect(rect(), 3, 3);   // squircle handle
+        const QRectF face = rect().adjusted(1, 1, -1, -1);   // 10x10 centred grip
+        p->setPen(Qt::NoPen);                                // soft drop shadow
+        p->setBrush(QColor(0, 0, 0, 70));
+        p->drawRoundedRect(face.translated(0, 1), 4, 4);
+        p->setPen(QPen(QColor(0, 0, 0, 90), 1));             // refined squircle
+        p->setBrush(QColor("#f4f4f5"));
+        p->drawRoundedRect(face, 4, 4);
     }
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *e) override { captureBefore(); e->accept(); }

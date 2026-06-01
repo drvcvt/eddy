@@ -33,8 +33,8 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     m_pill->setFixedSize(34, 34);
     m_pill->hide();
     m_pillAnim = new QPropertyAnimation(m_pill, "geometry", this);
-    m_pillAnim->setDuration(170);
-    m_pillAnim->setEasingCurve(QEasingCurve::OutBack);
+    m_pillAnim->setDuration(190);
+    m_pillAnim->setEasingCurve(QEasingCurve::OutExpo);   // smooth glide, no overshoot
 
     auto *lay = new QHBoxLayout(this);
     lay->setContentsMargins(10, 6, 10, 6);
@@ -119,13 +119,21 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     sep->setFrameShape(QFrame::VLine); sep->setFixedHeight(20);
     lay->addWidget(sep);
 
+    // Save/Copy are not checkable (no sliding pill), so hover brightens to white
+    // rather than kIconActive (which is dark, meant for the light pill behind tools).
     auto *save = mkBtn(false, false); save->setObjectName("Save");
-    save->setText("Save"); save->setToolTip("Save \xC2\xB7 Enter");
+    save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
+                                    QColor(theme::kIconRest), QColor("#ffffff")));
+    save->setIconSize(QSize(20, 20));
+    save->setToolTip("Save \xC2\xB7 Enter");
     connect(save, &QToolButton::clicked, this, [this]{ emit saveRequested(); });
     lay->addWidget(save);
 
     auto *copy = mkBtn(false, false); copy->setObjectName("Copy");
-    copy->setText("Copy"); copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
+    copy->setIcon(theme::tintedIcon(QStringLiteral(":/icons/copy.svg"),
+                                    QColor(theme::kIconRest), QColor("#ffffff")));
+    copy->setIconSize(QSize(20, 20));
+    copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
 
