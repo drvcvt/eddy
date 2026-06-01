@@ -144,6 +144,29 @@ private slots:
         QCOMPARE(r->rect(), QRectF(0,0,10,10));
         delete r;
     }
+    void ocrBlackenCoversOnlyTextRects() {
+        QGraphicsScene scene(0,0,80,80);
+        QImage src(80,80,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::OcrBlacken, src, QRectF(10,10,60,60));
+        r->setTextRects({ QRectF(20,20,30,10) });
+        scene.addItem(r);
+        QImage img = renderScene(scene, QSize(80,80));
+        QCOMPARE(img.pixelColor(30,24).alpha(), 255);     // inside the text rect -> covered
+        QVERIFY(img.pixelColor(30,24).red() < 30);         // near-black
+        QCOMPARE(img.pixelColor(62,62).alpha(), 0);        // inside region, outside text rect -> untouched
+    }
+    void ocrBlurPaintsOnlyTextRects() {
+        QGraphicsScene scene(0,0,80,80);
+        QImage src(80,80,QImage::Format_ARGB32);
+        for (int y=0;y<80;++y) for (int x=0;x<80;++x)
+            src.setPixelColor(x,y, ((x/3+y/3)%2) ? Qt::white : Qt::black);
+        auto *r = new RedactItem(RedactMode::OcrBlur, src, QRectF(10,10,60,60));
+        r->setTextRects({ QRectF(20,20,30,12) });
+        scene.addItem(r);
+        QImage img = renderScene(scene, QSize(80,80));
+        QVERIFY(img.pixelColor(30,24).alpha() > 0);        // inside the text rect -> blurred content
+        QCOMPARE(img.pixelColor(62,62).alpha(), 0);        // inside region, outside text rect -> untouched
+    }
 };
 
 QTEST_MAIN(TestItems)

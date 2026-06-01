@@ -22,23 +22,31 @@ void RedactItem::setRect(const QRectF &r) {
 void RedactItem::setMode(RedactMode m) {
     if (m_mode == m) return;
     m_mode = m;
-    if (isBlur(m_mode)) rebuildCache();
+    rebuildCache();   // builds the blur cache for blur modes; clears it otherwise
     update();
 }
 
+// Text rects only control *where* we draw; the blur cache covers the whole region,
+// so no rebuild is needed here. Empty rects => OCR modes cover nothing (safe default).
 void RedactItem::setTextRects(const QVector<QRectF> &rects) { m_textRects = rects; update(); }
 
 QRectF RedactItem::boundingRect() const { return m_region; }
 
 void RedactItem::rebuildCache() {
     if (!isBlur(m_mode)) { m_cache = QImage(); m_cacheRect = QRect(); return; }
-    m_cacheRect = m_region.toRect().intersected(m_source.rect());
+    m_cacheRect = m_region.toAlignedRect().intersected(m_source.rect());
     if (m_cacheRect.isEmpty()) { m_cache = QImage(); return; }
     m_cache = redactBlur(m_source.copy(m_cacheRect));
 }
 
 QVector<QRectF> RedactItem::coverRects() const {
-    return { m_region };
+    if (!isOcr(m_mode)) return { m_region };
+    QVector<QRectF> out;
+    for (const QRectF &tr : m_textRects) {
+        const QRectF c = tr.intersected(m_region);
+        if (!c.isEmpty()) out.append(c);
+    }
+    return out;
 }
 
 void RedactItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) {
