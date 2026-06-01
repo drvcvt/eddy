@@ -242,7 +242,6 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_E: m_tools->setTool(ToolType::Ellipse); break;
         case Qt::Key_H: m_tools->setTool(ToolType::Highlight); break;
         case Qt::Key_T: m_tools->setTool(ToolType::Text); break;
-        case Qt::Key_B: m_tools->setTool(ToolType::Blur); break;
         case Qt::Key_X: m_tools->setTool(ToolType::Redact); break;
         case Qt::Key_M: m_tools->setTool(ToolType::Move); break;
         case Qt::Key_Z: if (e->modifiers() & Qt::ControlModifier) {

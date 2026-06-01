@@ -62,7 +62,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         {ToolType::Move,"move","Move","M"}, {ToolType::Arrow,"arrow","Arrow","A"},
         {ToolType::Pen,"pen","Pen","P"}, {ToolType::Rect,"rect","Rectangle","R"},
         {ToolType::Ellipse,"ellipse","Ellipse","E"}, {ToolType::Highlight,"highlight","Highlight","H"},
-        {ToolType::Text,"text","Text","T"}, {ToolType::Blur,"blur","Blur","B"},
+        {ToolType::Text,"text","Text","T"},
         {ToolType::Redact,"redact","Redact","X"},
     };
     for (const T &t : tools) {

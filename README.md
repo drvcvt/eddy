@@ -17,9 +17,7 @@ Takes an image (from a file or stdin), opens a frameless floating editor, lets y
 | Ellipse | `E` | Stroked ellipse outline |
 | Highlight | `H` | Semi-transparent highlight band |
 | Text | `T` | Text stamp with inline edit |
-| Blur | `B` | Box blur region |
-| Pixelate | — | Pixelate region (via `--tool pixelate`) |
-| Redact | `X` | Solid redaction block |
+| Redact | `X` | Draw a redaction region; a floating mode-bar lets you switch between **Blur / Blacken / OCR-Blur / OCR-Blacken** |
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
 
@@ -35,7 +33,7 @@ The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no lette
 
 If the window is made very short, the toolbar **auto-hides** and reappears when the cursor moves to the top edge, keeping the image at full height.
 
-With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact) shows **8 drag handles** to resize it. Selecting an Arrow shows **2 endpoint handles**. Pen, Text, and Blur are move-only.
+With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact) shows **8 drag handles** to resize it. Selecting an Arrow shows **2 endpoint handles**. Pen and Text are move-only.
 
 ---
 
@@ -43,7 +41,7 @@ With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact
 
 | Key | Action |
 |-----|--------|
-| `A` `P` `R` `E` `H` `T` `B` `X` `M` | Switch tool |
+| `A` `P` `R` `E` `H` `T` `X` `M` | Switch tool |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
 | `Delete` / `Backspace` | Remove selected annotation (undoable) |
@@ -73,7 +71,7 @@ eddy -f IMAGE
 | `-o, --output PATH` | Write PNG to file (`-` = stdout) |
 | `--save-dir DIR` | Directory for the in-editor save action |
 | `--copy` / `--no-copy` | Copy result to clipboard (default: copy) |
-| `--tool NAME` | Start with a specific tool active (e.g. `--tool blur`) |
+| `--tool NAME` | Start with a specific tool active (e.g. `--tool redact`; legacy `blur`/`pixelate` map to Redact) |
 | `--early-exit` | Exit after the first save |
 | `--no-anim` | Disable all animations (window fade, smooth zoom, sliding pill, commit fade-in) |
 | `--config PATH` | Alternate config file |
@@ -134,9 +132,8 @@ cmake --build build-rel
 
 ## Known v1 limitations
 
-- **Pixelate** is reachable only via `--tool pixelate`; there is no toolbar button or hotkey yet.
 - **Text** editing is single-box stamp with inline edit; no multi-line layout.
-- **Pen and Blur** annotations are move-only; resize handles are not supported for those item types.
+- **Pen** annotations are move-only; resize handles are not supported for that item type.
 
 ---
 
