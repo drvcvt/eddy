@@ -15,13 +15,15 @@ private slots:
         bg.fill(Qt::white);
         QGraphicsScene scene;
         scene.setSceneRect(0,0,80,60);
-        scene.addPixmap(QPixmap::fromImage(bg));
-        auto *r = new RedactItem(QRectF(10,10,20,20));
+        auto *bgItem = scene.addPixmap(QPixmap::fromImage(bg));
+        bgItem->setZValue(-1000);                                   // app puts bg below redact (-500)
+        auto *r = new RedactItem(RedactMode::Blacken, bg, QRectF(10,10,20,20));
         scene.addItem(r);
         QImage out = renderToImage(scene, QSize(80,60));
         QCOMPARE(out.size(), QSize(80,60));
-        QCOMPARE(out.pixelColor(20,20).alpha(), 255);  // redact covers
-        QCOMPARE(out.pixelColor(70,50), QColor(Qt::white)); // bg elsewhere
+        QCOMPARE(out.pixelColor(20,20).alpha(), 255);               // redact covers (opaque)
+        QVERIFY(out.pixelColor(20,20).red() < 30);                  // near-black fill
+        QCOMPARE(out.pixelColor(70,50), QColor(Qt::white));         // bg elsewhere
     }
     void pngRoundTrips() {
         QImage img(4,4,QImage::Format_ARGB32); img.fill(Qt::green);

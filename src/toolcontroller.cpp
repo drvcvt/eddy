@@ -72,7 +72,7 @@ void ToolController::begin(const QPointF &p) {
         case ToolType::Rect: { auto *r = new RectItem(QRectF(p,p)); style(r,m_color,m_width); m_active=r; break; }
         case ToolType::Ellipse: { auto *e = new EllipseItem(QRectF(p,p)); style(e,m_color,m_width); m_active=e; break; }
         case ToolType::Highlight: { auto *h = new HighlightItem(QRectF(p,p)); m_active=h; break; }
-        case ToolType::Redact: { auto *r = new RedactItem(QRectF(p,p)); m_active=r; break; }
+        case ToolType::Redact: { auto *r = new RedactItem(RedactMode::Blacken, m_bg, QRectF(p,p)); m_active=r; break; }
         case ToolType::Pen: { auto *pp = new PenPathItem(p); style(pp,m_color,m_width); m_active=pp; break; }
         case ToolType::Blur: { auto *b = new RasterItem(RasterItem::Blur, m_bg, QRectF(p,p)); m_active=b; isRaster=true; break; }
         case ToolType::Pixelate: { auto *b = new RasterItem(RasterItem::Pixelate, m_bg, QRectF(p,p)); m_active=b; isRaster=true; break; }
