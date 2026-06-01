@@ -21,6 +21,7 @@ endif()
 
 add_library(eddy_core STATIC
     src/canvas.cpp
+    src/loupe.cpp
     src/colorpopover.cpp
     src/redactbar.cpp
     src/toast.cpp
@@ -74,6 +75,7 @@ function(eddy_test name)
 endfunction()
 
 eddy_test(test_canvas)
+eddy_test(test_loupe)
 eddy_test(test_colorpopover)
 eddy_test(test_redactbar)
 eddy_test(test_toast)

@@ -37,5 +37,16 @@ ColorPopover::ColorPopover(QWidget *parent) : QWidget(parent, Qt::Popup) {
         if (c.isValid()) emit picked(c);
     });
     grid->addWidget(custom, 2, 0, 1, 4);
+
+    auto *pipette = new QToolButton;
+    pipette->setObjectName("Custom");           // reuse the Custom button styling
+    pipette->setText("\xE2\xA7\xAB Pipette");   // "⧫ Pipette" (eyedropper)
+    pipette->setFixedHeight(24);
+    pipette->setCursor(Qt::PointingHandCursor);
+    connect(pipette, &QToolButton::clicked, this, [this]{
+        close();
+        emit eyedropperRequested();
+    });
+    grid->addWidget(pipette, 3, 0, 1, 4);
 }
 }

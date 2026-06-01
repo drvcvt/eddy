@@ -1,4 +1,5 @@
 #include "canvas.h"
+#include "loupe.h"
 #include <QPainter>
 #include <QWheelEvent>
 #include <QMouseEvent>
@@ -6,6 +7,8 @@
 #include <QScrollBar>
 #include <QGraphicsItem>
 #include <QVariantAnimation>
+#include <QPixmap>
+#include <QCursor>
 
 namespace eddy {
 
@@ -21,6 +24,35 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setBackgroundBrush(QColor("#121212"));
+}
+
+void Canvas::startEyedropper() {
+    if (m_eyedropper) return;
+    const QPixmap shot = viewport()->grab();      // what the user sees: bg + annotations
+    m_eyeDpr = shot.devicePixelRatio();
+    m_eyeShot = shot.toImage();
+    m_eyedropper = true;
+    if (!m_loupe) m_loupe = new Loupe(viewport());
+    viewport()->setMouseTracking(true);           // follow the cursor without a button held
+    viewport()->setCursor(Qt::CrossCursor);
+    updateLoupe(viewport()->mapFromGlobal(QCursor::pos()));
+}
+
+void Canvas::cancelEyedropper() {
+    if (!m_eyedropper) return;
+    m_eyedropper = false;
+    m_eyeShot = QImage();
+    if (m_loupe) m_loupe->hide();
+    viewport()->unsetCursor();
+}
+
+QPoint Canvas::sourcePixel(const QPoint &viewPos) const {
+    return QPoint(qRound(viewPos.x() * m_eyeDpr), qRound(viewPos.y() * m_eyeDpr));
+}
+
+void Canvas::updateLoupe(const QPoint &viewPos) {
+    if (!m_eyedropper || !m_loupe) return;
+    m_loupe->showAt(viewPos, m_eyeShot, sourcePixel(viewPos));
 }
 
 void Canvas::wheelEvent(QWheelEvent *e) {
@@ -47,6 +79,16 @@ void Canvas::wheelEvent(QWheelEvent *e) {
 }
 
 void Canvas::mousePressEvent(QMouseEvent *e) {
+    if (m_eyedropper) {
+        if (e->button() == Qt::LeftButton) {
+            const QColor c = loupeSampleColor(m_eyeShot, sourcePixel(e->pos()));
+            cancelEyedropper();
+            emit colorPicked(c);
+        } else {
+            cancelEyedropper();                     // right/other button cancels
+        }
+        e->accept(); return;
+    }
     if (e->button() == Qt::MiddleButton) {
         // Manual middle-drag pan. (ScrollHandDrag only grabs the left button, so it
         // can't pan on a middle-press — scroll the view by the cursor delta instead.)
@@ -69,6 +111,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 }
 
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
+    if (m_eyedropper) { updateLoupe(e->pos()); e->accept(); return; }
     if (m_dragging) {                                   // middle-drag pan
         const QPoint d = e->pos() - m_panLast;
         m_panLast = e->pos();

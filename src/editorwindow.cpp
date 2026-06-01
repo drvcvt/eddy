@@ -137,6 +137,12 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_toolbar, &Toolbar::redoRequested, this, &EditorWindow::doRedo);
     connect(m_undo, &QUndoStack::canUndoChanged, m_toolbar, &Toolbar::setUndoEnabled);
     connect(m_undo, &QUndoStack::canRedoChanged, m_toolbar, &Toolbar::setRedoEnabled);
+    connect(m_toolbar, &Toolbar::eyedropperRequested, m_canvas, &Canvas::startEyedropper);
+    connect(m_canvas, &Canvas::colorPicked, this, [this](const QColor &c){
+        m_tools->setColor(c);
+        m_toolbar->setSwatchColor(c);
+    });
+    m_toolbar->setSwatchColor(cfg.strokeColor);   // disc starts in the real stroke colour
     if (isVideo()) {
         m_videoExportTimer = new QTimer(this);
         m_videoExportTimer->setSingleShot(true);
@@ -602,6 +608,11 @@ void EditorWindow::copy() {
 }
 
 void EditorWindow::keyPressEvent(QKeyEvent *e) {
+    if (m_canvas->eyedropperActive()) {           // eyedropper swallows keys; Esc cancels
+        if (e->key() == Qt::Key_Escape) m_canvas->cancelEyedropper();
+        e->accept();
+        return;
+    }
     // While a text annotation is being edited, don't hijack letter keys as tool
     // hotkeys — let them type into the text box. Esc commits and leaves editing.
     QGraphicsItem *fi = m_scene->focusItem();

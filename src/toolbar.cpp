@@ -8,6 +8,10 @@
 #include <QPropertyAnimation>
 #include <QShowEvent>
 #include <QResizeEvent>
+#include <QPainter>
+#include <QPixmap>
+#include <QIcon>
+#include <QPen>
 
 namespace eddy {
 
@@ -99,16 +103,17 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     auto *color = mkBtn(false, true);
     color->setObjectName("Swatch");
-    color->setText(QString::fromUtf8("\xE2\x97\x8F"));   // round swatch
     color->setToolTip("Stroke colour");
     m_swatch = color;
+    setSwatchColor(QColor("#ff3b30"));             // painted disc; overridden by the real stroke colour
     connect(color, &QToolButton::clicked, this, [this, color]{
         auto *pop = new ColorPopover(this);
         pop->setAttribute(Qt::WA_DeleteOnClose);   // don't accumulate popovers on repeated opens
         connect(pop, &ColorPopover::picked, this, [this](const QColor &c){
-            setSwatchColor(c);                     // tint the dot to the chosen colour
+            setSwatchColor(c);                     // tint the disc to the chosen colour
             emit colorChosen(c);
         });
+        connect(pop, &ColorPopover::eyedropperRequested, this, &Toolbar::eyedropperRequested);
         pop->adjustSize();
         pop->move(color->mapToGlobal(QPoint(0, color->height() + 4)));
         pop->show();
@@ -176,11 +181,21 @@ void Toolbar::resizeEvent(QResizeEvent *e) {
 void Toolbar::setUndoEnabled(bool on) { if (m_undoBtn) m_undoBtn->setEnabled(on); }
 void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on); }
 
-// The swatch dot's colour is hard-coded in the QSS; override it per-widget so it
-// always shows the current stroke colour (QSS still supplies hover/size).
+// Paint a crisp colour disc as the swatch icon: a filled circle in the current
+// stroke colour with a subtle dark ring for contrast on the dark toolbar.
 void Toolbar::setSwatchColor(const QColor &c) {
-    if (m_swatch)
-        m_swatch->setStyleSheet(QStringLiteral("color:%1; font-size:16px;").arg(c.name()));
+    if (!m_swatch) return;
+    constexpr int d = 18;
+    QPixmap pm(d, d);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setBrush(c);
+    p.setPen(QPen(QColor(0, 0, 0, 110), 1));
+    p.drawEllipse(QRectF(1, 1, d - 2, d - 2));
+    p.end();
+    m_swatch->setIcon(QIcon(pm));
+    m_swatch->setIconSize(QSize(d, d));
 }
 
 }
