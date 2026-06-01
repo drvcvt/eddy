@@ -57,13 +57,46 @@ private slots:
         QVERIFY(img.pixelColor(20,50).alpha() > 150); // on the left border
         QVERIFY(img.pixelColor(50,50).alpha() < 40);  // hollow center
     }
-    void redactIsOpaque() {
+    void redactBlackenIsOpaque() {
         QGraphicsScene scene(0,0,60,60);
-        auto *r = new RedactItem(QRectF(10,10,40,40));
+        QImage src(60,60,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::Blacken, src, QRectF(10,10,40,40));
         scene.addItem(r);
         QImage img = renderScene(scene, QSize(60,60));
         QColor c = img.pixelColor(30,30);
         QCOMPARE(c.alpha(), 255);
+        QVERIFY(c.red() < 30);                          // near-black fill
+    }
+    void redactBlurObscuresSource() {
+        QGraphicsScene scene(0,0,60,60);
+        QImage src(60,60,QImage::Format_ARGB32);
+        for (int y=0;y<60;++y) for (int x=0;x<60;++x)
+            src.setPixelColor(x,y, ((x/3+y/3)%2) ? Qt::white : Qt::black);
+        auto *r = new RedactItem(RedactMode::Blur, src, QRectF(10,10,40,40));
+        scene.addItem(r);
+        QImage img = renderScene(scene, QSize(60,60));
+        QColor a = img.pixelColor(30,30), b = img.pixelColor(31,30);
+        QVERIFY(a.alpha() > 0);                         // something painted
+        QVERIFY(qAbs(a.red()-b.red()) < 70);            // neighbours similar (blurred, no sharp edge)
+    }
+    void redactResizeUpdatesRegion() {
+        QImage src(60,60,QImage::Format_ARGB32); src.fill(Qt::white);
+        RedactItem r(RedactMode::Blacken, src, QRectF(0,0,10,10));
+        QCOMPARE(r.rect(), QRectF(0,0,10,10));
+        r.setRect(QRectF(5,5,30,20));
+        QCOMPARE(r.rect(), QRectF(5,5,30,20));
+    }
+    void redactSitsBelowAnnotations() {
+        QGraphicsScene scene(0,0,100,100);
+        auto *arrow = new ArrowItem(QPointF(10,50), QPointF(90,50));
+        arrow->setStrokeColor(QColor(255,0,0)); arrow->setStrokeWidth(8);
+        scene.addItem(arrow);                                  // default zValue 0
+        QImage src(100,100,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::Blacken, src, QRectF(20,20,60,60));
+        scene.addItem(r);                                      // zValue -500 -> below the arrow
+        QImage img = renderScene(scene, QSize(100,100));
+        QColor mid = img.pixelColor(50,50);                    // on the arrow shaft, inside the redact
+        QVERIFY(mid.red() > 150 && mid.green() < 100);         // arrow still visible (not blacked out)
     }
     void highlightIsTranslucent() {
         QGraphicsScene scene(0,0,60,60);
