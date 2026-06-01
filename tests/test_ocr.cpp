@@ -56,6 +56,30 @@ private slots:
         QVERIFY(doc.lines.isEmpty());
         QVERIFY(doc.text.isEmpty());
     }
+    void reportsWordsIntersectingARegion() {
+        OcrDocument doc; QString err;
+        QVERIFY(parseTesseractTsv(sampleTsv(), &doc, &err));
+        const auto hit = doc.wordsIntersecting(QRect(35, 18, 40, 16));
+        QStringList texts;
+        for (const OcrWord *w : hit) texts << w->text;
+        QCOMPARE(texts, QStringList() << "Hello" << "world");
+    }
+    void groupsTextRegionsForRedaction() {
+        OcrDocument doc; QString err;
+        QVERIFY(parseTesseractTsv(sampleTsv(), &doc, &err));
+        const auto regions = doc.textRegionsIntersecting(QRect(0, 15, 150, 55), 3, 15);
+        QCOMPARE(regions.size(), 1);
+        QCOMPARE(regions.at(0), QRect(7, 17, 106, 46));
+        // A gap (14) larger than mergeLineGap keeps the two lines separate (else-branch).
+        const auto split = doc.textRegionsIntersecting(QRect(0, 15, 150, 55), 3, 10);
+        QCOMPARE(split.size(), 2);
+    }
+    void returnsEmptyWhenNothingIntersects() {
+        OcrDocument doc; QString err;
+        QVERIFY(parseTesseractTsv(sampleTsv(), &doc, &err));
+        QVERIFY(doc.wordsIntersecting(QRect(0, 0, 1, 1)).isEmpty());
+        QVERIFY(doc.textRegionsIntersecting(QRect(0, 0, 1, 1), 3, 15).isEmpty());
+    }
 };
 
 QTEST_MAIN(TestOcr)

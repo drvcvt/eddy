@@ -10,7 +10,7 @@ namespace {
 int edgeRight(const QRect &r)  { return r.x() + r.width(); }
 int edgeBottom(const QRect &r) { return r.y() + r.height(); }
 
-[[maybe_unused]] bool rectsIntersect(const QRect &a, const QRect &b) {
+bool rectsIntersect(const QRect &a, const QRect &b) {
     return a.x() < edgeRight(b) && edgeRight(a) > b.x()
         && a.y() < edgeBottom(b) && edgeBottom(a) > b.y();
 }
@@ -23,7 +23,7 @@ QRect unionRect(const QRect &a, const QRect &b) {
     return QRect(x, y, right - x, bottom - y);
 }
 
-[[maybe_unused]] QRect padRect(const QRect &r, int pad) {
+QRect padRect(const QRect &r, int pad) {
     if (pad < 0) pad = 0;
     return QRect(r.x() - pad, r.y() - pad, r.width() + 2 * pad, r.height() + 2 * pad);
 }
@@ -54,9 +54,38 @@ QStringList splitTsvRow(const QString &row, int maxFields) {
 
 } // namespace
 
-QVector<const OcrWord *> OcrDocument::wordsIntersecting(const QRect &) const { return {}; }
+QVector<const OcrWord *> OcrDocument::wordsIntersecting(const QRect &region) const {
+    QVector<const OcrWord *> out;
+    for (const OcrWord &w : words)
+        if (rectsIntersect(w.rect, region)) out.append(&w);
+    return out;
+}
 
-QVector<QRect> OcrDocument::textRegionsIntersecting(const QRect &, int, int) const { return {}; }
+QVector<QRect> OcrDocument::textRegionsIntersecting(const QRect &region,
+                                                    int padding, int mergeLineGap) const {
+    QVector<QRect> regions;
+    for (const OcrLine &ln : lines)
+        if (rectsIntersect(ln.rect, region))
+            regions.append(padRect(ln.rect, padding));
+
+    std::sort(regions.begin(), regions.end(), [](const QRect &a, const QRect &b) {
+        if (a.y() != b.y()) return a.y() < b.y();
+        return a.x() < b.x();
+    });
+
+    QVector<QRect> merged;
+    for (const QRect &rc : regions) {
+        if (merged.isEmpty()) { merged.append(rc); continue; }
+        QRect &last = merged.last();
+        const int verticalGap = rc.y() - edgeBottom(last);
+        const bool horizontalOverlap = rc.x() < edgeRight(last) && edgeRight(rc) > last.x();
+        if (verticalGap <= mergeLineGap && horizontalOverlap)
+            last = unionRect(last, rc);
+        else
+            merged.append(rc);
+    }
+    return merged;
+}
 
 bool parseTesseractTsv(const QString &tsv, OcrDocument *out, QString *error) {
     auto fail = [&](const QString &m) { if (error) *error = m; return false; };
