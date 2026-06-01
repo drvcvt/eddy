@@ -207,6 +207,24 @@ private slots:
         QImage b = renderScene(scene, QSize(80,40));
         QVERIFY(b.pixelColor(60,10).red() > 175);          // re-sampled -> blurred white -> light
     }
+    void ocrRedactResizeCoversWholeRegionUntilRedetect() {
+        QImage src(80,80,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::OcrBlacken, src, QRectF(10,10,40,40));
+        r->setTextRects({ QRectF(20,20,20,8) });
+        r->setDetecting(false);                       // had a prior result (narrowed)
+        r->setRect(QRectF(10,10,60,60));              // user resizes
+        QVERIFY(r->isDetecting());                    // now covers whole region again
+        delete r;
+    }
+    void ocrRedactCoversWholeOnMove() {
+        QGraphicsScene scene(0,0,200,200);            // needs a scene for ItemPositionHasChanged
+        QImage src(200,200,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::OcrBlacken, src, QRectF(10,10,40,40));
+        r->setTextRects({ QRectF(20,20,20,8) }); r->setDetecting(false);
+        scene.addItem(r);
+        r->setPos(60, 0);                             // user drags the body
+        QVERIFY(r->isDetecting());                    // moved OCR redact covers whole (no stale exposure)
+    }
 };
 
 QTEST_MAIN(TestItems)

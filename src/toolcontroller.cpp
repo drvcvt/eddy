@@ -98,6 +98,11 @@ void ToolController::finish(const QPointF &p) {
     m_undo->push(new AddItemCommand(m_scene, m_active));
     m_active = nullptr;
     fadeIn(committed);
+    if (dynamic_cast<RedactItem*>(committed)) {
+        m_scene->clearSelection();      // sole selection -> mode-bar appears for this redact
+        committed->setSelected(true);   // show the mode-bar immediately
+        setTool(ToolType::Move);        // ready to adjust / pick a mode
+    }
 }
 
 QGraphicsItem *ToolController::placeText(const QPointF &p) {

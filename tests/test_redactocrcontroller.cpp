@@ -75,6 +75,19 @@ private slots:
             QSKIP(qPrintable("tesseract unavailable / language missing: " + failMsg));
         QVERIFY(!item.textRects().isEmpty());                 // detected "Hallo" -> a cover rect
     }
+    void applyResultMapsSceneRectsForMovedItem() {
+        QImage src(120,120,QImage::Format_ARGB32); src.fill(Qt::white);
+        RedactItem item(RedactMode::OcrBlacken, src, QRectF(0,0,40,40));
+        item.setPos(50, 50);                          // scene region now (50,50,40,40)
+        RedactOcrController ctl(src, ocr::OcrOptions{});
+        ocr::OcrDocument doc;
+        ocr::OcrLine line; line.text = "x"; line.rect = QRect(55,55,20,8);  // SCENE coords, inside moved region
+        doc.lines.append(line);
+        QVERIFY(ctl.applyResult(&item, doc));
+        QVERIFY(!item.textRects().isEmpty());
+        // stored in LOCAL frame (≈ scene - pos): left well below the scene x (55) → mapped
+        QVERIFY(item.textRects().first().left() < 40);
+    }
     void supersedingKeepsResultlessTargetCovered() {
         if (QStandardPaths::findExecutable("tesseract").isEmpty())
             QSKIP("tesseract not installed");      // detectFor launches the runner

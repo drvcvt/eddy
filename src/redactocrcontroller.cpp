@@ -31,7 +31,7 @@ void RedactOcrController::detectFor(RedactItem *item) {
     item->setDetecting(true);
     // recognizeRegion() may emit failed() SYNCHRONOUSLY (e.g. an empty/off-image crop),
     // re-entering our failed handler — do not touch m_target after this call.
-    m_runner.recognizeRegion(m_bg, item->rect().toAlignedRect(), m_opts);
+    m_runner.recognizeRegion(m_bg, item->mapRectToScene(item->rect()).toAlignedRect(), m_opts);
 }
 
 void RedactOcrController::forget(const RedactItem *item) {
@@ -43,11 +43,11 @@ void RedactOcrController::cancel() {
 }
 
 bool RedactOcrController::applyResult(RedactItem *item, const ocr::OcrDocument &doc) const {
-    const QRect region = item->rect().toAlignedRect();
+    const QRect region = item->mapRectToScene(item->rect()).toAlignedRect();
     const QVector<QRect> rects = doc.textRegionsIntersecting(region);
     QVector<QRectF> frects;
     frects.reserve(rects.size());
-    for (const QRect &r : rects) frects.append(QRectF(r));
+    for (const QRect &r : rects) frects.append(item->mapRectFromScene(QRectF(r)));   // scene -> item-local
     item->setTextRects(frects);
     item->setDetecting(false);
     return !frects.isEmpty();

@@ -79,6 +79,10 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
             [this]{ m_toast->showMessage(QStringLiteral("No text detected")); });
     connect(m_ocr, &RedactOcrController::ocrFailed, this,
             [this](const QString &msg){ m_toast->showMessage(QStringLiteral("OCR failed: ") + msg); });
+    connect(m_handles, &SelectionHandles::resizeFinished, this, [this](QGraphicsItem *it){
+        if (auto *r = dynamic_cast<RedactItem*>(it); r && RedactItem::isOcr(r->mode()))
+            m_ocr->detectFor(r);   // re-run detection for the new geometry
+    });
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_toolbar->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);

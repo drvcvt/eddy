@@ -16,6 +16,7 @@ RedactItem::RedactItem(RedactMode mode, const QImage &source, const QRectF &regi
 void RedactItem::setRect(const QRectF &r) {
     prepareGeometryChange();
     m_region = r.normalized();
+    if (isOcr(m_mode)) m_detecting = true;   // cover whole region until re-detect narrows it
     rebuildCache();
     update();
 }
@@ -79,7 +80,8 @@ void RedactItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *)
 
 QVariant RedactItem::itemChange(GraphicsItemChange change, const QVariant &value) {
     if (change == ItemPositionHasChanged) {
-        rebuildCache();   // re-sample the blur at the new scene position
+        if (isOcr(m_mode)) m_detecting = true;   // stale text rects after a move -> cover whole (fail-safe)
+        rebuildCache();                          // re-sample the blur at the new scene position
         update();
     }
     return QGraphicsItem::itemChange(change, value);

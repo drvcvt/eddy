@@ -97,6 +97,21 @@ private slots:
         QCOMPARE(items.size(), 2);
         QCOMPARE(items.last()->opacity(), 1.0); // A (first committed) settled to fully opaque
     }
+    void redactDrawSelectsAndSwitchesToMove() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(60,60,QImage::Format_ARGB32_Premultiplied));
+        // a previously-selected item must not remain selected after drawing a new redact
+        auto *prior = new RectItem(QRectF(0,0,10,10));
+        prior->setFlags(QGraphicsItem::ItemIsSelectable | QGraphicsItem::ItemIsMovable);
+        scene.addItem(prior);
+        prior->setSelected(true);
+        tc.setTool(ToolType::Redact);
+        tc.begin({5,5}); tc.finish({40,40});
+        QCOMPARE(tc.tool(), ToolType::Move);                       // auto-switched to Move
+        const auto sel = scene.selectedItems();
+        QCOMPARE(sel.size(), 1);                                   // sole selection
+        QVERIFY(dynamic_cast<RedactItem*>(sel.first()));           // and it is the new redact
+    }
     void removeItemCommandUndoRedo() {
         QGraphicsScene scene; QUndoStack undo;
         auto *r = new QGraphicsRectItem(0,0,10,10);
