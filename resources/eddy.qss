@@ -51,6 +51,47 @@ QWidget#RedactBar QToolButton {
 QWidget#RedactBar QToolButton:hover   { background-color: rgba(255,255,255,0.06); color: #ffffff; }
 QWidget#RedactBar QToolButton:checked { background-color: rgba(255,255,255,0.12); color: #ffffff; }
 
+QWidget#PlaybackBar {
+    background-color: #121212;
+    border-top: 1px solid #2a2a2a;
+}
+QWidget#PlaybackBar QToolButton#PlaybackPlay {
+    background-color: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 7px;
+    color: #d0d0d0;
+    font-family: "Inter","sans-serif";
+    font-size: 12px;
+    font-weight: 700;
+}
+QWidget#PlaybackBar QToolButton#PlaybackPlay:hover {
+    background-color: #222222;
+    color: #ffffff;
+}
+QWidget#PlaybackBar QLabel#PlaybackTime {
+    color: #a8a8a8;
+    font-family: "Inter","sans-serif";
+    font-size: 11px;
+    font-weight: 600;
+}
+QWidget#PlaybackBar QSlider::groove:horizontal {
+    height: 4px;
+    background: #2a2a2a;
+    border-radius: 2px;
+}
+QWidget#PlaybackBar QSlider::sub-page:horizontal {
+    background: #cccccc;
+    border-radius: 2px;
+}
+QWidget#PlaybackBar QSlider::handle:horizontal {
+    width: 12px;
+    height: 12px;
+    margin: -4px 0;
+    border-radius: 6px;
+    background: #d0d0d0;
+}
+QWidget#PlaybackBar QSlider::handle:horizontal:hover { background: #ffffff; }
+
 QWidget#Toast { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 9px; }
 QLabel#ToastText { color: #d0d0d0; font-family: "Inter","sans-serif"; font-size: 12px; }
 

@@ -1,0 +1,153 @@
+#include "videoexporter.h"
+#include "exporter.h"
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTemporaryFile>
+#include <filesystem>
+
+namespace eddy {
+
+static QString sameDirTempTemplate(const QString &outputPath) {
+    const QFileInfo out(outputPath);
+    const QString suffix = out.suffix().isEmpty() ? QStringLiteral("mp4") : out.suffix();
+    return out.absoluteDir().filePath(QStringLiteral(".eddy-video-XXXXXX.") + suffix);
+}
+
+static bool sameExistingPath(const QString &a, const QString &b) {
+    const QString ca = QFileInfo(a).canonicalFilePath();
+    const QString cb = QFileInfo(b).canonicalFilePath();
+    return !ca.isEmpty() && ca == cb;
+}
+
+static DeliverResult renameReplacing(const QString &from, const QString &to) {
+    DeliverResult r;
+    std::error_code ec;
+    std::filesystem::rename(std::filesystem::path(from.toStdString()),
+                            std::filesystem::path(to.toStdString()), ec);
+    if (ec) {
+        r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
+                + QString::fromStdString(ec.message());
+        return r;
+    }
+    r.ok = true;
+    return r;
+}
+
+DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
+    DeliverResult r;
+    if (req.outputPath == QStringLiteral("-")) {
+        r.error = QStringLiteral("video export to stdout is not supported");
+        return r;
+    }
+    if (req.inputPath.isEmpty() || req.outputPath.isEmpty()) {
+        r.error = QStringLiteral("video export needs input and output paths");
+        return r;
+    }
+    if (req.overlay.isNull()) {
+        r.error = QStringLiteral("video export needs a non-null overlay image");
+        return r;
+    }
+
+    const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    if (ffmpeg.isEmpty()) {
+        r.error = QStringLiteral("ffmpeg not found");
+        return r;
+    }
+
+    QTemporaryFile overlayTmp(QDir::tempPath() + QStringLiteral("/eddy-overlay-XXXXXX.png"));
+    overlayTmp.setAutoRemove(false);
+    if (!overlayTmp.open()) {
+        r.error = QStringLiteral("cannot create temporary overlay");
+        return r;
+    }
+    const QByteArray png = encodePng(req.overlay);
+    if (png.isEmpty() || overlayTmp.write(png) != png.size()) {
+        r.error = QStringLiteral("cannot write temporary overlay");
+        return r;
+    }
+    const QString overlayPath = overlayTmp.fileName();
+    overlayTmp.close();
+
+    QString actualOutput = req.outputPath;
+    QTemporaryFile samePathOutput;
+    samePathOutput.setAutoRemove(false);
+    const bool replaceInput = sameExistingPath(req.inputPath, req.outputPath);
+    if (replaceInput) {
+        samePathOutput.setFileTemplate(sameDirTempTemplate(req.outputPath));
+        if (!samePathOutput.open()) {
+            QFile::remove(overlayPath);
+            r.error = QStringLiteral("cannot create temporary output next to ") + req.outputPath;
+            return r;
+        }
+        actualOutput = samePathOutput.fileName();
+        samePathOutput.close();
+    }
+
+    const QString ext = QFileInfo(req.outputPath).suffix().toLower();
+    QStringList codecArgs;
+    if (ext == QStringLiteral("webm")) {
+        codecArgs = {
+            QStringLiteral("-c:v"), QStringLiteral("libvpx-vp9"),
+            QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"),
+            QStringLiteral("-c:a"), QStringLiteral("libopus"),
+        };
+    } else {
+        codecArgs = {
+            QStringLiteral("-c:v"), QStringLiteral("libx264"),
+            QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"),
+            QStringLiteral("-c:a"), QStringLiteral("copy"),
+            QStringLiteral("-movflags"), QStringLiteral("+faststart"),
+        };
+    }
+
+    QStringList args = {
+        QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+        QStringLiteral("-y"),
+        QStringLiteral("-i"), req.inputPath,
+        QStringLiteral("-loop"), QStringLiteral("1"),
+        QStringLiteral("-i"), overlayPath,
+        QStringLiteral("-filter_complex"),
+        QStringLiteral("[0:v][1:v]overlay=0:0:format=auto:shortest=1[v]"),
+        QStringLiteral("-map"), QStringLiteral("[v]"),
+        QStringLiteral("-map"), QStringLiteral("0:a?"),
+    };
+    args += codecArgs;
+    args += {
+        QStringLiteral("-shortest"),
+        actualOutput,
+    };
+
+    QProcess p;
+    p.start(ffmpeg, args);
+    if (!p.waitForFinished(120000)) {
+        p.kill();
+        p.waitForFinished();
+        QFile::remove(overlayPath);
+        if (replaceInput) QFile::remove(actualOutput);
+        r.error = QStringLiteral("ffmpeg timed out");
+        return r;
+    }
+    QFile::remove(overlayPath);
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        if (replaceInput) QFile::remove(actualOutput);
+        const QString err = QString::fromUtf8(p.readAllStandardError()).trimmed();
+        r.error = err.isEmpty() ? QStringLiteral("ffmpeg failed") : err;
+        return r;
+    }
+
+    if (replaceInput) {
+        auto renamed = renameReplacing(actualOutput, req.outputPath);
+        if (!renamed.ok) {
+            QFile::remove(actualOutput);
+            return renamed;
+        }
+    }
+
+    r.ok = true;
+    return r;
+}
+
+}
