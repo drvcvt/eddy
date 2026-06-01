@@ -26,7 +26,6 @@ private:
     void updateCompactMode();
     void refreshRedactBar();              // selection changed -> show/sync/position or hide
     void positionRedactBar();             // re-anchor over the selected redact
-    void positionDragPill();
     void onRedactModeChosen(RedactMode m);
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();

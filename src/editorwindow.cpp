@@ -17,6 +17,7 @@
 #include <QGraphicsPixmapItem>
 #include <QUndoStack>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QClipboard>
 #include <QApplication>
@@ -84,10 +85,17 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
         if (auto *r = dynamic_cast<RedactItem*>(it); r && RedactItem::isOcr(r->mode()))
             m_ocr->detectFor(r);   // re-run detection for the new geometry
     });
-    m_dragPill = new DragPill(m_canvas->viewport());
+    // Drag-out pill lives in a strip BELOW the canvas so it never covers the image.
+    m_dragPill = new DragPill(this);
     m_dragPill->setImageProvider([this]{ return exportComposite(); });
-    m_dragPill->adjustSize();
-    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionDragPill);
+    auto *footer = new QWidget(this);
+    footer->setObjectName("Footer");
+    auto *fl = new QHBoxLayout(footer);
+    fl->setContentsMargins(0, 6, 0, 6);
+    fl->addStretch(1);
+    fl->addWidget(m_dragPill);
+    fl->addStretch(1);
+    lay->addWidget(footer);
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_toolbar->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);
@@ -111,7 +119,6 @@ void EditorWindow::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
     if (m_shown) return;
     m_shown = true;
-    positionDragPill();
     if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
     auto *a = new QPropertyAnimation(this, "windowOpacity", this);
     a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
@@ -192,16 +199,6 @@ void EditorWindow::positionRedactBar() {
     m_redactBar->move(x, y);
 }
 
-void EditorWindow::positionDragPill() {
-    if (!m_dragPill) return;
-    m_dragPill->adjustSize();
-    const QSize vp = m_canvas->viewport()->size();
-    const int x = (vp.width() - m_dragPill->width()) / 2;
-    const int y = vp.height() - m_dragPill->height() - 14;
-    m_dragPill->move(qMax(0, x), qMax(0, y));
-    m_dragPill->raise();
-    m_dragPill->show();
-}
 
 void EditorWindow::onRedactModeChosen(RedactMode m) {
     RedactItem *r = selectedRedact();

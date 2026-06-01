@@ -3,30 +3,47 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QApplication>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QDrag>
 #include <QMimeData>
 #include <QImage>
 #include <QPixmap>
+#include <QBuffer>
+#include <QByteArray>
 #include <QTemporaryFile>
+#include <QFileInfo>
 #include <QDir>
 #include <QFile>
 #include <QUrl>
 
 namespace eddy {
 
+// Mirrors boltsnap's drag payload: explicit image/png bytes (for chat/browser/editor
+// targets that look for that exact type) + a text/uri-list pointing to a real PNG file
+// (for file-drop targets). setImageData adds application/x-qt-image for Qt-native apps.
 QMimeData *makeImageDropMime(const QImage &img, QString *tempPathOut) {
+    QByteArray png;
+    {
+        QBuffer buf(&png);
+        buf.open(QIODevice::WriteOnly);
+        img.save(&buf, "PNG");
+    }
     auto *mime = new QMimeData;
-    mime->setImageData(img);                                   // image/png for editors/chat/browsers
+    mime->setData(QStringLiteral("image/png"), png);           // explicit PNG bytes
+    mime->setImageData(img);                                   // application/x-qt-image
     QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/eddy-XXXXXX.png"));
     tmp.setAutoRemove(false);
     if (tmp.open()) {
-        const QString path = tmp.fileName();
-        tmp.close();
-        if (img.save(path, "PNG")) {
-            mime->setUrls({ QUrl::fromLocalFile(path) });      // text/uri-list for file-drop targets
-            if (tempPathOut) *tempPathOut = path;
+        if (tmp.write(png) == png.size()) {
+            tmp.close();
+            const QString abs = QFileInfo(tmp.fileName()).canonicalFilePath();
+            mime->setUrls({ QUrl::fromLocalFile(abs) });       // text/uri-list (absolute path)
+            if (tempPathOut) *tempPathOut = abs;
         } else {
-            QFile::remove(path);
+            const QString p = tmp.fileName();
+            tmp.close();
+            QFile::remove(p);
         }
     }
     return mime;
@@ -79,7 +96,9 @@ void DragPill::startDrag() {
     drag->setMimeData(mime);                                       // QDrag takes ownership
     drag->setPixmap(QPixmap::fromImage(
         img.scaled(180, 180, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
-    drag->exec(Qt::CopyAction);
+    const Qt::DropAction result = drag->exec(Qt::CopyAction);
+    if (result == Qt::IgnoreAction)                            // dropped on nothing: don't waste it
+        QGuiApplication::clipboard()->setImage(img);           // (boltsnap's cancel fallback)
     setCursor(Qt::OpenHandCursor);
 }
 

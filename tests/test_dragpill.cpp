@@ -17,7 +17,9 @@ private slots:
         img.fill(Qt::red);
         QString path;
         QMimeData *mime = makeImageDropMime(img, &path);
-        QVERIFY(mime->hasImage());                       // image/png payload
+        QVERIFY(mime->hasFormat("image/png"));           // explicit PNG bytes (foreign targets)
+        QVERIFY(mime->data("image/png").startsWith("\x89PNG"));
+        QVERIFY(mime->hasImage());                       // application/x-qt-image (Qt targets)
         QVERIFY(mime->hasUrls());                        // file-drop payload
         QVERIFY(!path.isEmpty());
         QVERIFY(path.endsWith(".png"));
