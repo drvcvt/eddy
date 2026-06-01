@@ -7,6 +7,7 @@ class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent;
 namespace eddy {
 class Canvas; class Toolbar; class ToolController; class SelectionHandles;
 class RedactBar; class Toast; class RedactOcrController; class RedactItem;
+class DragPill;
 enum class RedactMode;
 class EditorWindow : public QWidget {
     Q_OBJECT
@@ -25,6 +26,7 @@ private:
     void updateCompactMode();
     void refreshRedactBar();              // selection changed -> show/sync/position or hide
     void positionRedactBar();             // re-anchor over the selected redact
+    void positionDragPill();
     void onRedactModeChosen(RedactMode m);
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();
@@ -37,5 +39,6 @@ private:
     RedactOcrController *m_ocr = nullptr;
     RedactBar *m_redactBar = nullptr;
     Toast *m_toast = nullptr;
+    DragPill *m_dragPill = nullptr;
 };
 }
