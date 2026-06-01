@@ -15,6 +15,16 @@ private slots:
         QCOMPARE(spy.count(), 1);
         QCOMPARE(qvariant_cast<QColor>(spy.at(0).at(0)), QColor("#ff3b30"));
     }
+    void pipetteRequestsEyedropper() {
+        ColorPopover p;
+        QToolButton *pipette = nullptr;
+        for (auto *b : p.findChildren<QToolButton*>())
+            if (b->text() == "Pipette") pipette = b;
+        QVERIFY(pipette);
+        QSignalSpy spy(&p, &ColorPopover::eyedropperRequested);
+        pipette->click();
+        QCOMPARE(spy.count(), 1);
+    }
 };
 QTEST_MAIN(TestColorPopover)
 #include "test_colorpopover.moc"

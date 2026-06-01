@@ -105,7 +105,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     color->setObjectName("Swatch");
     color->setToolTip("Stroke colour");
     m_swatch = color;
-    setSwatchColor(QColor("#ff3b30"));             // painted disc; overridden by the real stroke colour
+    setSwatchColor(QColor(theme::kStroke));        // painted disc; overridden by the real stroke colour
     connect(color, &QToolButton::clicked, this, [this, color]{
         auto *pop = new ColorPopover(this);
         pop->setAttribute(Qt::WA_DeleteOnClose);   // don't accumulate popovers on repeated opens
@@ -186,13 +186,15 @@ void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on)
 void Toolbar::setSwatchColor(const QColor &c) {
     if (!m_swatch) return;
     constexpr int d = 18;
-    QPixmap pm(d, d);
+    const qreal dpr = m_swatch->devicePixelRatioF();   // crisp on HiDPI, like tintedIcon
+    QPixmap pm(qRound(d * dpr), qRound(d * dpr));
+    pm.setDevicePixelRatio(dpr);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setBrush(c);
     p.setPen(QPen(QColor(0, 0, 0, 110), 1));
-    p.drawEllipse(QRectF(1, 1, d - 2, d - 2));
+    p.drawEllipse(QRectF(1, 1, d - 2, d - 2));         // logical coords; painter is DPR-scaled
     p.end();
     m_swatch->setIcon(QIcon(pm));
     m_swatch->setIconSize(QSize(d, d));

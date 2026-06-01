@@ -44,6 +44,14 @@ private slots:
         QVERIFY(rectBtn);
         QCOMPARE(pill->geometry(), rectBtn->geometry());
     }
+    void swatchShowsPaintedDisc() {
+        Toolbar tb;
+        auto *swatch = tb.findChild<QToolButton*>("Swatch");
+        QVERIFY(swatch);
+        QVERIFY(!swatch->icon().isNull());        // painted colour disc, not an empty glyph
+        tb.setSwatchColor(QColor("#0a84ff"));
+        QVERIFY(!swatch->icon().isNull());
+    }
     void widthButtonsEmit() {
         Toolbar tb;
         QSignalSpy spy(&tb, &Toolbar::widthChosen);

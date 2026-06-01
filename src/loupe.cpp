@@ -22,7 +22,7 @@ namespace {
 constexpr int kSquare = 116;   // magnified area, logical px
 constexpr int kLabelH = 22;    // hex readout strip
 constexpr int kPad    = 4;     // panel padding around the square
-constexpr int kRadius = 11;    // squircle corners
+constexpr int kRadius = 9;     // squircle corners — matches the app's panels
 }
 
 Loupe::Loupe(QWidget *parent) : QWidget(parent) {
