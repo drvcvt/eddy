@@ -9,6 +9,7 @@ static const QColor kRedactFill("#0a0a0a");
 RedactItem::RedactItem(RedactMode mode, const QImage &source, const QRectF &region)
     : m_mode(mode), m_source(source), m_region(region.normalized()) {
     setZValue(-500);
+    setFlag(ItemSendsGeometryChanges, true);
     rebuildCache();
 }
 
@@ -40,7 +41,9 @@ QRectF RedactItem::boundingRect() const { return m_region; }
 
 void RedactItem::rebuildCache() {
     if (!isBlur(m_mode)) { m_cache = QImage(); m_cacheRect = QRect(); return; }
-    m_cacheRect = m_region.toAlignedRect().intersected(m_source.rect());
+    // Sample from the SCENE area the cover currently occupies, so a moved cover
+    // blurs the content actually under it (not its original position).
+    m_cacheRect = mapRectToScene(m_region).toAlignedRect().intersected(m_source.rect());
     if (m_cacheRect.isEmpty()) { m_cache = QImage(); return; }
     m_cache = redactBlur(m_source.copy(m_cacheRect));
 }
@@ -65,13 +68,21 @@ void RedactItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *)
         for (const QRectF &r : rects) {
             p->save();
             p->setClipRect(r);
-            p->drawImage(m_cacheRect.topLeft(), m_cache);
+            p->drawImage(mapFromScene(QPointF(m_cacheRect.topLeft())), m_cache);
             p->restore();
         }
     } else {
         p->setBrush(kRedactFill);
         for (const QRectF &r : rects) p->drawRect(r);
     }
+}
+
+QVariant RedactItem::itemChange(GraphicsItemChange change, const QVariant &value) {
+    if (change == ItemPositionHasChanged) {
+        rebuildCache();   // re-sample the blur at the new scene position
+        update();
+    }
+    return QGraphicsItem::itemChange(change, value);
 }
 
 }

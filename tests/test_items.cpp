@@ -194,6 +194,19 @@ private slots:
         QCOMPARE(r->mode(), RedactMode::Blur);
         delete r;
     }
+    void redactBlurResamplesOnMove() {
+        QImage src(80,40,QImage::Format_ARGB32);
+        for (int y=0;y<40;++y) for (int x=0;x<80;++x)
+            src.setPixelColor(x,y, x < 40 ? Qt::black : Qt::white);
+        QGraphicsScene scene(0,0,80,40);
+        auto *r = new RedactItem(RedactMode::Blur, src, QRectF(0,0,20,20));   // over the black half
+        scene.addItem(r);
+        QImage a = renderScene(scene, QSize(80,40));
+        QVERIFY(a.pixelColor(10,10).red() < 80);          // blurred black -> dark
+        r->setPos(50, 0);                                  // move the cover over the white half
+        QImage b = renderScene(scene, QSize(80,40));
+        QVERIFY(b.pixelColor(60,10).red() > 175);          // re-sampled -> blurred white -> light
+    }
 };
 
 QTEST_MAIN(TestItems)

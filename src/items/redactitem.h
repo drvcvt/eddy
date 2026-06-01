@@ -1,6 +1,7 @@
 #pragma once
 #include "annotationitem.h"
 #include <QImage>
+#include <QVariant>
 #include <QVector>
 #include <QRectF>
 
@@ -20,6 +21,7 @@ public:
     QRectF rect() const override { return m_region; }
     QRectF boundingRect() const override;
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override;
+    QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
 
     RedactMode mode() const { return m_mode; }
     void setMode(RedactMode m);
