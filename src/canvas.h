@@ -1,5 +1,6 @@
 #pragma once
 #include <QGraphicsView>
+#include <QPoint>
 #include "toolcontroller.h"
 class QVariantAnimation;
 class QResizeEvent;
@@ -25,7 +26,8 @@ private:
     ToolController *m_tools;
     double m_zoom = 1.0;            // visual (animated) scale
     double m_targetZoom = 1.0;      // logical target
-    bool m_dragging = false;
+    bool m_dragging = false;        // middle-button pan in progress
+    QPoint m_panLast;               // last cursor pos during a pan (viewport coords)
     bool m_animations = true;
     QVariantAnimation *m_zoomAnim = nullptr;
 };

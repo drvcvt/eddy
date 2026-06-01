@@ -3,6 +3,7 @@
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
+#include <QScrollBar>
 #include <QGraphicsItem>
 #include <QVariantAnimation>
 
@@ -47,8 +48,12 @@ void Canvas::wheelEvent(QWheelEvent *e) {
 
 void Canvas::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::MiddleButton) {
-        m_dragging = true; setDragMode(QGraphicsView::ScrollHandDrag);
-        QGraphicsView::mousePressEvent(e); return;
+        // Manual middle-drag pan. (ScrollHandDrag only grabs the left button, so it
+        // can't pan on a middle-press — scroll the view by the cursor delta instead.)
+        m_dragging = true;
+        m_panLast = e->pos();
+        viewport()->setCursor(Qt::ClosedHandCursor);
+        e->accept(); return;
     }
     if (e->button() == Qt::LeftButton && m_tools->tool() == ToolType::Text) {
         // Stamp an editable text box at the click and focus it for typing.
@@ -64,17 +69,25 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 }
 
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
-    if (!m_dragging && (e->buttons() & Qt::LeftButton) && !isPointerTool()) {
+    if (m_dragging) {                                   // middle-drag pan
+        const QPoint d = e->pos() - m_panLast;
+        m_panLast = e->pos();
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
+        verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
+        emit viewChanged();                             // overlays (mode-bar) re-anchor
+        e->accept(); return;
+    }
+    if ((e->buttons() & Qt::LeftButton) && !isPointerTool()) {
         m_tools->update(mapToScene(e->pos())); e->accept(); return;
     }
     QGraphicsView::mouseMoveEvent(e);
-    if (m_dragging) emit viewChanged();   // middle-drag panning scrolled the view
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (m_dragging && e->button() == Qt::MiddleButton) {
-        m_dragging = false; setDragMode(QGraphicsView::NoDrag);
-        QGraphicsView::mouseReleaseEvent(e); return;
+        m_dragging = false;
+        viewport()->unsetCursor();
+        e->accept(); return;
     }
     if (e->button() == Qt::LeftButton && !isPointerTool()) {
         m_tools->finish(mapToScene(e->pos())); e->accept(); return;
