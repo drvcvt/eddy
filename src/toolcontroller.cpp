@@ -74,7 +74,7 @@ void ToolController::begin(const QPointF &p) {
         case ToolType::Highlight: { auto *h = new HighlightItem(QRectF(p,p)); m_active=h; break; }
         case ToolType::Redact: { auto *r = new RedactItem(RedactMode::Blacken, m_bg, QRectF(p,p)); m_active=r; break; }
         case ToolType::Pen: { auto *pp = new PenPathItem(p); style(pp,m_color,m_width); m_active=pp; break; }
-        case ToolType::Blur: { auto *b = new RasterItem(RasterItem::Blur, m_bg, QRectF(p,p)); m_active=b; isRaster=true; break; }
+        case ToolType::Blur: { auto *b = new RedactItem(RedactMode::Blur, m_bg, QRectF(p,p)); m_active=b; break; }
         case ToolType::Pixelate: { auto *b = new RasterItem(RasterItem::Pixelate, m_bg, QRectF(p,p)); m_active=b; isRaster=true; break; }
         default: break; // Move/Text handled elsewhere
     }
