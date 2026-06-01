@@ -18,6 +18,7 @@ add_library(eddy_core STATIC
     src/colorpopover.cpp
     src/redactbar.cpp
     src/toast.cpp
+    src/dragpill.cpp
     src/selectionhandles.cpp
     src/cli.cpp
     src/compositor.cpp
@@ -63,6 +64,7 @@ eddy_test(test_canvas)
 eddy_test(test_colorpopover)
 eddy_test(test_redactbar)
 eddy_test(test_toast)
+eddy_test(test_dragpill)
 eddy_test(test_cli)
 eddy_test(test_config)
 eddy_test(test_exporter)
