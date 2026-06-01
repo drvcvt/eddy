@@ -80,6 +80,26 @@ private slots:
         QVERIFY(doc.wordsIntersecting(QRect(0, 0, 1, 1)).isEmpty());
         QVERIFY(doc.textRegionsIntersecting(QRect(0, 0, 1, 1), 3, 15).isEmpty());
     }
+    void mapsRectsBackToSourceCoords() {
+        OcrDocument src;
+        OcrWord w; w.text = "X"; w.rect = QRect(10, 20, 30, 10); src.words.append(w);
+        OcrLine l; l.text = "X"; l.rect = QRect(10, 20, 30, 10); src.lines.append(l);
+
+        const OcrDocument t1 = mapToSourceCoords(src, QPoint(100, 50), 1);
+        QCOMPARE(t1.words.at(0).rect, QRect(110, 70, 30, 10));
+        QCOMPARE(t1.lines.at(0).rect, QRect(110, 70, 30, 10));
+
+        const OcrDocument t2 = mapToSourceCoords(src, QPoint(100, 50), 2);
+        QCOMPARE(t2.words.at(0).rect, QRect(105, 60, 15, 5));
+        QCOMPARE(t2.lines.at(0).rect, QRect(105, 60, 15, 5));
+    }
+    void choosesUpscaleForSmallCropsOnly() {
+        QCOMPARE(chooseScale(QSize(200, 100)), 2);
+        QCOMPARE(chooseScale(QSize(2000, 100)), 1);
+        QCOMPARE(chooseScale(QSize(0, 0)), 1);
+        QCOMPARE(chooseScale(QSize(1600, 1)), 2);
+        QCOMPARE(chooseScale(QSize(1601, 1)), 1);
+    }
 };
 
 QTEST_MAIN(TestOcr)

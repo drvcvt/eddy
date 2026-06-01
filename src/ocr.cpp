@@ -168,9 +168,26 @@ bool parseTesseractTsv(const QString &tsv, OcrDocument *out, QString *error) {
     return true;
 }
 
-OcrDocument mapToSourceCoords(OcrDocument doc, const QPoint &, int) { return doc; }
+OcrDocument mapToSourceCoords(OcrDocument doc, const QPoint &cropOrigin, int scale) {
+    if (scale < 1) scale = 1;
+    // OCR crop coords are always non-negative, so floor division matches the reference's truncating divide.
+    auto mapRect = [&](const QRect &r) {
+        const int x = r.x() / scale;
+        const int y = r.y() / scale;
+        const int right = (edgeRight(r) + scale - 1) / scale;     // ceil far edge
+        const int bottom = (edgeBottom(r) + scale - 1) / scale;
+        return QRect(x + cropOrigin.x(), y + cropOrigin.y(), right - x, bottom - y);
+    };
+    for (OcrWord &w : doc.words) w.rect = mapRect(w.rect);
+    for (OcrLine &ln : doc.lines) ln.rect = mapRect(ln.rect);
+    return doc;
+}
 
-int chooseScale(const QSize &) { return 1; }
+int chooseScale(const QSize &cropSize) {
+    const int maxDim = qMax(cropSize.width(), cropSize.height());
+    if (maxDim <= 0) return 1;
+    return maxDim <= 1600 ? 2 : 1;
+}
 
 QString chooseTessdataDir(const QString &, const QString &, const QString &,
                           const QString &, const std::function<bool(const QString &)> &) {
