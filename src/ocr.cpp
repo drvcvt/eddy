@@ -2,6 +2,11 @@
 #include <algorithm>
 #include <map>
 #include <tuple>
+#include <QProcess>
+#include <QTemporaryFile>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 
 namespace eddy::ocr {
 
@@ -215,8 +220,107 @@ QString chooseTessdataDir(const QString &explicitDir, const QString &envPrefix,
 }
 
 OcrRunner::OcrRunner(QObject *parent) : QObject(parent) {}
+
 OcrRunner::~OcrRunner() { cleanup(); }
-void OcrRunner::recognizeRegion(const QImage &, const QRect &, const OcrOptions &) {}
-void OcrRunner::cleanup() {}
+
+void OcrRunner::recognizeRegion(const QImage &bg, const QRect &region, const OcrOptions &opts) {
+    cleanup();
+    m_settled = false;
+
+    const QRect padded(region.x() - 2, region.y() - 2, region.width() + 4, region.height() + 4);
+    const QRect crop = padded.intersected(bg.rect());
+    if (crop.width() <= 0 || crop.height() <= 0) {
+        reportFailed(QStringLiteral("redact region is empty"));
+        return;
+    }
+
+    m_cropOrigin = crop.topLeft();
+    m_scale = chooseScale(crop.size());
+
+    QImage cropImg = bg.copy(crop);
+    if (m_scale > 1)
+        cropImg = cropImg.scaled(cropImg.width() * m_scale, cropImg.height() * m_scale,
+                                 Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/eddy-ocr-XXXXXX.png"));
+    tmp.setAutoRemove(false);
+    if (!tmp.open()) { reportFailed(QStringLiteral("cannot create temp image")); return; }
+    m_tmpPath = tmp.fileName();
+    tmp.close();
+    if (!cropImg.save(m_tmpPath, "PNG")) {
+        QFile::remove(m_tmpPath);
+        m_tmpPath.clear();
+        reportFailed(QStringLiteral("cannot write temp image"));
+        return;
+    }
+
+    const QString tessdata = chooseTessdataDir(
+        opts.tessdataDir, qEnvironmentVariable("TESSDATA_PREFIX"), QDir::homePath(),
+        opts.language, [](const QString &p) { return QFileInfo::exists(p); });
+
+    QStringList args;
+    args << m_tmpPath << QStringLiteral("stdout")
+         << QStringLiteral("-l") << opts.language
+         << QStringLiteral("--psm") << QString::number(opts.psm)
+         << QStringLiteral("-c") << QStringLiteral("tessedit_create_tsv=1");
+    if (!tessdata.isEmpty())
+        args << QStringLiteral("--tessdata-dir") << tessdata;
+
+    m_proc = new QProcess(this);
+    connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        const QString msg = m_proc ? m_proc->errorString() : QStringLiteral("failed to start");
+        cleanup();                                   // tear down before emitting (re-entrancy safe)
+        reportFailed(QStringLiteral("tesseract: %1").arg(msg));
+    });
+    connect(m_proc, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
+        const bool ok = (status == QProcess::NormalExit && code == 0);
+        const QString stderrText = ok ? QString()
+                                      : QString::fromUtf8(m_proc->readAllStandardError()).trimmed();
+        const QString tsv = ok ? QString::fromUtf8(m_proc->readAllStandardOutput()) : QString();
+        const QPoint cropOrigin = m_cropOrigin;
+        const int scale = m_scale;
+        cleanup();                                   // tear down before emitting (re-entrancy safe)
+        if (!ok) {
+            reportFailed(QStringLiteral("tesseract failed: %1").arg(stderrText));
+            return;
+        }
+        OcrDocument doc; QString perr;
+        if (!parseTesseractTsv(tsv, &doc, &perr)) {
+            reportFailed(QStringLiteral("OCR parse: %1").arg(perr));
+            return;
+        }
+        reportFinished(mapToSourceCoords(doc, cropOrigin, scale));
+    });
+
+    m_proc->start(QStringLiteral("tesseract"), args);
+}
+
+void OcrRunner::cleanup() {
+    if (m_proc) {
+        m_proc->disconnect(this);
+        if (m_proc->state() != QProcess::NotRunning) {
+            m_proc->kill();
+            m_proc->waitForFinished(100);
+        }
+        m_proc->deleteLater();
+        m_proc = nullptr;
+    }
+    if (!m_tmpPath.isEmpty()) {
+        QFile::remove(m_tmpPath);
+        m_tmpPath.clear();
+    }
+}
+
+void OcrRunner::reportFinished(const OcrDocument &doc) {
+    if (m_settled) return;
+    m_settled = true;
+    emit finished(doc);
+}
+
+void OcrRunner::reportFailed(const QString &message) {
+    if (m_settled) return;
+    m_settled = true;
+    emit failed(message);
+}
 
 } // namespace eddy::ocr

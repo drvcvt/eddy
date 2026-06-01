@@ -1,5 +1,9 @@
 #include <QtTest>
 #include "ocr.h"
+#include <QImage>
+#include <QPainter>
+#include <QFont>
+#include <QStandardPaths>
 
 using namespace eddy::ocr;
 
@@ -122,6 +126,69 @@ private slots:
 
         const auto noneHasLang = [](const QString &) { return false; };
         QCOMPARE(chooseTessdataDir("", "", "/home/me", "deu", noneHasLang), QString());
+    }
+    void runnerDetectsRenderedText() {
+        if (QStandardPaths::findExecutable("tesseract").isEmpty())
+            QSKIP("tesseract not installed");
+
+        QImage img(420, 140, QImage::Format_ARGB32);
+        img.fill(Qt::white);
+        QPainter p(&img);
+        p.setPen(Qt::black);
+        QFont f; f.setPointSize(32); p.setFont(f);
+        p.drawText(img.rect(), Qt::AlignCenter, "Hallo");
+        p.end();
+
+        OcrRunner runner;
+        QString gotText, failMsg; bool done = false;
+        QObject::connect(&runner, &OcrRunner::finished, &runner,
+                         [&](const OcrDocument &d) { gotText = d.text; done = true; });
+        QObject::connect(&runner, &OcrRunner::failed, &runner,
+                         [&](const QString &m) { failMsg = m; done = true; });
+
+        runner.recognizeRegion(img, img.rect());
+        QTRY_VERIFY_WITH_TIMEOUT(done, 15000);
+
+        if (!failMsg.isEmpty())
+            QSKIP(qPrintable("tesseract unavailable / language missing: " + failMsg));
+        QVERIFY2(gotText.contains("Hallo", Qt::CaseInsensitive),
+                 qPrintable("got: '" + gotText + "'"));
+    }
+    void runnerSecondRequestFromFinishedHandlerSettles() {
+        if (QStandardPaths::findExecutable("tesseract").isEmpty())
+            QSKIP("tesseract not installed");
+
+        QImage img(420, 140, QImage::Format_ARGB32);
+        img.fill(Qt::white);
+        QPainter p(&img);
+        p.setPen(Qt::black);
+        QFont f; f.setPointSize(32); p.setFont(f);
+        p.drawText(img.rect(), Qt::AlignCenter, "Hallo");
+        p.end();
+
+        OcrRunner runner;
+        bool firstSettled = false, secondSettled = false;
+        QString firstFail;
+        auto onSettle = [&](const QString &failMsg) {
+            if (!firstSettled) {
+                firstSettled = true;
+                firstFail = failMsg;
+                runner.recognizeRegion(img, img.rect());   // re-entrant second request
+            } else {
+                secondSettled = true;
+            }
+        };
+        QObject::connect(&runner, &OcrRunner::finished, &runner,
+                         [&](const OcrDocument &) { onSettle(QString()); });
+        QObject::connect(&runner, &OcrRunner::failed, &runner,
+                         [&](const QString &m) { onSettle(m); });
+
+        runner.recognizeRegion(img, img.rect());
+        QTRY_VERIFY_WITH_TIMEOUT(firstSettled, 15000);
+        if (!firstFail.isEmpty())
+            QSKIP(qPrintable("tesseract unavailable / language missing: " + firstFail));
+        // Before the fix, the re-entrant second request was torn down and never settled.
+        QTRY_VERIFY_WITH_TIMEOUT(secondSettled, 15000);
     }
 };
 

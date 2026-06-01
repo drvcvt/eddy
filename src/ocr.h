@@ -89,6 +89,9 @@ signals:
 
 private:
     void cleanup();
+    void reportFinished(const OcrDocument &doc);  // emits finished() at most once per request
+    void reportFailed(const QString &message);    // emits failed() at most once per request
+    bool m_settled = false;
     QProcess *m_proc = nullptr;
     QString m_tmpPath;
     int m_scale = 1;
