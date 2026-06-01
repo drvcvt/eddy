@@ -24,6 +24,7 @@ add_library(eddy_core STATIC
     src/editorwindow.cpp
     src/exporter.cpp
     src/imageio.cpp
+    src/ocr.cpp
     src/undocommands.cpp
     src/toolcontroller.cpp
     src/toolbar.cpp
@@ -62,6 +63,7 @@ eddy_test(test_config)
 eddy_test(test_exporter)
 eddy_test(test_imageio)
 eddy_test(test_items)
+eddy_test(test_ocr)
 eddy_test(test_raster)
 eddy_test(test_toolcontroller)
 eddy_test(test_compositor)
