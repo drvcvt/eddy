@@ -14,6 +14,8 @@ struct Config {
     bool earlyExit = false;
     bool copyOnSave = true;
     bool animations = true;
+    QString ocrLang = "deu";         // only deu/afr/osd tessdata installed locally; eng absent
+    int ocrPsm = 6;
 };
 
 // Loads from `path` (INI). If path is empty, uses the default location

@@ -60,6 +60,17 @@ private slots:
         applyCli(c, cli);
         QVERIFY(!c.animations);
     }
+    void ocrDefaultsAndIniOverride() {
+        Config d = loadConfig("/nonexistent/eddy/config");
+        QCOMPARE(d.ocrLang, QString("deu"));
+        QCOMPARE(d.ocrPsm, 6);
+        QTemporaryFile f; QVERIFY(f.open());
+        { QTextStream ts(&f); ts << "[eddy]\nocr_lang=deu+eng\nocr_psm=11\n"; }
+        f.flush();
+        Config c = loadConfig(f.fileName());
+        QCOMPARE(c.ocrLang, QString("deu+eng"));
+        QCOMPARE(c.ocrPsm, 11);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestConfig)

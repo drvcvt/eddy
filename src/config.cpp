@@ -25,6 +25,8 @@ Config loadConfig(const QString &path) {
     c.earlyExit   = s.value("early_exit", c.earlyExit).toBool();
     c.copyOnSave  = s.value("copy_on_save", c.copyOnSave).toBool();
     c.animations  = s.value("animations", c.animations).toBool();
+    c.ocrLang     = s.value("ocr_lang", c.ocrLang).toString();
+    c.ocrPsm      = s.value("ocr_psm", c.ocrPsm).toInt();
     if (s.contains("stroke_color"))
         c.strokeColor = QColor(s.value("stroke_color").toString());
     s.endGroup();
