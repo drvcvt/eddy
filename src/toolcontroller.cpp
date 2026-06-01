@@ -6,7 +6,6 @@
 #include "items/highlightitem.h"
 #include "items/redactitem.h"
 #include "items/penpathitem.h"
-#include "items/rasteritem.h"
 #include "items/textitem.h"
 #include <QGraphicsScene>
 #include <QUndoStack>
@@ -23,8 +22,7 @@ ToolType toolFromName(const QString &name) {
     if (n=="ellipse"||n=="circle") return ToolType::Ellipse;
     if (n=="highlight") return ToolType::Highlight;
     if (n=="text") return ToolType::Text;
-    if (n=="blur") return ToolType::Blur;
-    if (n=="pixelate") return ToolType::Pixelate;
+    if (n=="blur"||n=="pixelate") return ToolType::Redact;   // legacy aliases -> unified redact
     if (n=="redact") return ToolType::Redact;
     return ToolType::Arrow;
 }
@@ -66,21 +64,17 @@ template <class T> static void style(T *it, const QColor &c, double w) {
 void ToolController::begin(const QPointF &p) {
     if (m_active) { m_scene->removeItem(m_active); delete m_active; m_active = nullptr; }
     m_start = p; m_active = nullptr;
-    bool isRaster = false;
     switch (m_tool) {
         case ToolType::Arrow: { auto *a = new ArrowItem(p,p); style(a,m_color,m_width); m_active=a; break; }
         case ToolType::Rect: { auto *r = new RectItem(QRectF(p,p)); style(r,m_color,m_width); m_active=r; break; }
         case ToolType::Ellipse: { auto *e = new EllipseItem(QRectF(p,p)); style(e,m_color,m_width); m_active=e; break; }
         case ToolType::Highlight: { auto *h = new HighlightItem(QRectF(p,p)); m_active=h; break; }
-        case ToolType::Redact: { auto *r = new RedactItem(RedactMode::Blacken, m_bg, QRectF(p,p)); m_active=r; break; }
+        case ToolType::Redact: { auto *r = new RedactItem(RedactMode::Blur, m_bg, QRectF(p,p)); m_active=r; break; }
         case ToolType::Pen: { auto *pp = new PenPathItem(p); style(pp,m_color,m_width); m_active=pp; break; }
-        case ToolType::Blur: { auto *b = new RedactItem(RedactMode::Blur, m_bg, QRectF(p,p)); m_active=b; break; }
-        case ToolType::Pixelate: { auto *b = new RasterItem(RasterItem::Pixelate, m_bg, QRectF(p,p)); m_active=b; isRaster=true; break; }
         default: break; // Move/Text handled elsewhere
     }
     if (m_active) {
-        if (!isRaster)
-            m_active->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        m_active->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
         m_scene->addItem(m_active); // live preview; committed in finish()
     }
 }
@@ -93,7 +87,6 @@ void ToolController::update(const QPointF &p) {
     else if (auto *h = dynamic_cast<HighlightItem*>(m_active)) h->setRect(QRectF(m_start,p));
     else if (auto *rd = dynamic_cast<RedactItem*>(m_active)) rd->setRect(QRectF(m_start,p));
     else if (auto *pp = dynamic_cast<PenPathItem*>(m_active)) pp->addPoint(p);
-    else if (auto *ra = dynamic_cast<RasterItem*>(m_active)) ra->setRegion(QRectF(m_start,p));
 }
 
 void ToolController::finish(const QPointF &p) {

@@ -7,7 +7,7 @@
 class QGraphicsScene; class QUndoStack; class QGraphicsItem; class QVariantAnimation;
 namespace eddy {
 
-enum class ToolType { Move, Arrow, Pen, Rect, Ellipse, Highlight, Text, Blur, Pixelate, Redact };
+enum class ToolType { Move, Arrow, Pen, Rect, Ellipse, Highlight, Text, Redact };
 
 ToolType toolFromName(const QString &name);
 

@@ -14,21 +14,6 @@ static QImage checker(int w, int h) {
 class TestRaster : public QObject {
     Q_OBJECT
 private slots:
-    void blurReducesLocalVariance() {
-        QImage src = checker(40,40);
-        QImage out = boxBlur(src, 5);
-        QCOMPARE(out.size(), src.size());
-        // center pixel of a blurred checker tends toward mid-gray
-        QColor c = out.pixelColor(20,20);
-        QVERIFY(c.red() > 40 && c.red() < 215);
-    }
-    void pixelateMakesBlocksUniform() {
-        QImage src = checker(40,40);
-        QImage out = pixelate(src, 8);
-        // within one 8px block, all pixels equal
-        QColor a = out.pixelColor(0,0), b = out.pixelColor(7,7);
-        QCOMPARE(a, b);
-    }
     void redactBlurObscuresSharpDetail() {
         QImage src = checker(48, 48);
         QImage out = redactBlur(src);
