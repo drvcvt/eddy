@@ -13,6 +13,7 @@ public slots:
     void syncTool(ToolType t);            // reflect external (keyboard) tool change
     void setUndoEnabled(bool on);
     void setRedoEnabled(bool on);
+    void setSwatchColor(const QColor &c); // tint the colour-swatch dot to the current stroke colour
 signals:
     void toolChosen(ToolType t);
     void colorChosen(const QColor &c);
@@ -33,5 +34,6 @@ private:
     bool m_anim = true;
     QToolButton *m_undoBtn = nullptr;
     QToolButton *m_redoBtn = nullptr;
+    QToolButton *m_swatch = nullptr;
 };
 }

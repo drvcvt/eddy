@@ -101,10 +101,14 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     color->setObjectName("Swatch");
     color->setText(QString::fromUtf8("\xE2\x97\x8F"));   // round swatch
     color->setToolTip("Stroke colour");
+    m_swatch = color;
     connect(color, &QToolButton::clicked, this, [this, color]{
         auto *pop = new ColorPopover(this);
         pop->setAttribute(Qt::WA_DeleteOnClose);   // don't accumulate popovers on repeated opens
-        connect(pop, &ColorPopover::picked, this, [this](const QColor &c){ emit colorChosen(c); });
+        connect(pop, &ColorPopover::picked, this, [this](const QColor &c){
+            setSwatchColor(c);                     // tint the dot to the chosen colour
+            emit colorChosen(c);
+        });
         pop->adjustSize();
         pop->move(color->mapToGlobal(QPoint(0, color->height() + 4)));
         pop->show();
@@ -163,5 +167,12 @@ void Toolbar::resizeEvent(QResizeEvent *e) {
 
 void Toolbar::setUndoEnabled(bool on) { if (m_undoBtn) m_undoBtn->setEnabled(on); }
 void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on); }
+
+// The swatch dot's colour is hard-coded in the QSS; override it per-widget so it
+// always shows the current stroke colour (QSS still supplies hover/size).
+void Toolbar::setSwatchColor(const QColor &c) {
+    if (m_swatch)
+        m_swatch->setStyleSheet(QStringLiteral("color:%1; font-size:16px;").arg(c.name()));
+}
 
 }
