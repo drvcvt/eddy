@@ -53,6 +53,17 @@ QImage pixelate(const QImage &srcIn, int block) {
     return dst;
 }
 
+QImage redactBlur(const QImage &src) {
+    if (src.isNull()) return src;
+    const QImage in = src.convertToFormat(QImage::Format_ARGB32);
+    const int w = in.width(), h = in.height();
+    const int dw = qMax(1, w / 12);
+    const int dh = qMax(1, h / 12);
+    // Downscale to ~8% then smooth-upscale back: fast and leaves no readable residue.
+    const QImage small = in.scaled(dw, dh, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    return small.scaled(w, h, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+}
+
 RasterItem::RasterItem(Mode mode, const QImage &source, const QRectF &region)
     : m_mode(mode), m_source(source), m_region(region.normalized()) { rebuildCache(); }
 
