@@ -30,6 +30,7 @@ The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no lette
 | ↶ / ↷ | Undo / Redo buttons (same as `Ctrl+Z` / `Ctrl+Shift+Z`) |
 | **S / M / L** | Line-width chooser: 2 px / 4 px / 8 px stroke |
 | Colour swatch | Opens a **colour popover** with preset swatches and a *Custom…* entry that opens the full colour dialog |
+| Shelf button | Sends the current edited image to the Boltsnap shelf as a new card |
 
 If the window is made very short, the toolbar **auto-hides** and reappears when the cursor moves to the top edge, keeping the image at full height.
 
@@ -45,7 +46,7 @@ With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
 | `Delete` / `Backspace` | Remove selected annotation (undoable) |
-| `Enter` | Save (copy to clipboard; also write file if `-o` / `--save-dir` is set) |
+| `Enter` | Save (send image to Boltsnap shelf by default; write file only with `-o` / `--save-dir`) |
 | `Ctrl+S` | Save |
 | `Ctrl+C` | Copy to clipboard |
 | `Esc` | Close |
@@ -80,7 +81,7 @@ swappy-compatible aliases (`-f`, `-o`, `--early-exit`) are supported, so replaci
 
 ### Default save behavior
 
-Pressing `Enter` copies the result to the clipboard. A file is written only when `-o FILE`, `-o -`, or `--save-dir` is given.
+Pressing `Enter` sends image edits to the Boltsnap shelf by default. If `copy_on_save` is enabled, the image is also copied to the clipboard; if the shelf is unavailable, Eddy falls back to clipboard copy. A file is written only when `-o FILE`, `-o -`, or `--save-dir` is given.
 
 ### Pipeline examples
 

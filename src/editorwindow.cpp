@@ -3,6 +3,7 @@
 #include "toolbar.h"
 #include "toolcontroller.h"
 #include "exporter.h"
+#include "boltsnapipc.h"
 #include "videoexporter.h"
 #include "selectionhandles.h"
 #include "undocommands.h"
@@ -46,6 +47,12 @@
 #include <limits>
 
 namespace eddy {
+
+bool imageSaveUsesShelfReturn(const CliOptions &cli) {
+    return !cli.output.toFile
+        && !cli.output.toStdout
+        && cli.output.saveDir.isEmpty();
+}
 
 namespace {
 
@@ -131,6 +138,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_toolbar, &Toolbar::colorChosen, m_tools, &ToolController::setColor);
     connect(m_toolbar, &Toolbar::saveRequested, this, &EditorWindow::save);
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
+    connect(m_toolbar, &Toolbar::sendToShelfRequested, this, &EditorWindow::sendToShelf);
     connect(m_tools, &ToolController::toolChanged, m_toolbar, &Toolbar::syncTool);
     connect(m_toolbar, &Toolbar::widthChosen, m_tools, &ToolController::setWidth);
     connect(m_toolbar, &Toolbar::undoRequested, this, &EditorWindow::doUndo);
@@ -580,12 +588,33 @@ void EditorWindow::saveVideo() {
     if (m_cfg.earlyExit) close();
 }
 
+bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
+    const DeliverResult res = sendPngToBoltsnapShelf(encodePng(img), QStringLiteral("eddy"));
+    if (!res.ok) {
+        std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
+        if (m_toast)
+            m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
+        return false;
+    }
+    if (showSuccessToast && m_toast)
+        m_toast->showMessage(QStringLiteral("Sent to Boltsnap shelf"));
+    return true;
+}
+
 void EditorWindow::save() {
     if (isVideo()) { saveVideo(); return; }
     QImage img = exportComposite();
+    if (imageSaveUsesShelfReturn(m_cli)) {
+        const bool sent = postImageToShelf(img, true);
+        if (m_cfg.copyOnSave || !sent)
+            QApplication::clipboard()->setImage(img);
+        if (m_cfg.earlyExit) close();
+        return;
+    }
+
     // Write a file only when an explicit target was requested: -o FILE, -o -,
-    // or --save-dir DIR. The default (Enter) is clipboard-only — no file is
-    // dropped into ~/Pictures unless the user asked for it.
+    // or --save-dir DIR. The default image Save path returns the composite to
+    // Boltsnap's shelf above; no screenshot file is written unless requested.
     QString path;
     if (m_cli.output.toFile)            path = m_cli.output.filePath;
     else if (m_cli.output.toStdout)     path = QStringLiteral("-");
@@ -600,6 +629,15 @@ void EditorWindow::save() {
     if (m_cfg.copyOnSave || path.isEmpty())
         QApplication::clipboard()->setImage(img);   // always at least copy
     if (m_cfg.earlyExit) close();
+}
+
+void EditorWindow::sendToShelf() {
+    if (isVideo()) {
+        if (m_toast)
+            m_toast->showMessage(QStringLiteral("Shelf return supports images"));
+        return;
+    }
+    postImageToShelf(exportComposite(), true);
 }
 
 void EditorWindow::copy() {

@@ -75,6 +75,29 @@ private slots:
         QVERIFY(pill != nullptr);            // pill exists and is visible (not hidden like the bar/toast)
         QVERIFY(!pill->isHidden());
     }
+    void hasSendToShelfAction() {
+        QImage bg(64,48,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
+        Config cfg; CliOptions cli;
+        EditorWindow w(bg, cfg, cli);
+        auto *button = w.findChild<QToolButton *>(QStringLiteral("SendToShelf"));
+        QVERIFY(button != nullptr);
+        QVERIFY(!button->isHidden());
+    }
+    void imageSaveRoutingPrefersShelfOnlyWithoutExplicitOutput() {
+        CliOptions cli;
+        QVERIFY(imageSaveUsesShelfReturn(cli));
+
+        cli.output.toFile = true;
+        QVERIFY(!imageSaveUsesShelfReturn(cli));
+
+        cli.output.toFile = false;
+        cli.output.toStdout = true;
+        QVERIFY(!imageSaveUsesShelfReturn(cli));
+
+        cli.output.toStdout = false;
+        cli.output.saveDir = QStringLiteral("/tmp/eddy-test");
+        QVERIFY(!imageSaveUsesShelfReturn(cli));
+    }
     void videoDocumentBuildsPlaybackControlsAndTransparentOverlay() {
         MediaDocument doc;
         doc.kind = MediaKind::Video;

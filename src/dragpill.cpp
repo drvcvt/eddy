@@ -12,6 +12,8 @@
 #include <QImage>
 #include <QPixmap>
 #include <QColor>
+#include <QPainter>
+#include <QPainterPath>
 #include <QBuffer>
 #include <QByteArray>
 #include <QTemporaryFile>
@@ -112,6 +114,45 @@ QMimeData *makeImageDropMime(const QImage &img, QString *tempPathOut) {
     return mime;
 }
 
+QPixmap makeDragGhostPixmap(const QImage &preview, const QSize &maxSize) {
+    if (preview.isNull() || maxSize.isEmpty())
+        return {};
+
+    constexpr int kPad = 8;
+    const QSize contentMax(qMax(1, maxSize.width() - kPad * 2),
+                           qMax(1, maxSize.height() - kPad * 2));
+    const QImage scaled = preview.scaled(contentMax, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+        .convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QSize canvasSize(qMin(maxSize.width(), scaled.width() + kPad * 2),
+                           qMin(maxSize.height(), scaled.height() + kPad * 2));
+    QPixmap pix(canvasSize);
+    pix.fill(Qt::transparent);
+
+    QPainter p(&pix);
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    const QRectF card(kPad / 2.0, kPad / 2.0,
+                      canvasSize.width() - kPad, canvasSize.height() - kPad);
+    QPainterPath rounded;
+    rounded.addRoundedRect(card, 10, 10);
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(0, 0, 0, 70));
+    p.drawRoundedRect(card.translated(0, 2), 10, 10);
+    p.setBrush(QColor(24, 24, 24, 95));
+    p.drawRoundedRect(card, 10, 10);
+
+    p.save();
+    p.setClipPath(rounded);
+    p.setOpacity(0.72);
+    const QPointF imagePos(card.center().x() - scaled.width() / 2.0,
+                           card.center().y() - scaled.height() / 2.0);
+    p.drawImage(imagePos, scaled);
+    p.restore();
+    p.end();
+    return pix;
+}
+
 DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setObjectName("DragPill");
     setAttribute(Qt::WA_StyledBackground, true);
@@ -183,9 +224,11 @@ void DragPill::startDrag() {
     if (!m_lastTempPath.isEmpty()) QFile::remove(m_lastTempPath);   // keep at most one temp file
     m_lastTempPath = removeAfterUse ? path : QString();
 
+    const QPixmap ghost = preview.isNull() ? QPixmap() : makeDragGhostPixmap(preview);
+
     setCursor(Qt::ClosedHandCursor);
     if (!path.isEmpty() && !concreteMimeType.isEmpty()
-        && startWaylandFileDrag(this, path, {concreteMimeType, QStringLiteral("text/uri-list")})) {
+        && startWaylandFileDrag(this, path, {concreteMimeType, QStringLiteral("text/uri-list")}, ghost)) {
         delete mime;
         setCursor(Qt::OpenHandCursor);
         return;
@@ -198,9 +241,9 @@ void DragPill::startDrag() {
     }
     auto *drag = new QDrag(this);
     drag->setMimeData(mime);                                       // QDrag takes ownership
-    if (!preview.isNull()) {
-        drag->setPixmap(QPixmap::fromImage(
-            preview.scaled(180, 180, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    if (!ghost.isNull()) {
+        drag->setPixmap(ghost);
+        drag->setHotSpot(QPoint(qMin(24, ghost.width() / 3), qMin(24, ghost.height() / 3)));
     }
     const Qt::DropAction result = drag->exec(Qt::CopyAction);
     if (result == Qt::IgnoreAction && clipboardFallbackImage)   // dropped on nothing: don't waste it

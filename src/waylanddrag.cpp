@@ -6,6 +6,8 @@
 #include <QUrl>
 #include <QWidget>
 #include <QWindow>
+#include <QPixmap>
+#include <QImage>
 
 #if defined(EDDY_HAVE_WAYLAND_CLIENT) && QT_CONFIG(wayland)
 #include <QtGui/qguiapplication_platform.h>
@@ -14,6 +16,8 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
 #endif
@@ -70,12 +74,17 @@ void sendFilePayload(QString path, QByteArray mime, int fd) {
 struct RegistryState {
     wl_data_device_manager *manager = nullptr;
     uint32_t managerVersion = 0;
+    wl_compositor *compositor = nullptr;
+    uint32_t compositorVersion = 0;
+    wl_shm *shm = nullptr;
 };
 
-struct CachedManager {
+struct CachedGlobals {
     wl_display *display = nullptr;
     wl_data_device_manager *manager = nullptr;
     uint32_t version = 0;
+    wl_compositor *compositor = nullptr;
+    wl_shm *shm = nullptr;
 };
 
 void registryGlobal(void *data, wl_registry *registry, uint32_t name,
@@ -85,6 +94,13 @@ void registryGlobal(void *data, wl_registry *registry, uint32_t name,
         state->managerVersion = std::min<uint32_t>(version, 3);
         state->manager = static_cast<wl_data_device_manager *>(
             wl_registry_bind(registry, name, &wl_data_device_manager_interface, state->managerVersion));
+    } else if (std::strcmp(interface, wl_compositor_interface.name) == 0 && !state->compositor) {
+        state->compositorVersion = std::min<uint32_t>(version, 4);
+        state->compositor = static_cast<wl_compositor *>(
+            wl_registry_bind(registry, name, &wl_compositor_interface, state->compositorVersion));
+    } else if (std::strcmp(interface, wl_shm_interface.name) == 0 && !state->shm) {
+        state->shm = static_cast<wl_shm *>(
+            wl_registry_bind(registry, name, &wl_shm_interface, 1));
     }
 }
 
@@ -99,6 +115,13 @@ struct NativeDrag {
     QString path;
     wl_data_source *source = nullptr;
     wl_data_device *device = nullptr;
+    wl_surface *icon = nullptr;
+    wl_buffer *iconBuffer = nullptr;
+    void *iconData = nullptr;
+    qsizetype iconDataSize = 0;
+    int iconFd = -1;
+    int iconWidth = 0;
+    int iconHeight = 0;
 };
 
 void destroyDrag(NativeDrag *drag) {
@@ -108,6 +131,14 @@ void destroyDrag(NativeDrag *drag) {
         wl_data_source_destroy(drag->source);
     if (drag->device)
         wl_data_device_destroy(drag->device);
+    if (drag->iconBuffer)
+        wl_buffer_destroy(drag->iconBuffer);
+    if (drag->icon)
+        wl_surface_destroy(drag->icon);
+    if (drag->iconData && drag->iconDataSize > 0)
+        ::munmap(drag->iconData, size_t(drag->iconDataSize));
+    if (drag->iconFd >= 0)
+        ::close(drag->iconFd);
     delete drag;
 }
 
@@ -159,21 +190,23 @@ wl_surface *windowSurface(QWidget *origin) {
     return nullptr;
 }
 
-CachedManager &cachedManager() {
-    static CachedManager cache;
+CachedGlobals &cachedGlobals() {
+    static CachedGlobals cache;
     return cache;
 }
 
-wl_data_device_manager *dataDeviceManagerFor(wl_display *display, uint32_t *versionOut) {
-    auto &cache = cachedManager();
+CachedGlobals *globalsFor(wl_display *display) {
+    auto &cache = cachedGlobals();
     if (cache.display == display && cache.manager) {
-        if (versionOut)
-            *versionOut = cache.version;
-        return cache.manager;
+        return &cache;
     }
 
     if (cache.manager) {
         wl_data_device_manager_destroy(cache.manager);
+        if (cache.compositor)
+            wl_compositor_destroy(cache.compositor);
+        if (cache.shm)
+            wl_shm_destroy(cache.shm);
         cache = {};
     }
 
@@ -190,15 +223,93 @@ wl_data_device_manager *dataDeviceManagerFor(wl_display *display, uint32_t *vers
     cache.display = display;
     cache.manager = registryState.manager;
     cache.version = registryState.managerVersion;
-    if (versionOut)
-        *versionOut = cache.version;
-    return cache.manager;
+    cache.compositor = registryState.compositor;
+    cache.shm = registryState.shm;
+    return &cache;
+}
+
+int createAnonymousFile(qsizetype size) {
+    const int fd = ::memfd_create("eddy-drag-icon", MFD_CLOEXEC);
+    if (fd < 0)
+        return -1;
+    if (::ftruncate(fd, off_t(size)) != 0) {
+        ::close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+void prepareDragIcon(NativeDrag *drag, wl_compositor *compositor, wl_shm *shm, const QPixmap &ghost) {
+    if (!drag || !compositor || !shm || ghost.isNull())
+        return;
+
+    QImage img = ghost.toImage().convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    if (img.isNull())
+        return;
+
+    const int width = img.width();
+    const int height = img.height();
+    const int stride = width * 4;
+    const qsizetype size = qsizetype(stride) * height;
+    const int fd = createAnonymousFile(size);
+    if (fd < 0)
+        return;
+
+    void *data = ::mmap(nullptr, size_t(size), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (data == MAP_FAILED) {
+        ::close(fd);
+        return;
+    }
+
+    auto *pool = wl_shm_create_pool(shm, fd, int(size));
+    if (!pool) {
+        ::munmap(data, size_t(size));
+        ::close(fd);
+        return;
+    }
+
+    auto *buffer = wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    if (!buffer) {
+        ::munmap(data, size_t(size));
+        ::close(fd);
+        return;
+    }
+
+    auto *surface = wl_compositor_create_surface(compositor);
+    if (!surface) {
+        wl_buffer_destroy(buffer);
+        ::munmap(data, size_t(size));
+        ::close(fd);
+        return;
+    }
+
+    auto *dst = static_cast<uchar *>(data);
+    for (int y = 0; y < height; ++y)
+        std::memcpy(dst + y * stride, img.constScanLine(y), size_t(stride));
+
+    drag->icon = surface;
+    drag->iconBuffer = buffer;
+    drag->iconData = data;
+    drag->iconDataSize = size;
+    drag->iconFd = fd;
+    drag->iconWidth = width;
+    drag->iconHeight = height;
+}
+
+void commitDragIcon(NativeDrag *drag) {
+    if (!drag || !drag->icon || !drag->iconBuffer)
+        return;
+    wl_surface_attach(drag->icon, drag->iconBuffer, 0, 0);
+    wl_surface_damage(drag->icon, 0, 0, drag->iconWidth, drag->iconHeight);
+    wl_surface_commit(drag->icon);
 }
 
 } // namespace
 #endif
 
-bool startWaylandFileDrag(QWidget *origin, const QString &path, const QStringList &mimeTypes) {
+bool startWaylandFileDrag(QWidget *origin, const QString &path, const QStringList &mimeTypes,
+                          const QPixmap &ghost) {
 #if defined(EDDY_HAVE_WAYLAND_CLIENT) && QT_CONFIG(wayland)
     if (path.isEmpty() || mimeTypes.isEmpty())
         return false;
@@ -217,34 +328,36 @@ bool startWaylandFileDrag(QWidget *origin, const QString &path, const QStringLis
     if (!display || !seat || !originSurface || serial == 0)
         return false;
 
-    uint32_t managerVersion = 0;
-    wl_data_device_manager *manager = dataDeviceManagerFor(display, &managerVersion);
-    if (!manager)
+    CachedGlobals *globals = globalsFor(display);
+    if (!globals || !globals->manager)
         return false;
 
     auto *drag = new NativeDrag;
     drag->path = canonicalOrAbsolute(path);
-    drag->source = wl_data_device_manager_create_data_source(manager);
-    drag->device = wl_data_device_manager_get_data_device(manager, seat);
+    drag->source = wl_data_device_manager_create_data_source(globals->manager);
+    drag->device = wl_data_device_manager_get_data_device(globals->manager, seat);
     if (!drag->source || !drag->device) {
         destroyDrag(drag);
         return false;
     }
+    prepareDragIcon(drag, globals->compositor, globals->shm, ghost);
 
     for (const QString &mime : mimeTypes) {
         if (!mime.isEmpty())
             wl_data_source_offer(drag->source, mime.toUtf8().constData());
     }
     wl_data_source_add_listener(drag->source, &sourceListener, drag);
-    if (managerVersion >= 3)
+    if (globals->version >= 3)
         wl_data_source_set_actions(drag->source, WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
-    wl_data_device_start_drag(drag->device, drag->source, originSurface, nullptr, serial);
+    wl_data_device_start_drag(drag->device, drag->source, originSurface, drag->icon, serial);
+    commitDragIcon(drag);
     wl_display_flush(display);
     return true;
 #else
     Q_UNUSED(origin);
     Q_UNUSED(path);
     Q_UNUSED(mimeTypes);
+    Q_UNUSED(ghost);
     return false;
 #endif
 }

@@ -61,6 +61,15 @@ private slots:
         QCOMPARE(spy.count(), 1);
         QCOMPARE(spy.at(0).at(0).toDouble(), 8.0);
     }
+    void sendToShelfButtonEmits() {
+        Toolbar tb;
+        QSignalSpy spy(&tb, &Toolbar::sendToShelfRequested);
+        auto *shelf = tb.findChild<QToolButton*>("SendToShelf");
+        QVERIFY(shelf);
+        QVERIFY(!shelf->icon().isNull());
+        shelf->click();
+        QCOMPARE(spy.count(), 1);
+    }
 };
 QTEST_MAIN(TestToolbar)
 #include "test_toolbar.moc"

@@ -34,7 +34,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     m_pill = new QWidget(this);
     m_pill->setObjectName("Pill");
     m_pill->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-    m_pill->setFixedSize(34, 34);
+    m_pill->resize(30, 30);   // initial only — movePillTo drives geometry (don't fix the size, or the inset can't shrink it)
     m_pill->hide();
     m_pillAnim = new QPropertyAnimation(m_pill, "geometry", this);
     m_pillAnim->setDuration(190);
@@ -142,6 +142,14 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
 
+    auto *shelf = mkBtn(false, false); shelf->setObjectName("SendToShelf");
+    shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
+                                     QColor(theme::kIconRest), QColor("#ffffff")));
+    shelf->setIconSize(QSize(20, 20));
+    shelf->setToolTip("Send to Boltsnap shelf");
+    connect(shelf, &QToolButton::clicked, this, [this]{ emit sendToShelfRequested(); });
+    lay->addWidget(shelf);
+
     syncTool(ToolType::Arrow);   // sensible default highlight (snaps on first show)
 }
 
@@ -155,7 +163,7 @@ void Toolbar::syncTool(ToolType t) {
 
 void Toolbar::movePillTo(QToolButton *b, bool animate) {
     if (!b) return;
-    const QRect target = b->geometry();
+    const QRect target = b->geometry().adjusted(2, 2, -2, -2);  // inset → contained squircle chip
     m_pill->show();
     m_pill->lower();                     // behind buttons, above the bar background
     if (animate) {

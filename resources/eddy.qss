@@ -6,31 +6,34 @@ QWidget#Toolbar {
     border: none;
     border-bottom: 1px solid #2a2a2a;
 }
+/* Selected-tool highlight: a soft squircle, boltsnap CARD_RADIUS=10 aesthetic.
+   Inset 2px from the 34px button (see Toolbar::movePillTo) so it reads as a
+   contained chip, not a full-cell box. */
 QWidget#Pill {
-    background-color: #cccccc;
-    border-radius: 7px;
+    background-color: #e6e6e6;
+    border-radius: 10px;
 }
 
 QToolButton {
     background-color: transparent;
     color: #a8a8a8;
     border: none;
-    border-radius: 7px;
+    border-radius: 10px;
     font-family: "Inter", "sans-serif";
     font-size: 12px;
     font-weight: 600;
 }
-QToolButton:hover  { background-color: rgba(255,255,255,0.06); color: #ffffff; }
+QToolButton:hover  { background-color: rgba(255,255,255,0.07); color: #ffffff; }
 /* Active state is the sliding pill, not a per-button background. */
 QToolButton:checked { background-color: transparent; }
 /* The width chooser has no pill, so its active size needs a visible marker. */
 QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:checked {
-    background-color: rgba(255,255,255,0.10); color: #ffffff;
+    background-color: rgba(255,255,255,0.11); color: #ffffff;
 }
 
 /* Swatch is a painted colour-disc icon (see Toolbar::setSwatchColor); the
    generic QToolButton:hover already covers its hover background. */
-QToolButton#Save, QToolButton#Copy {
+QToolButton#Save, QToolButton#Copy, QToolButton#SendToShelf {
     padding-left: 12px; padding-right: 12px;
 }
 
@@ -96,6 +99,8 @@ QWidget#Toast { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-rad
 QLabel#ToastText { color: #d0d0d0; font-family: "Inter","sans-serif"; font-size: 12px; }
 
 QWidget#Footer { background-color: #121212; }
-QWidget#DragPill { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 13px; }
-QWidget#DragPill:hover { background-color: #222222; }
+/* Drag-out pill: same surface/border language as the toolbar chips, fully
+   rounded ends so it stays a pill at its 32px height. */
+QWidget#DragPill { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; }
+QWidget#DragPill:hover { background-color: #222222; border-color: #3a3a3a; }
 QLabel#DragPillText { color: #d0d0d0; font-family: "Inter","sans-serif"; font-size: 12px; font-weight: 600; }

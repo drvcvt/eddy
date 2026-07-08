@@ -12,6 +12,7 @@
     <file>icons/redact.svg</file>
     <file>icons/save.svg</file>
     <file>icons/copy.svg</file>
+    <file>icons/shelf.svg</file>
     <file>icons/dragout.svg</file>
     <file>icons/eyedropper.svg</file>
   </qresource>

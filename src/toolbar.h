@@ -19,6 +19,7 @@ signals:
     void colorChosen(const QColor &c);
     void saveRequested();
     void copyRequested();
+    void sendToShelfRequested();
     void widthChosen(double w);
     void undoRequested();
     void redoRequested();

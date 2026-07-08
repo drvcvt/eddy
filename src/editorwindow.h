@@ -14,6 +14,9 @@ class Canvas; class Toolbar; class ToolController; class SelectionHandles;
 class RedactBar; class Toast; class RedactOcrController; class RedactItem;
 class DragPill;
 enum class RedactMode;
+
+bool imageSaveUsesShelfReturn(const CliOptions &cli);
+
 class EditorWindow : public QWidget {
     Q_OBJECT
 public:
@@ -23,6 +26,7 @@ public:
 public slots:
     void save();   // to file/save-dir per cli/config
     void copy();   // to clipboard
+    void sendToShelf();
 protected:
     void keyPressEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
@@ -45,6 +49,7 @@ private:
     QString createVideoTempPath() const;
     DeliverResult exportVideoToFile(const QString &path);
     void copyVideoFile(const QString &path);
+    bool postImageToShelf(const QImage &img, bool showSuccessToast);
     void saveVideo();
     void ensureVideoPlayer();
     void scheduleVideoLoad();

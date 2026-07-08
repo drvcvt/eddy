@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QLabel>
+#include <QPixmap>
 #include "dragpill.h"
 
 using namespace eddy;
@@ -79,6 +80,21 @@ private slots:
         DragPill pill;
         QVERIFY(pill.findChild<QLabel *>() != nullptr);
         QCOMPARE(pill.objectName(), QString("DragPill"));
+    }
+    void ghostPixmapIsTranslucentAndBounded() {
+        QImage img(320, 180, QImage::Format_ARGB32);
+        img.fill(QColor(10, 120, 240));
+
+        const QPixmap ghost = makeDragGhostPixmap(img, QSize(180, 180));
+        QVERIFY(!ghost.isNull());
+        QVERIFY(ghost.width() <= 180);
+        QVERIFY(ghost.height() <= 180);
+
+        const QImage rendered = ghost.toImage().convertToFormat(QImage::Format_ARGB32);
+        QVERIFY(rendered.pixelColor(0, 0).alpha() < 20);
+        const QColor center = rendered.pixelColor(rendered.width() / 2, rendered.height() / 2);
+        QVERIFY(center.alpha() > 80);
+        QVERIFY(center.alpha() < 255);
     }
 };
 

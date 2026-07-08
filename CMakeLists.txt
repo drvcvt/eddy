@@ -31,6 +31,7 @@ add_library(eddy_core STATIC
     src/compositor.cpp
     src/config.cpp
     src/theme.cpp
+    src/boltsnapipc.cpp
     src/editorwindow.cpp
     src/exporter.cpp
     src/imageio.cpp
@@ -84,6 +85,7 @@ eddy_test(test_cli)
 eddy_test(test_config)
 eddy_test(test_mediaio)
 eddy_test(test_exporter)
+eddy_test(test_boltsnapipc)
 eddy_test(test_videoexporter)
 eddy_test(test_imageio)
 eddy_test(test_items)

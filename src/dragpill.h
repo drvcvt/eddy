@@ -2,6 +2,8 @@
 #include <QWidget>
 #include <QString>
 #include <QImage>
+#include <QPixmap>
+#include <QSize>
 #include <functional>
 
 class QMimeData;
@@ -30,6 +32,8 @@ QMimeData *makeFileDropMime(const QString &path, const QString &mimeType);
 // PNG file URL (text/uri-list). Writes the temp file; on success sets *tempPathOut
 // to its path. The returned QMimeData is owned by the caller (QDrag takes it over).
 QMimeData *makeImageDropMime(const QImage &img, QString *tempPathOut = nullptr);
+
+QPixmap makeDragGhostPixmap(const QImage &preview, const QSize &maxSize = QSize(180, 180));
 
 // A bottom-of-canvas handle: press and drag it into another window to drop the
 // current composite. The image is fetched from an injected provider at drag time.
