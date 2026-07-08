@@ -3,3 +3,8 @@
 *.user
 /result
 .superpowers/
+.claude/
+# internal agent/dev artifacts — not for the public repo
+/docs/handoffs/
+/docs/superpowers/
+OCR_CHANGES.md
