@@ -5,10 +5,14 @@
 #include "exporter.h"
 #include "boltsnapipc.h"
 #include "videoexporter.h"
+#include "videotimeline.h"
 #include "selectionhandles.h"
 #include "undocommands.h"
 #include "items/textitem.h"
 #include "redactbar.h"
+#include "textbar.h"
+#include "spotlightbar.h"
+#include "items/spotlightitem.h"
 #include "toast.h"
 #include "dragpill.h"
 #include "redactocrcontroller.h"
@@ -18,6 +22,7 @@
 #include <cstdio>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsVideoItem>
+#include <QAudioOutput>
 #include <QMediaPlayer>
 #include <QUndoStack>
 #include <QVBoxLayout>
@@ -44,14 +49,20 @@
 #include <QTimer>
 #include <QThread>
 #include <QPointer>
+#include <QScreen>
+#include <QSettings>
 #include <limits>
 
 namespace eddy {
 
-bool imageSaveUsesShelfReturn(const CliOptions &cli) {
-    return !cli.output.toFile
-        && !cli.output.toStdout
-        && cli.output.saveDir.isEmpty();
+SaveRoute saveRoute(const CliOptions &cli, const Config &cfg) {
+    if (cli.output.toFile || cli.output.toStdout || !cli.output.saveDir.isEmpty())
+        return SaveRoute::ExplicitOutput;
+    if (cli.boltsnapCardId)
+        return SaveRoute::BoltsnapCard;
+    if (!cfg.saveDir.isEmpty())
+        return SaveRoute::ConfigDirectory;
+    return SaveRoute::Shelf;
 }
 
 namespace {
@@ -89,10 +100,52 @@ QString formatTime(qint64 ms) {
         .arg(s, 2, 10, QLatin1Char('0'));
 }
 
+QString formatPreciseTime(qint64 ms) {
+    ms = qMax<qint64>(0, ms);
+    const qint64 totalSeconds = ms / 1000;
+    const qint64 h = totalSeconds / 3600;
+    const qint64 m = (totalSeconds % 3600) / 60;
+    const qint64 s = totalSeconds % 60;
+    const qint64 millis = ms % 1000;
+    if (h > 0)
+        return QStringLiteral("%1:%2:%3.%4").arg(h).arg(m, 2, 10, QLatin1Char('0'))
+            .arg(s, 2, 10, QLatin1Char('0')).arg(millis, 3, 10, QLatin1Char('0'));
+    return QStringLiteral("%1:%2.%3").arg(m).arg(s, 2, 10, QLatin1Char('0'))
+        .arg(millis, 3, 10, QLatin1Char('0'));
+}
+
+QPoint contextBarPosition(const QRect &item, const QSize &bar, const QSize &viewport) {
+    constexpr int margin = 4;
+    constexpr int gap = 8;
+    const int maxX = qMax(margin, viewport.width() - bar.width() - margin);
+    const int maxY = qMax(margin, viewport.height() - bar.height() - margin);
+    const int x = qBound(margin, item.center().x() - bar.width() / 2, maxX);
+    const int above = item.top() - bar.height() - gap;
+    const int below = item.bottom() + 1 + gap;
+    if (above >= margin) return {x, above};
+    if (below <= maxY) return {x, below};
+
+    const int topY = qBound(margin, above, maxY);
+    const int bottomY = qBound(margin, below, maxY);
+    const auto overlap = [&](int y) {
+        const QRect covered(QPoint(x, y), bar);
+        const QRect intersection = covered.intersected(item);
+        return intersection.width() * intersection.height();
+    };
+    return {x, overlap(bottomY) <= overlap(topY) ? bottomY : topY};
+}
+
 }
 
 EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : EditorWindow(imageDocument(image), cfg, cli, parent) {}
+
+EditorWindow::~EditorWindow() {
+    QObject::disconnect(m_scene, nullptr, this, nullptr);
+    QObject::disconnect(m_undo, nullptr, this, nullptr);
+    if (!m_cachedVideoPath.isEmpty() && !m_handedOffVideoPaths.contains(m_cachedVideoPath))
+        QFile::remove(m_cachedVideoPath);
+}
 
 EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : QWidget(parent), m_media(media), m_bg(toolBackgroundFor(media)), m_cfg(cfg), m_cli(cli) {
@@ -123,9 +176,12 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_tools->setTool(toolFromName(cfg.defaultTool));
     m_tools->setColor(cfg.strokeColor);
     m_tools->setWidth(cfg.lineWidth);
+    m_tools->setTextFont(cfg.textFont);
 
     m_canvas = new Canvas(m_scene, m_tools, this);
     m_toolbar = new Toolbar(this);
+    m_dark = QApplication::palette().color(QPalette::Window).lightness() < 128;
+    if (isVideo()) m_trimOutMs = m_media.video.durationMs;
 
     auto *lay = new QVBoxLayout(this);
     lay->setContentsMargins(0, 0, 0, 0); lay->setSpacing(0);
@@ -135,7 +191,10 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         lay->addWidget(createPlaybackBar());
 
     connect(m_toolbar, &Toolbar::toolChosen, m_tools, &ToolController::setTool);
-    connect(m_toolbar, &Toolbar::colorChosen, m_tools, &ToolController::setColor);
+    connect(m_toolbar, &Toolbar::colorChosen, this, [this](const QColor &color){
+        m_tools->setColor(color);
+        updateSelectedText([color](TextItem *text){ text->setAnnotationColor(color); });
+    });
     connect(m_toolbar, &Toolbar::saveRequested, this, &EditorWindow::save);
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
     connect(m_toolbar, &Toolbar::sendToShelfRequested, this, &EditorWindow::sendToShelf);
@@ -149,6 +208,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_canvas->startEyedropper();
         if (m_toast) m_toast->showMessage(QStringLiteral("Click to pick a colour \xC2\xB7 Esc to cancel"));
     });
+    connect(m_toolbar, &Toolbar::themeToggleRequested, this, &EditorWindow::toggleTheme);
     connect(m_canvas, &Canvas::colorPicked, this, [this](const QColor &c){
         m_tools->setColor(c);
         m_toolbar->setSwatchColor(c);
@@ -164,19 +224,46 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_ocr = new RedactOcrController(m_bg, {m_cfg.ocrLang, m_cfg.ocrPsm}, this);
     m_redactBar = new RedactBar(m_canvas->viewport());
     m_redactBar->hide();
+    m_textBar = new TextBar(m_canvas->viewport());
+    m_textBar->hide();
+    m_spotlightBar = new SpotlightBar(m_canvas->viewport());
+    m_spotlightBar->hide();
     m_toast = new Toast(this);
 
     connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshRedactBar);
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshTextBar);
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshSpotlightBar);
+    connect(m_spotlightBar, &SpotlightBar::shapeChosen, this, [this](SpotlightShape shape) {
+        if (auto *spot = selectedSpotlight(); spot && spot->spotlightShape() != shape)
+            m_undo->push(new SetSpotlightStyleCommand(
+                spot, spot->spotlightShape(), spot->intensity(), shape, spot->intensity()));
+    });
+    connect(m_spotlightBar, &SpotlightBar::intensityChosen, this, [this](int level) {
+        if (auto *spot = selectedSpotlight(); spot && spot->intensity() != level)
+            m_undo->push(new SetSpotlightStyleCommand(
+                spot, spot->spotlightShape(), spot->intensity(), spot->spotlightShape(), level));
+    });
     connect(m_scene, &QGraphicsScene::changed, this, [this](const QList<QRectF> &){
         positionRedactBar();
-        if (!isVideo() || !hasVideoAnnotations() || m_renderingVideoOverlay)
-            return;
-        if (m_player && m_player->playbackState() == QMediaPlayer::PlayingState)
-            return;
-        onVideoContentChanged();
+        positionTextBar();
+        positionSpotlightBar();
     });
     connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionRedactBar);
+    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionTextBar);
+    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionSpotlightBar);
     connect(m_redactBar, &RedactBar::modeChosen, this, &EditorWindow::onRedactModeChosen);
+    connect(m_textBar, &TextBar::sizeChosen, this, [this](qreal size){
+        updateSelectedText([size](TextItem *text){ QFont f=text->font(); f.setPointSizeF(size); text->setFont(f); });
+    });
+    connect(m_textBar, &TextBar::boldChosen, this, [this](bool bold){
+        updateSelectedText([bold](TextItem *text){ QFont f=text->font(); f.setBold(bold); text->setFont(f); });
+    });
+    connect(m_textBar, &TextBar::alignmentChosen, this, [this](Qt::Alignment alignment){
+        updateSelectedText([alignment](TextItem *text){ text->setAlignment(alignment); });
+    });
+    connect(m_textBar, &TextBar::styleChosen, this, [this](TextLabelStyle style){
+        updateSelectedText([style](TextItem *text){ text->setLabelStyle(style); });
+    });
     connect(m_ocr, &RedactOcrController::noTextDetected, this,
             [this]{ m_toast->showMessage(QStringLiteral("No text detected")); });
     connect(m_ocr, &RedactOcrController::ocrFailed, this,
@@ -214,7 +301,6 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     fl->addStretch(1);
     lay->addWidget(footer);
     m_canvas->setAnimationsEnabled(cfg.animations);
-    m_toolbar->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);
     // Sync the toolbar to the configured default explicitly: the earlier
     // m_tools->setTool() ran before this connect existed (its toolChanged was
@@ -226,17 +312,15 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     // size to image, capped
     const int maxW = 1700, maxH = 1000;
     resize(qMin(native.width(), maxW), qMin(native.height()+40, maxH));
-    m_toolbar->adjustSize();
-    const int barW = m_toolbar->sizeHint().width();
     const int barH = m_toolbar->sizeHint().height();
-    setMinimumSize(qMax(barW, 360), barH + 120);   // bar never clipped; usable image strip
+    setMinimumSize(520, barH + 120);
 }
 
 void EditorWindow::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
     if (m_shown) return;
     m_shown = true;
-    if (isVideo()) scheduleVideoLoad();
+    if (isVideo()) { scheduleVideoLoad(); scheduleContactSheetLoad(); }
     if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
     auto *a = new QPropertyAnimation(this, "windowOpacity", this);
     a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
@@ -250,6 +334,7 @@ void EditorWindow::resizeEvent(QResizeEvent *e) {
 }
 
 void EditorWindow::updateCompactMode() {
+    m_toolbar->setCompact(width() < 760);
     const int barH = m_toolbar->sizeHint().height();
     const bool compact = height() < barH + 90;       // too short for strip + image
     if (compact == m_compact) return;
@@ -278,37 +363,146 @@ QWidget *EditorWindow::createPlaybackBar() {
     auto *bar = new QWidget(this);
     bar->setObjectName("PlaybackBar");
     bar->setAttribute(Qt::WA_StyledBackground, true);
-    auto *lay = new QHBoxLayout(bar);
-    lay->setContentsMargins(10, 5, 10, 5);
-    lay->setSpacing(8);
+    auto *lay = new QVBoxLayout(bar);
+    lay->setContentsMargins(10, 6, 10, 6);
+    lay->setSpacing(5);
+    auto *playback = new QHBoxLayout;
+    playback->setSpacing(8);
+    auto *trim = new QHBoxLayout;
+    trim->setSpacing(8);
 
     m_playButton = new QToolButton(bar);
-    m_playButton->setText(QString::fromUtf8("\xE2\x96\xB6")); // ▶
+    const QColor iconColor = palette().color(QPalette::ButtonText);
+    m_playButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/play.svg"), iconColor, iconColor));
     m_playButton->setObjectName("PlaybackPlay");
     m_playButton->setAutoRaise(true);
     m_playButton->setFocusPolicy(Qt::NoFocus);
     m_playButton->setCursor(Qt::PointingHandCursor);
-    m_playButton->setFixedSize(34, 28);
+    m_playButton->setFixedSize(28, 28);
     m_playButton->setToolTip(QStringLiteral("Play / Pause"));
-    m_positionSlider = new QSlider(Qt::Horizontal, bar);
-    m_positionSlider->setObjectName("PlaybackPosition");
-    m_positionSlider->setRange(
-        0,
-        int(qMin<qint64>(qMax<qint64>(0, m_media.video.durationMs), std::numeric_limits<int>::max())));
+    m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
 
-    lay->addWidget(m_playButton);
-    lay->addWidget(m_positionSlider, 1);
-    lay->addWidget(m_timeLabel);
+    m_muteButton = new QToolButton(bar);
+    m_muteButton->setObjectName("PlaybackMute");
+    m_muteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/volume.svg"), iconColor, iconColor));
+    m_muteButton->setAutoRaise(true);
+    m_muteButton->setFocusPolicy(Qt::NoFocus);
+    m_muteButton->setCursor(Qt::PointingHandCursor);
+    m_muteButton->setFixedSize(28, 28);
+    m_muteButton->setToolTip(QStringLiteral("Mute audio"));
+    m_muteButton->setAccessibleName(m_muteButton->toolTip());
+
+    m_volumeSlider = new QSlider(Qt::Horizontal, bar);
+    m_volumeSlider->setObjectName("PlaybackVolume");
+    m_volumeSlider->setRange(0, 100);
+    m_volumeSlider->setValue(100);
+    m_volumeSlider->setFixedWidth(72);
+    m_volumeSlider->setToolTip(QStringLiteral("Volume"));
+    m_volumeSlider->setAccessibleName(QStringLiteral("Volume"));
+
+    playback->addWidget(m_playButton);
+    playback->addWidget(m_timeLabel);
+    playback->addStretch(1);
+    playback->addWidget(m_muteButton);
+    playback->addWidget(m_volumeSlider);
+
+    auto *trimLabel = new QLabel(QStringLiteral("Trim"), bar);
+    trimLabel->setObjectName(QStringLiteral("TrimLabel"));
+    m_timeline = new VideoTimeline(bar);
+    m_timeline->setDuration(m_media.video.durationMs);
+    m_timeline->setMinimumRange(m_media.video.fps > 0.0
+        ? qMax<qint64>(1, qRound64(1000.0 / m_media.video.fps)) : 1);
+    m_timeline->setTrimRange(m_trimInMs, m_trimOutMs);
+    m_trimInLabel = new QLabel(formatPreciseTime(m_trimInMs), bar);
+    m_trimInLabel->setObjectName(QStringLiteral("TrimInTime"));
+    m_trimOutLabel = new QLabel(formatPreciseTime(m_trimOutMs), bar);
+    m_trimOutLabel->setObjectName(QStringLiteral("TrimOutTime"));
+    auto makeTrimButton = [bar](const QString &text, const QString &name) {
+        auto *button = new QToolButton(bar);
+        button->setText(text);
+        button->setObjectName(name);
+        button->setAutoRaise(true);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setFixedHeight(28);
+        return button;
+    };
+    auto *setIn = makeTrimButton(QStringLiteral("Set In"), QStringLiteral("TrimSetIn"));
+    auto *setOut = makeTrimButton(QStringLiteral("Set Out"), QStringLiteral("TrimSetOut"));
+    auto *reset = makeTrimButton({}, QStringLiteral("TrimReset"));
+    reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
+    reset->setFixedWidth(28);
+    setIn->setToolTip(QStringLiteral("Set trim start · I"));
+    setOut->setToolTip(QStringLiteral("Set trim end · O"));
+    reset->setToolTip(QStringLiteral("Use the complete clip"));
+    reset->setAccessibleName(reset->toolTip());
+
+    trim->addWidget(trimLabel);
+    trim->addWidget(m_trimInLabel);
+    trim->addWidget(m_timeline, 1);
+    trim->addWidget(m_trimOutLabel);
+    trim->addWidget(setIn);
+    trim->addWidget(setOut);
+    trim->addWidget(reset);
+    lay->addLayout(playback);
+    lay->addLayout(trim);
 
     connect(m_playButton, &QToolButton::clicked, this, [this]{
         ensureVideoPlayer();
         if (!m_player) return;
-        if (m_player->playbackState() == QMediaPlayer::PlayingState)
+        if (m_player->playbackState() == QMediaPlayer::PlayingState) {
             m_player->pause();
-        else
+        } else {
+            if (m_player->position() < m_trimInMs || m_player->position() >= m_trimOutMs)
+                m_player->setPosition(m_trimInMs);
             m_player->play();
+        }
+    });
+    connect(m_muteButton, &QToolButton::clicked, this, [this]{
+        ensureVideoPlayer();
+        if (!m_audioOutput) return;
+        const bool muted = !m_audioOutput->isMuted();
+        m_audioOutput->setMuted(muted);
+        m_muteButton->setIcon(theme::tintedIcon(
+            muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
+            palette().color(QPalette::ButtonText), palette().color(QPalette::ButtonText)));
+        m_muteButton->setToolTip(muted ? QStringLiteral("Unmute audio") : QStringLiteral("Mute audio"));
+        m_muteButton->setAccessibleName(m_muteButton->toolTip());
+    });
+    connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value){
+        ensureVideoPlayer();
+        if (!m_audioOutput) return;
+        m_audioOutput->setVolume(value / 100.0f);
+        if (value > 0 && m_audioOutput->isMuted()) {
+            m_audioOutput->setMuted(false);
+            const QColor color = palette().color(QPalette::ButtonText);
+            m_muteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/volume.svg"), color, color));
+            m_muteButton->setToolTip(QStringLiteral("Mute audio"));
+            m_muteButton->setAccessibleName(m_muteButton->toolTip());
+        }
+    });
+    connect(m_timeline, &VideoTimeline::seekRequested, this, [this](qint64 position){
+        ensureVideoPlayer();
+        if (m_player) m_player->setPosition(position);
+        m_timeline->setPosition(position);
+    });
+    connect(m_timeline, &VideoTimeline::trimCommitted,
+            this, &EditorWindow::applyTrimRange);
+    connect(m_timeline, &VideoTimeline::trimPreviewed,
+            this, &EditorWindow::updateTrimTimeLabels);
+    connect(setIn, &QToolButton::clicked, this, [this]{
+        m_timeline->setTrimRange(m_timeline->position(), m_timeline->trimOut());
+        applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
+    });
+    connect(setOut, &QToolButton::clicked, this, [this]{
+        m_timeline->setTrimRange(m_timeline->trimIn(), m_timeline->position());
+        applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
+    });
+    connect(reset, &QToolButton::clicked, this, [this]{
+        m_timeline->setTrimRange(0, m_timeline->duration());
+        applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
     });
     return bar;
 }
@@ -323,6 +517,25 @@ void EditorWindow::scheduleVideoLoad() {
         m_videoLoadQueued = false;
         ensureVideoPlayer();
     });
+}
+
+void EditorWindow::scheduleContactSheetLoad() {
+    if (!isVideo() || m_contactSheetQueued || !m_timeline || m_timeline->hasContactSheet()) return;
+    m_contactSheetQueued = true;
+    const QString path = m_media.path;
+    const qint64 duration = m_media.video.durationMs;
+    QPointer<EditorWindow> receiver(this);
+    auto *thread = QThread::create([receiver, path, duration] {
+        const ContactSheetResult result = generateVideoContactSheet(path, duration);
+        QMetaObject::invokeMethod(qApp, [receiver, result] {
+            if (!receiver) return;
+            receiver->m_contactSheetQueued = false;
+            if (result.ok && receiver->m_timeline)
+                receiver->m_timeline->setContactSheet(result.image, 8);
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
 }
 
 void EditorWindow::ensureVideoPlayer() {
@@ -340,29 +553,38 @@ void EditorWindow::ensureVideoPlayer() {
         m_backgroundItem = m_videoItem;
     }
     m_player = new QMediaPlayer(this);
+    m_audioOutput = new QAudioOutput(this);
+    m_audioOutput->setVolume(m_volumeSlider ? m_volumeSlider->value() / 100.0f : 1.0f);
+    m_player->setAudioOutput(m_audioOutput);
     m_player->setVideoOutput(m_videoItem);
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state){
-        if (m_playButton)
-            m_playButton->setText(state == QMediaPlayer::PlayingState
-                ? QString::fromUtf8("\xE2\x8F\xB8") : QString::fromUtf8("\xE2\x96\xB6")); // ⏸ / ▶
+        if (m_playButton) {
+            const QColor color = palette().color(QPalette::ButtonText);
+            m_playButton->setIcon(theme::tintedIcon(
+                state == QMediaPlayer::PlayingState
+                    ? QStringLiteral(":/icons/pause.svg") : QStringLiteral(":/icons/play.svg"),
+                color, color));
+        }
     });
     connect(m_player, &QMediaPlayer::durationChanged, this, [this](qint64 duration){
-        if (!m_positionSlider) return;
-        m_positionSlider->setRange(0, int(qMin<qint64>(duration, std::numeric_limits<int>::max())));
+        if (!m_timeline) return;
+        const bool usedFullRange = m_trimInMs == 0 && m_trimOutMs == m_timeline->duration();
+        m_timeline->setDuration(duration);
+        if (usedFullRange) {
+            m_timeline->setTrimRange(0, duration);
+            m_trimOutMs = duration;
+        }
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(m_player->position()) + QStringLiteral(" / ") + formatTime(duration));
     });
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos){
-        if (m_positionSlider && !m_positionSlider->isSliderDown())
-            m_positionSlider->setValue(int(qMin<qint64>(pos, std::numeric_limits<int>::max())));
+        if (m_timeline) m_timeline->setPosition(pos);
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(pos) + QStringLiteral(" / ") + formatTime(m_player->duration()));
-    });
-    connect(m_positionSlider, &QSlider::sliderMoved, this, [this](int value){
-        if (m_player) m_player->setPosition(value);
-    });
-    connect(m_positionSlider, &QSlider::sliderReleased, this, [this]{
-        if (m_player && m_positionSlider) m_player->setPosition(m_positionSlider->value());
+        if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
+            m_player->pause();
+            m_player->setPosition(m_trimOutMs);
+        }
     });
     m_player->setSource(QUrl::fromLocalFile(m_media.path));
 }
@@ -386,6 +608,69 @@ RedactItem *EditorWindow::selectedRedact() const {
     return dynamic_cast<RedactItem *>(sel.first());
 }
 
+TextItem *EditorWindow::selectedText() const {
+    const auto selected = m_scene->selectedItems();
+    return selected.size() == 1 ? dynamic_cast<TextItem *>(selected.first()) : nullptr;
+}
+
+void EditorWindow::refreshTextBar() {
+    TextItem *text = selectedText();
+    if (!text) { m_textBar->hide(); return; }
+    m_textBar->setState(text->state());
+    m_textBar->adjustSize();
+    m_textBar->show();
+    m_textBar->raise();
+    positionTextBar();
+}
+
+void EditorWindow::positionTextBar() {
+    if (m_textBar->isHidden()) return;
+    TextItem *text = selectedText();
+    if (!text) { m_textBar->hide(); return; }
+    const QRectF bounds = text->sceneBoundingRect();
+    const QRect item(m_canvas->mapFromScene(bounds.topLeft()),
+                     m_canvas->mapFromScene(bounds.bottomRight()));
+    m_textBar->move(contextBarPosition(item.normalized(), m_textBar->size(),
+                                       m_canvas->viewport()->size()));
+}
+
+void EditorWindow::updateSelectedText(const std::function<void(TextItem *)> &change) {
+    TextItem *text = selectedText();
+    if (!text) return;
+    const TextState before = text->state();
+    change(text);
+    const TextState after = text->state();
+    if (!(after == before) && m_tools->editingText() != text)
+        m_undo->push(new EditTextCommand(text, before, after));
+    refreshTextBar();
+}
+
+SpotlightItem *EditorWindow::selectedSpotlight() const {
+    const auto selected = m_scene->selectedItems();
+    return selected.size() == 1 ? dynamic_cast<SpotlightItem *>(selected.first()) : nullptr;
+}
+
+void EditorWindow::refreshSpotlightBar() {
+    SpotlightItem *spotlight = selectedSpotlight();
+    if (!spotlight) { m_spotlightBar->hide(); return; }
+    m_spotlightBar->setValues(spotlight->spotlightShape(), spotlight->intensity());
+    m_spotlightBar->adjustSize();
+    m_spotlightBar->show();
+    m_spotlightBar->raise();
+    positionSpotlightBar();
+}
+
+void EditorWindow::positionSpotlightBar() {
+    if (m_spotlightBar->isHidden()) return;
+    SpotlightItem *spotlight = selectedSpotlight();
+    if (!spotlight) { m_spotlightBar->hide(); return; }
+    const QRectF bounds = spotlight->mapRectToScene(spotlight->rect());
+    const QRect item(m_canvas->mapFromScene(bounds.topLeft()),
+                     m_canvas->mapFromScene(bounds.bottomRight()));
+    m_spotlightBar->move(contextBarPosition(item.normalized(), m_spotlightBar->size(),
+                                            m_canvas->viewport()->size()));
+}
+
 void EditorWindow::refreshRedactBar() {
     RedactItem *r = selectedRedact();
     if (!r) { m_redactBar->hide(); return; }
@@ -400,14 +685,11 @@ void EditorWindow::positionRedactBar() {
     if (m_redactBar->isHidden()) return;
     RedactItem *r = selectedRedact();
     if (!r) { m_redactBar->hide(); return; }
-    const QRectF rc = r->rect();
-    const QPoint topCenter = m_canvas->mapFromScene(QPointF(rc.center().x(), rc.top()));
-    const QSize vp = m_canvas->viewport()->size();
-    int x = topCenter.x() - m_redactBar->width() / 2;
-    int y = topCenter.y() - m_redactBar->height() - 8;
-    x = qBound(4, x, qMax(4, vp.width() - m_redactBar->width() - 4));
-    if (y < 4) y = topCenter.y() + 8;     // no room above -> just below the top edge
-    m_redactBar->move(x, y);
+    const QRectF bounds = r->mapRectToScene(r->rect());
+    const QRect item(m_canvas->mapFromScene(bounds.topLeft()),
+                     m_canvas->mapFromScene(bounds.bottomRight()));
+    m_redactBar->move(contextBarPosition(item.normalized(), m_redactBar->size(),
+                                         m_canvas->viewport()->size()));
 }
 
 
@@ -424,14 +706,50 @@ void EditorWindow::onRedactModeChosen(RedactMode m) {
 void EditorWindow::doUndo() { m_ocr->cancel(); m_undo->undo(); refreshRedactBar(); }
 void EditorWindow::doRedo() { m_ocr->cancel(); m_undo->redo(); refreshRedactBar(); }
 
+void EditorWindow::toggleTheme() {
+    m_dark = !m_dark;
+    QApplication::setPalette(theme::palette(m_dark));
+    qApp->setStyleSheet(theme::styleSheet(m_dark));
+    m_canvas->setBackgroundBrush(QApplication::palette().color(QPalette::Window));
+    m_toolbar->setDark(m_dark);
+    if (m_playButton) {
+        const QColor color = palette().color(QPalette::ButtonText);
+        const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
+        m_playButton->setIcon(theme::tintedIcon(
+            playing ? QStringLiteral(":/icons/pause.svg") : QStringLiteral(":/icons/play.svg"),
+            color, color));
+        const bool muted = m_audioOutput && m_audioOutput->isMuted();
+        m_muteButton->setIcon(theme::tintedIcon(
+            muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
+            color, color));
+        if (auto *reset = findChild<QToolButton *>(QStringLiteral("TrimReset")))
+            reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), color, color));
+    }
+    m_textBar->refreshTheme();
+    m_dragPill->refreshTheme();
+    m_scene->update();
+
+    QSettings settings(m_cli.configPath.isEmpty() ? defaultConfigPath() : m_cli.configPath,
+                       QSettings::IniFormat);
+    settings.beginGroup(QStringLiteral("eddy"));
+    settings.setValue(QStringLiteral("theme"), m_dark ? QStringLiteral("dark")
+                                                       : QStringLiteral("light"));
+    settings.endGroup();
+    m_cfg.theme = m_dark ? ThemeMode::Dark : ThemeMode::Light;
+}
+
 QImage EditorWindow::exportComposite() {
     if (isVideo())
         return renderAnnotationOverlay();
+    const auto selection = m_scene->selectedItems();
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the image
-    return renderToImage(*m_scene, m_bg.size());
+    QImage image = renderToImage(*m_scene, m_bg.size());
+    for (QGraphicsItem *item : selection) item->setSelected(true);
+    return image;
 }
 
 QImage EditorWindow::renderAnnotationOverlay() {
+    const auto selection = m_scene->selectedItems();
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the video
     const bool hadBackground = m_backgroundItem != nullptr;
     const bool wasVisible = hadBackground && m_backgroundItem->isVisible();
@@ -440,6 +758,7 @@ QImage EditorWindow::renderAnnotationOverlay() {
     if (hadBackground) m_backgroundItem->setVisible(false);
     QImage overlay = renderToImage(*m_scene, m_media.nativeSize());
     if (hadBackground) m_backgroundItem->setVisible(wasVisible);
+    for (QGraphicsItem *item : selection) item->setSelected(true);
     QTimer::singleShot(50, this, [this, renderGeneration]{
         if (renderGeneration == m_videoOverlayRenderGeneration)
             m_renderingVideoOverlay = false;
@@ -448,15 +767,55 @@ QImage EditorWindow::renderAnnotationOverlay() {
 }
 
 bool EditorWindow::hasVideoAnnotations() const {
-    return isVideo() && m_undo && !m_undo->isClean();
+    if (!isVideo() || !m_scene) return false;
+    for (QGraphicsItem *item : m_scene->items())
+        if (item != m_backgroundItem && item->zValue() > -1000)
+            return true;
+    return false;
+}
+
+bool EditorWindow::hasTrim() const {
+    return isVideo() && m_trimOutMs > 0
+        && (m_trimInMs > 0 || m_trimOutMs < m_media.video.durationMs);
+}
+
+bool EditorWindow::hasVideoEdits() const {
+    return hasVideoAnnotations() || hasTrim();
+}
+
+void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
+    if (!isVideo() || !m_timeline) return;
+    m_timeline->setTrimRange(inMs, outMs);
+    inMs = m_timeline->trimIn();
+    outMs = m_timeline->trimOut();
+    if (inMs == m_trimInMs && outMs == m_trimOutMs) return;
+    m_undo->push(new SetTrimRangeCommand(
+        m_trimInMs, m_trimOutMs, inMs, outMs,
+        [this](qint64 nextIn, qint64 nextOut) { setTrimRangeState(nextIn, nextOut); }));
+}
+
+void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
+    if (!m_timeline) return;
+    m_timeline->setTrimRange(inMs, outMs);
+    m_trimInMs = m_timeline->trimIn();
+    m_trimOutMs = m_timeline->trimOut();
+    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+    if (m_player && (m_player->position() < m_trimInMs || m_player->position() > m_trimOutMs))
+        m_player->setPosition(m_trimInMs);
+}
+
+void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
+    if (m_trimInLabel) m_trimInLabel->setText(formatPreciseTime(inMs));
+    if (m_trimOutLabel) m_trimOutLabel->setText(formatPreciseTime(outMs));
 }
 
 QString EditorWindow::videoDeliveryPath() {
-    if (!hasVideoAnnotations())
+    if (!hasVideoEdits())
         return m_media.path;
     if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath))
         return m_cachedVideoPath;
     scheduleVideoExportCache(0);
+    m_videoStatusRequested = true;
     if (m_toast)
         m_toast->showMessage(QStringLiteral("Preparing video export…"));
     return {};
@@ -465,12 +824,12 @@ QString EditorWindow::videoDeliveryPath() {
 void EditorWindow::onVideoContentChanged() {
     if (!isVideo()) return;
     ++m_videoRevision;
-    if (hasVideoAnnotations())
+    if (hasVideoEdits())
         scheduleVideoExportCache();
 }
 
 void EditorWindow::scheduleVideoExportCache(int delayMs) {
-    if (!isVideo() || !hasVideoAnnotations() || !m_videoExportTimer) return;
+    if (!isVideo() || !hasVideoEdits() || !m_videoExportTimer) return;
     m_videoExportTimer->start(qMax(0, delayMs));
 }
 
@@ -490,7 +849,7 @@ QString EditorWindow::createVideoTempPath() const {
 }
 
 void EditorWindow::startVideoExportCache() {
-    if (!isVideo() || !hasVideoAnnotations()) return;
+    if (!isVideo() || !hasVideoEdits()) return;
     if (m_videoExportInProgress) {
         m_videoExportPending = true;
         return;
@@ -500,7 +859,10 @@ void EditorWindow::startVideoExportCache() {
     if (path.isEmpty()) return;
 
     const int revision = m_videoRevision;
-    const VideoExportRequest request{m_media.path, path, renderAnnotationOverlay()};
+    const VideoExportRequest request{
+        m_media.path, path, renderAnnotationOverlay(),
+        m_trimInMs, hasTrim() ? m_trimOutMs : -1
+    };
     m_videoExportInProgress = true;
 
     QPointer<EditorWindow> receiver(this);
@@ -519,8 +881,12 @@ void EditorWindow::startVideoExportCache() {
 
 void EditorWindow::finishVideoExportCache(int revision, const QString &path, const DeliverResult &result) {
     m_videoExportInProgress = false;
-    const bool current = result.ok && hasVideoAnnotations() && revision == m_videoRevision;
+    const bool current = result.ok && hasVideoEdits() && revision == m_videoRevision;
     if (current) {
+        if (!m_cachedVideoPath.isEmpty() && m_cachedVideoPath != path
+            && !m_handedOffVideoPaths.contains(m_cachedVideoPath)) {
+            QFile::remove(m_cachedVideoPath);
+        }
         m_cachedVideoPath = path;
         m_cachedVideoRevision = revision;
     } else {
@@ -529,7 +895,21 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
             std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
     }
 
-    const bool needsFreshExport = hasVideoAnnotations() && m_cachedVideoRevision != m_videoRevision;
+    if (revision == m_videoRevision && m_videoStatusRequested) {
+        m_videoStatusRequested = false;
+        if (!result.ok) {
+            m_sendVideoToShelfPending = false;
+            m_closeAfterVideoShelf = false;
+            if (m_toast) m_toast->showMessage(QStringLiteral("Video export failed"));
+        } else if (m_sendVideoToShelfPending) {
+            m_sendVideoToShelfPending = false;
+            postVideoToShelf(m_cachedVideoPath, true);
+        } else if (m_toast) {
+            m_toast->showMessage(QStringLiteral("Video ready"));
+        }
+    }
+
+    const bool needsFreshExport = hasVideoEdits() && m_cachedVideoRevision != m_videoRevision;
     if (m_videoExportPending || needsFreshExport) {
         m_videoExportPending = false;
         scheduleVideoExportCache(100);
@@ -537,7 +917,7 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
 }
 
 DeliverResult EditorWindow::exportVideoToFile(const QString &path) {
-    if (!hasVideoAnnotations()) {
+    if (!hasVideoEdits()) {
         const QFileInfo src(m_media.path);
         const QFileInfo dst(path);
         if (src.canonicalFilePath() == dst.canonicalFilePath())
@@ -548,7 +928,10 @@ DeliverResult EditorWindow::exportVideoToFile(const QString &path) {
             return {false, QStringLiteral("cannot copy video to ") + path};
         return {true, {}};
     }
-    return writeVideoWithOverlay({m_media.path, path, renderAnnotationOverlay()});
+    return writeVideoWithOverlay({
+        m_media.path, path, renderAnnotationOverlay(),
+        m_trimInMs, hasTrim() ? m_trimOutMs : -1
+    });
 }
 
 void EditorWindow::copyVideoFile(const QString &path) {
@@ -557,12 +940,56 @@ void EditorWindow::copyVideoFile(const QString &path) {
 }
 
 void EditorWindow::saveVideo() {
+    const SaveRoute route = saveRoute(m_cli, m_cfg);
+    if (route == SaveRoute::Shelf) {
+        m_closeAfterVideoShelf = m_cfg.earlyExit;
+        sendToShelf();
+        if (m_cfg.copyOnSave) copyVideoFile(videoDeliveryPath());
+        return;
+    }
+    if (route == SaveRoute::BoltsnapCard) {
+        QString replacementPath = m_media.path;
+        bool freshTemp = false;
+        if (hasVideoEdits()) {
+            if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath)) {
+                replacementPath = m_cachedVideoPath;
+            } else {
+                replacementPath = createVideoTempPath();
+                freshTemp = !replacementPath.isEmpty();
+                if (freshTemp) {
+                    const DeliverResult exported = exportVideoToFile(replacementPath);
+                    if (!exported.ok) {
+                        std::fprintf(stderr, "eddy: %s\n", qPrintable(exported.error));
+                        QFile::remove(replacementPath);
+                        replacementPath.clear();
+                    }
+                }
+            }
+        }
+
+        DeliverResult replaced{false, QStringLiteral("video export unavailable")};
+        if (!replacementPath.isEmpty())
+            replaced = sendVideoToBoltsnapCard(m_cli.boltsnapCardId, replacementPath);
+        if (!replaced.ok) {
+            std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
+            if (freshTemp) QFile::remove(replacementPath);
+        } else if (replacementPath != m_media.path) {
+            // Boltsnap stores video replacements by path, so successful hand-offs
+            // must outlive this editor window.
+            m_handedOffVideoPaths.insert(replacementPath);
+        }
+        if (m_cfg.copyOnSave || !replaced.ok)
+            copyVideoFile(replacementPath);
+        if (m_cfg.earlyExit) close();
+        return;
+    }
+
     QString path;
     if (m_cli.output.toFile) {
         path = m_cli.output.filePath;
     } else if (m_cli.output.toStdout) {
         std::fprintf(stderr, "eddy: video export to stdout is not supported\n");
-    } else if (!m_cli.output.saveDir.isEmpty()) {
+    } else if (route == SaveRoute::ExplicitOutput && !m_cli.output.saveDir.isEmpty()) {
         const QString suffix = QFileInfo(m_media.path).suffix().isEmpty()
             ? QStringLiteral("mp4")
             : QFileInfo(m_media.path).suffix();
@@ -570,15 +997,33 @@ void EditorWindow::saveVideo() {
             QStringLiteral("eddy-")
             + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss")
             + QStringLiteral(".") + suffix);
+    } else if (route == SaveRoute::ConfigDirectory) {
+        const QString suffix = QFileInfo(m_media.path).suffix().isEmpty()
+            ? QStringLiteral("mp4")
+            : QFileInfo(m_media.path).suffix();
+        path = QDir(m_cfg.saveDir).filePath(
+            QStringLiteral("eddy-")
+            + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss")
+            + QStringLiteral(".") + suffix);
     }
 
     QString copiedPath;
     if (!path.isEmpty()) {
+        if (hasVideoEdits() && m_toast)
+            m_toast->showMessage(QStringLiteral("Preparing video export…"));
         auto res = exportVideoToFile(path);
-        if (!res.ok)
+        if (!res.ok) {
             std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
-        else
+            if (m_toast) m_toast->showMessage(QStringLiteral("Video export failed"));
+        } else {
             copiedPath = path;
+            if (m_toast) m_toast->showMessage(QStringLiteral("Video saved"));
+            if (m_cli.boltsnapCardId) {
+                const DeliverResult replaced = sendVideoToBoltsnapCard(m_cli.boltsnapCardId, path);
+                if (!replaced.ok)
+                    std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
+            }
+        }
     }
     if (m_cfg.copyOnSave || path.isEmpty()) {
         if (copiedPath.isEmpty())
@@ -589,7 +1034,9 @@ void EditorWindow::saveVideo() {
 }
 
 bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
-    const DeliverResult res = sendPngToBoltsnapShelf(encodePng(img), QStringLiteral("eddy"));
+    const QString output = screen() ? screen()->name() : QString();
+    const DeliverResult res = sendPngToBoltsnapShelf(
+        encodePng(img), QStringLiteral("eddy"), output);
     if (!res.ok) {
         std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
         if (m_toast)
@@ -601,30 +1048,69 @@ bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
     return true;
 }
 
+bool EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership) {
+    const QString output = screen() ? screen()->name() : QString();
+    const DeliverResult result = sendVideoToBoltsnapShelf(
+        path, QStringLiteral("eddy"), takeOwnership, output);
+    if (!result.ok) {
+        std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
+        if (m_toast) m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
+        m_closeAfterVideoShelf = false;
+        return false;
+    }
+    if (takeOwnership) m_handedOffVideoPaths.insert(path);
+    if (m_toast) m_toast->showMessage(QStringLiteral("Sent to Boltsnap shelf"));
+    if (m_closeAfterVideoShelf) close();
+    m_closeAfterVideoShelf = false;
+    return true;
+}
+
 void EditorWindow::save() {
     if (isVideo()) { saveVideo(); return; }
     QImage img = exportComposite();
-    if (imageSaveUsesShelfReturn(m_cli)) {
+    const SaveRoute route = saveRoute(m_cli, m_cfg);
+    if (route == SaveRoute::Shelf) {
         const bool sent = postImageToShelf(img, true);
         if (m_cfg.copyOnSave || !sent)
             QApplication::clipboard()->setImage(img);
         if (m_cfg.earlyExit) close();
         return;
     }
+    if (route == SaveRoute::BoltsnapCard) {
+        const DeliverResult replaced = sendPngToBoltsnapCard(
+            m_cli.boltsnapCardId, encodePng(img));
+        if (!replaced.ok) {
+            std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
+            if (m_toast)
+                m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
+        }
+        if (m_cfg.copyOnSave || !replaced.ok)
+            QApplication::clipboard()->setImage(img);
+        if (m_cfg.earlyExit) close();
+        return;
+    }
 
-    // Write a file only when an explicit target was requested: -o FILE, -o -,
-    // or --save-dir DIR. The default image Save path returns the composite to
-    // Boltsnap's shelf above; no screenshot file is written unless requested.
+    // Explicit CLI output wins; a configured save_dir is the file fallback
+    // after card replacement and before shelf return.
     QString path;
     if (m_cli.output.toFile)            path = m_cli.output.filePath;
     else if (m_cli.output.toStdout)     path = QStringLiteral("-");
     else if (!m_cli.output.saveDir.isEmpty())
         path = QDir(m_cli.output.saveDir).filePath(
                    "eddy-" + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss") + ".png");
+    else if (route == SaveRoute::ConfigDirectory)
+        path = QDir(m_cfg.saveDir).filePath(
+                   "eddy-" + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss") + ".png");
 
     if (!path.isEmpty()) {
         auto res = writePng(img, path);
         if (!res.ok) std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
+        else if (m_cli.boltsnapCardId) {
+            const DeliverResult replaced = sendPngToBoltsnapCard(
+                m_cli.boltsnapCardId, encodePng(img));
+            if (!replaced.ok)
+                std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
+        }
     }
     if (m_cfg.copyOnSave || path.isEmpty())
         QApplication::clipboard()->setImage(img);   // always at least copy
@@ -633,8 +1119,18 @@ void EditorWindow::save() {
 
 void EditorWindow::sendToShelf() {
     if (isVideo()) {
-        if (m_toast)
-            m_toast->showMessage(QStringLiteral("Shelf return supports images"));
+        if (!hasVideoEdits()) {
+            postVideoToShelf(m_media.path, false);
+            return;
+        }
+        if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath)) {
+            postVideoToShelf(m_cachedVideoPath, true);
+            return;
+        }
+        m_sendVideoToShelfPending = true;
+        m_videoStatusRequested = true;
+        if (m_toast) m_toast->showMessage(QStringLiteral("Preparing video export…"));
+        scheduleVideoExportCache(0);
         return;
     }
     postImageToShelf(exportComposite(), true);
@@ -655,15 +1151,78 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         return;
     }
     // While a text annotation is being edited, don't hijack letter keys as tool
-    // hotkeys — let them type into the text box. Esc commits and leaves editing.
+    // hotkeys — let them type into the text box. Esc reverts; Ctrl+Enter commits.
     QGraphicsItem *fi = m_scene->focusItem();
     if (fi && fi->type() == TextItem::Type
         && (static_cast<QGraphicsTextItem *>(fi)->textInteractionFlags() & Qt::TextEditorInteraction)) {
-        if (e->key() == Qt::Key_Escape) { m_scene->clearFocus(); e->accept(); return; }
+        if (e->key() == Qt::Key_Escape) { m_tools->cancelTextEdit(); e->accept(); return; }
+        if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
+            && e->modifiers().testFlag(Qt::ControlModifier)) {
+            m_tools->commitTextEdit(); e->accept(); return;
+        }
         QWidget::keyPressEvent(e);
         return;
     }
     switch (e->key()) {
+        case Qt::Key_I:
+            if (isVideo() && m_timeline) {
+                m_timeline->setTrimRange(m_timeline->position(), m_timeline->trimOut());
+                applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
+                break;
+            }
+            QWidget::keyPressEvent(e);
+            break;
+        case Qt::Key_O:
+            if (isVideo() && m_timeline) {
+                m_timeline->setTrimRange(m_timeline->trimIn(), m_timeline->position());
+                applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
+                break;
+            }
+            QWidget::keyPressEvent(e);
+            break;
+        case Qt::Key_J:
+        case Qt::Key_L:
+            if (isVideo() && m_timeline) {
+                const qint64 frame = m_media.video.fps > 0.0
+                    ? qMax<qint64>(1, qRound64(1000.0 / m_media.video.fps)) : 33;
+                const qint64 delta = e->key() == Qt::Key_J ? -frame : frame;
+                const qint64 position = qBound<qint64>(0, m_timeline->position() + delta,
+                                                        m_timeline->duration());
+                m_timeline->setPosition(position);
+                ensureVideoPlayer();
+                if (m_player) m_player->setPosition(position);
+                break;
+            }
+            QWidget::keyPressEvent(e);
+            break;
+        case Qt::Key_K:
+            if (isVideo() && m_playButton) {
+                m_playButton->click();
+                break;
+            }
+            QWidget::keyPressEvent(e);
+            break;
+        case Qt::Key_Space:
+            m_canvas->setSpacePan(true);
+            e->accept();
+            return;
+        case Qt::Key_Left:
+        case Qt::Key_Right:
+        case Qt::Key_Up:
+        case Qt::Key_Down: {
+            const qreal distance = e->modifiers().testFlag(Qt::ShiftModifier) ? 10.0 : 1.0;
+            QPointF delta;
+            if (e->key() == Qt::Key_Left) delta.setX(-distance);
+            if (e->key() == Qt::Key_Right) delta.setX(distance);
+            if (e->key() == Qt::Key_Up) delta.setY(-distance);
+            if (e->key() == Qt::Key_Down) delta.setY(distance);
+            if (!m_tools->nudgeSelection(delta)) QWidget::keyPressEvent(e);
+            break;
+        }
+        case Qt::Key_0: m_canvas->fitMedia(); break;
+        case Qt::Key_1: m_canvas->resetZoom(); break;
+        case Qt::Key_Plus: case Qt::Key_Equal: m_canvas->zoomBy(1.15); break;
+        case Qt::Key_Minus: m_canvas->zoomBy(1.0 / 1.15); break;
         case Qt::Key_A: m_tools->setTool(ToolType::Arrow); break;
         case Qt::Key_P: m_tools->setTool(ToolType::Pen); break;
         case Qt::Key_R: m_tools->setTool(ToolType::Rect); break;
@@ -676,23 +1235,45 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
                             (e->modifiers() & Qt::ShiftModifier) ? doRedo() : doUndo();
                         } break;
         case Qt::Key_C: if (e->modifiers() & Qt::ControlModifier) copy(); break;
+        case Qt::Key_D: if (e->modifiers() & Qt::ControlModifier)
+                            m_tools->duplicateSelection(QPointF(8,8));
+                        else QWidget::keyPressEvent(e);
+                        break;
         case Qt::Key_S: if (e->modifiers() & Qt::ControlModifier) save(); break;
         case Qt::Key_Return: case Qt::Key_Enter: save(); break;
         case Qt::Key_Delete: case Qt::Key_Backspace: {
             const auto sel = m_scene->selectedItems();
-            bool removed = false;
+            QList<QGraphicsItem *> removable;
             for (QGraphicsItem *it : sel) {
                 if (it->zValue() <= -1000) continue;     // never the background
                 if (auto *r = dynamic_cast<RedactItem *>(it)) m_ocr->forget(r);
-                m_undo->push(new RemoveItemCommand(m_scene, it));
-                removed = true;
+                removable.append(it);
             }
-            if (!removed) QWidget::keyPressEvent(e);
+            if (!removable.isEmpty()) {
+                m_undo->beginMacro(QStringLiteral("Delete"));
+                for (QGraphicsItem *it : removable)
+                    m_undo->push(new RemoveItemCommand(m_scene, it));
+                m_undo->endMacro();
+            }
+            else QWidget::keyPressEvent(e);
             break;
         }
-        case Qt::Key_Escape: close(); break;
+        case Qt::Key_Escape:
+            if (m_tools->cancelActive()) break;
+            if (m_canvas->spacePanActive()) { m_canvas->setSpacePan(false); break; }
+            close();
+            break;
         default: QWidget::keyPressEvent(e);
     }
+}
+
+void EditorWindow::keyReleaseEvent(QKeyEvent *e) {
+    if (e->key() == Qt::Key_Space) {
+        m_canvas->setSpacePan(false);
+        e->accept();
+        return;
+    }
+    QWidget::keyReleaseEvent(e);
 }
 
 }

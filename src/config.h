@@ -2,11 +2,12 @@
 #include <QColor>
 #include <QString>
 #include "cli.h"
+#include "theme.h"
 
 namespace eddy {
 
 struct Config {
-    QString saveDir;                 // default: ~/Pictures
+    QString saveDir;                 // empty unless explicitly configured
     QString defaultTool = "arrow";
     double lineWidth = 4.0;
     QColor strokeColor;              // initialized to #ff3b30 in loadConfig()
@@ -16,6 +17,7 @@ struct Config {
     bool animations = true;
     QString ocrLang = "deu";         // only deu/afr/osd tessdata installed locally; eng absent
     int ocrPsm = 6;
+    ThemeMode theme = ThemeMode::System;
 };
 
 // Loads from `path` (INI). If path is empty, uses the default location

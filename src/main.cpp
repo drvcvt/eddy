@@ -5,13 +5,12 @@
 #include "editorwindow.h"
 #include "theme.h"
 #include <QApplication>
-#include <QFile>
 #include <cstdio>
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
+    const QPalette systemPalette = app.palette();
     QApplication::setStyle("Fusion");
-    app.setPalette(eddy::theme::darkPalette());
     app.setApplicationName("eddy");
     app.setDesktopFileName("eddy");
 
@@ -26,9 +25,9 @@ int main(int argc, char **argv) {
 
     eddy::Config cfg = eddy::loadConfig(pr.options.configPath);
     eddy::applyCli(cfg, pr.options);
-
-    QFile qss(":/eddy.qss");
-    if (qss.open(QIODevice::ReadOnly)) app.setStyleSheet(QString::fromUtf8(qss.readAll()));
+    const bool dark = eddy::theme::resolveDark(cfg.theme, systemPalette);
+    app.setPalette(eddy::theme::palette(dark));
+    app.setStyleSheet(eddy::theme::styleSheet(dark));
 
     eddy::pushWindowRules("eddy");   // before show → instant float, no fade
     eddy::EditorWindow win(load.document, cfg, pr.options);

@@ -50,6 +50,11 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         r.error = QStringLiteral("video export needs a non-null overlay image");
         return r;
     }
+    const bool trimmed = req.trimOutMs >= 0;
+    if (req.trimInMs < 0 || (trimmed && req.trimOutMs <= req.trimInMs)) {
+        r.error = QStringLiteral("invalid video trim range");
+        return r;
+    }
 
     const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
     if (ffmpeg.isEmpty()) {
@@ -58,7 +63,6 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     }
 
     QTemporaryFile overlayTmp(QDir::tempPath() + QStringLiteral("/eddy-overlay-XXXXXX.png"));
-    overlayTmp.setAutoRemove(false);
     if (!overlayTmp.open()) {
         r.error = QStringLiteral("cannot create temporary overlay");
         return r;
@@ -73,7 +77,6 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
 
     QString actualOutput = req.outputPath;
     QTemporaryFile samePathOutput;
-    samePathOutput.setAutoRemove(false);
     const bool replaceInput = sameExistingPath(req.inputPath, req.outputPath);
     if (replaceInput) {
         samePathOutput.setFileTemplate(sameDirTempTemplate(req.outputPath));
@@ -98,14 +101,23 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         codecArgs = {
             QStringLiteral("-c:v"), QStringLiteral("libx264"),
             QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"),
-            QStringLiteral("-c:a"), QStringLiteral("copy"),
+            QStringLiteral("-c:a"), trimmed ? QStringLiteral("aac") : QStringLiteral("copy"),
             QStringLiteral("-movflags"), QStringLiteral("+faststart"),
         };
+        if (trimmed)
+            codecArgs += {QStringLiteral("-b:a"), QStringLiteral("192k")};
     }
 
     QStringList args = {
         QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
         QStringLiteral("-y"),
+    };
+    if (req.trimInMs > 0) {
+        args += {
+            QStringLiteral("-ss"), QString::number(req.trimInMs / 1000.0, 'f', 3),
+        };
+    }
+    args += {
         QStringLiteral("-i"), req.inputPath,
         QStringLiteral("-loop"), QStringLiteral("1"),
         QStringLiteral("-i"), overlayPath,
@@ -115,7 +127,14 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         QStringLiteral("-map"), QStringLiteral("0:a?"),
     };
     args += codecArgs;
+    if (trimmed) {
+        args += {
+            QStringLiteral("-t"),
+            QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3),
+        };
+    }
     args += {
+        QStringLiteral("-avoid_negative_ts"), QStringLiteral("make_zero"),
         QStringLiteral("-shortest"),
         actualOutput,
     };

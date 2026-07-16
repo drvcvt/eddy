@@ -44,6 +44,7 @@ public:
     ~DragPill() override;
     void setImageProvider(std::function<QImage()> provider);
     void setFileProvider(std::function<FileDragPayload()> provider);
+    void refreshTheme();
 
 protected:
     void mousePressEvent(QMouseEvent *e) override;

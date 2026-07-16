@@ -2,8 +2,14 @@
 #include <QObject>
 #include <QVector>
 #include <QPointF>
+#include <QRectF>
 class QGraphicsScene; class QGraphicsItem; class QUndoStack;
 namespace eddy {
+QRectF resizedRect(const QRectF &before, int role, const QPointF &pointer,
+                   Qt::KeyboardModifiers modifiers);
+QPointF snappedArrowEnd(const QPointF &fixed, const QPointF &pointer,
+                       Qt::KeyboardModifiers modifiers);
+
 class HandleItem;
 // Watches a scene's selection and draws drag handles on the single selected
 // resizable annotation (rect-shaped → 8 handles; ArrowItem → 2 endpoint handles).

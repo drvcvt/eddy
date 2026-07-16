@@ -1,4 +1,5 @@
 #include "cli.h"
+#include <limits>
 
 namespace eddy {
 
@@ -49,6 +50,14 @@ ParseResult parseArgs(const QStringList &args) {
             o.noAnim = true;
         } else if (a == "--gpu") {
             o.useGpuViewport = true;
+        } else if (a == "--boltsnap-card-id") {
+            const QString value = next(a); if (!r.ok) return r;
+            bool ok = false;
+            const quint64 id = value.toULongLong(&ok);
+            if (!ok || id == 0 || id > quint64(std::numeric_limits<qint64>::max())) {
+                r.ok = false; r.error = a + " requires a positive integer"; return r;
+            }
+            o.boltsnapCardId = id;
         } else if (a.startsWith('-') && a != "-") {
             r.ok = false; r.error = "unknown option: " + a; return r;
         } else {

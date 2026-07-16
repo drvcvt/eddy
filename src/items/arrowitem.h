@@ -12,6 +12,7 @@ public:
     void setEnd(const QPointF &end);
     QPointF start() const { return m_start; }
     QPointF end() const { return m_end; }
+    ArrowItem *clone() const override;
 
     QRectF boundingRect() const override;
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override;

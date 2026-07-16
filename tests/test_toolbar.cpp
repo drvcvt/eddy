@@ -29,20 +29,19 @@ private slots:
         QCOMPARE(us.count(), 1);
         QCOMPARE(rs.count(), 1);
     }
-    void syncToolChecksButtonAndPlacesPill() {
+    void syncToolUsesCheckedStateWithoutOverlay() {
         Toolbar tb;
-        tb.setAnimationsEnabled(false);
         tb.resize(700, 46);
         tb.show();                        // lay out so geometries are real
         QVERIFY(QTest::qWaitForWindowExposed(&tb));
         tb.syncTool(ToolType::Rect);
         auto *pill = tb.findChild<QWidget*>("Pill");
-        QVERIFY(pill);
         QToolButton *rectBtn = nullptr;
         for (auto *b : tb.findChildren<QToolButton*>())
             if (b->isChecked() && !b->objectName().startsWith("Width")) rectBtn = b;  // exclude the width chooser (M is default-checked)
         QVERIFY(rectBtn);
-        QCOMPARE(pill->geometry(), rectBtn->geometry());
+        QVERIFY(rectBtn->isChecked());
+        QVERIFY(pill == nullptr);
     }
     void swatchShowsPaintedDisc() {
         Toolbar tb;
@@ -57,6 +56,14 @@ private slots:
         QSignalSpy spy(&tb, &Toolbar::widthChosen);
         auto *L = tb.findChild<QToolButton*>("WidthL");
         QVERIFY(L);
+        for (const char *name : {"WidthS", "WidthM", "WidthL"}) {
+            auto *button = tb.findChild<QToolButton *>(name);
+            QVERIFY(button);
+            QVERIFY(button->text().isEmpty());
+            QVERIFY(!button->icon().isNull());
+            QVERIFY(!button->toolTip().isEmpty());
+            QCOMPARE(button->accessibleName(), button->toolTip());
+        }
         L->click();
         QCOMPARE(spy.count(), 1);
         QCOMPARE(spy.at(0).at(0).toDouble(), 8.0);
@@ -69,6 +76,41 @@ private slots:
         QVERIFY(!shelf->icon().isNull());
         shelf->click();
         QCOMPARE(spy.count(), 1);
+    }
+    void themeActionIsATrailingIcon() {
+        Toolbar tb;
+        tb.resize(900, 46);
+        tb.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tb));
+        auto *theme = tb.findChild<QToolButton *>("Theme");
+        auto *shelf = tb.findChild<QToolButton *>("SendToShelf");
+        QVERIFY(theme && shelf);
+        QVERIFY(theme->x() > shelf->x());
+        QVERIFY(theme->text().isEmpty());
+        QVERIFY(!theme->icon().isNull());
+        QCOMPARE(theme->accessibleName(), theme->toolTip());
+
+        tb.setDark(true);
+        const QImage darkAction = theme->icon().pixmap(20, 20).toImage();
+        tb.setDark(false);
+        QVERIFY(darkAction != theme->icon().pixmap(20, 20).toImage());
+    }
+    void compactModeKeepsCoreToolsAndHidesShortcutDuplicates() {
+        Toolbar tb;
+        tb.setCompact(true);
+        for (const char *name : {"Undo", "Redo", "WidthS", "WidthM", "WidthL", "Save", "Copy"}) {
+            auto *button = tb.findChild<QToolButton *>(name);
+            QVERIFY(button);
+            QVERIFY2(button->isHidden(), name);
+        }
+        for (const char *name : {"move", "text", "spotlight", "Swatch", "SendToShelf", "Theme"}) {
+            auto *button = tb.findChild<QToolButton *>(name);
+            QVERIFY(button);
+            QVERIFY2(!button->isHidden(), name);
+        }
+        tb.setCompact(false);
+        QVERIFY(!tb.findChild<QToolButton *>("Save")->isHidden());
+        QVERIFY(!tb.findChild<QToolButton *>("WidthM")->isHidden());
     }
 };
 QTEST_MAIN(TestToolbar)

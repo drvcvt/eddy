@@ -5,6 +5,7 @@
 #include "toolcontroller.h"
 class QVariantAnimation;
 class QResizeEvent;
+class QKeyEvent;
 namespace eddy {
 class Loupe;
 class Canvas : public QGraphicsView {
@@ -13,6 +14,11 @@ public:
     Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent=nullptr);
     double zoom() const { return m_targetZoom; }       // logical target (test-stable)
     void setAnimationsEnabled(bool on) { m_animations = on; }
+    void zoomBy(double factor);
+    void resetZoom();
+    void fitMedia();
+    void setSpacePan(bool on);
+    bool spacePanActive() const { return m_spacePan; }
     // Eyedropper: freeze the rendered viewport and let the user pick a colour off
     // it with a magnifier loupe. Emits colorPicked() on click, nothing on cancel.
     void startEyedropper();
@@ -22,10 +28,13 @@ signals:
     void viewChanged();   // emitted on zoom / pan / resize so overlays can re-anchor
     void colorPicked(const QColor &c);
 protected:
+    void keyPressEvent(QKeyEvent *e) override;
+    void keyReleaseEvent(QKeyEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
     void mousePressEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
+    void mouseDoubleClickEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
 private:
     bool isPointerTool() const {
@@ -33,11 +42,16 @@ private:
     }
     QPoint sourcePixel(const QPoint &viewPos) const;   // viewport px -> snapshot device px
     void updateLoupe(const QPoint &viewPos);
+    void updateCursor();
     ToolController *m_tools;
     double m_zoom = 1.0;            // visual (animated) scale
     double m_targetZoom = 1.0;      // logical target
     bool m_dragging = false;        // middle-button pan in progress
+    Qt::MouseButton m_panButton = Qt::NoButton;
     QPoint m_panLast;               // last cursor pos during a pan (viewport coords)
+    bool m_spacePan = false;
+    bool m_duplicateDragging = false;
+    Qt::MouseButton m_swallowRelease = Qt::NoButton;
     bool m_animations = true;
     QVariantAnimation *m_zoomAnim = nullptr;
     bool m_eyedropper = false;      // eyedropper colour-pick in progress
