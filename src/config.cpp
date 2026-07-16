@@ -12,7 +12,6 @@ QString defaultConfigPath() {
 
 Config loadConfig(const QString &path) {
     Config c;
-    c.saveDir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
     c.strokeColor = QColor("#ff3b30");
 
     const QString file = path.isEmpty() ? defaultConfigPath() : path;
@@ -27,6 +26,9 @@ Config loadConfig(const QString &path) {
     c.animations  = s.value("animations", c.animations).toBool();
     c.ocrLang     = s.value("ocr_lang", c.ocrLang).toString();
     c.ocrPsm      = s.value("ocr_psm", c.ocrPsm).toInt();
+    const QString theme = s.value("theme", QStringLiteral("system")).toString().toLower();
+    if (theme == QStringLiteral("dark")) c.theme = ThemeMode::Dark;
+    else if (theme == QStringLiteral("light")) c.theme = ThemeMode::Light;
     if (s.contains("stroke_color"))
         c.strokeColor = QColor(s.value("stroke_color").toString());
     s.endGroup();

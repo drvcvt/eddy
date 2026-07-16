@@ -38,9 +38,18 @@ struct LoadMediaResult {
     QString error;
 };
 
+struct ContactSheetResult {
+    bool ok = false;
+    QImage image;
+    QString error;
+};
+
 bool pathLooksLikeVideo(const QString &path);
 QString mediaMimeTypeForPath(const QString &path);
 ProbeVideoResult probeVideoFile(const QString &path);
 LoadMediaResult loadMediaInput(const InputSpec &spec);
+ContactSheetResult generateVideoContactSheet(const QString &path, qint64 durationMs,
+                                             int frameCount = 8,
+                                             QSize frameSize = QSize(120, 68));
 
 }

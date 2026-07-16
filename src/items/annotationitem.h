@@ -18,6 +18,7 @@ public:
 
     virtual QRectF rect() const { return QRectF(); }     // overridden by rect-shaped items
     virtual void setRect(const QRectF &) {}              // no-op for arrow/pen
+    virtual AnnotationItem *clone() const = 0;
 
 protected:
     QColor m_stroke = QColor("#ff3b30");

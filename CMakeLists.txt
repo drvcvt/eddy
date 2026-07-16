@@ -24,6 +24,9 @@ add_library(eddy_core STATIC
     src/loupe.cpp
     src/colorpopover.cpp
     src/redactbar.cpp
+    src/textbar.cpp
+    src/spotlightbar.cpp
+    src/videotimeline.cpp
     src/toast.cpp
     src/dragpill.cpp
     src/selectionhandles.cpp
@@ -51,6 +54,7 @@ add_library(eddy_core STATIC
     src/items/penpathitem.cpp
     src/items/rasteritem.cpp
     src/items/textitem.cpp
+    src/items/spotlightitem.cpp
     resources/eddy.qrc
 )
 target_include_directories(eddy_core PUBLIC src)
@@ -98,3 +102,4 @@ eddy_test(test_toolbar)
 eddy_test(test_editorwindow)
 eddy_test(test_theme)
 eddy_test(test_selectionhandles)
+eddy_test(test_videotimeline)

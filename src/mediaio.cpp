@@ -150,4 +150,43 @@ LoadMediaResult loadMediaInput(const InputSpec &spec) {
     return r;
 }
 
+ContactSheetResult generateVideoContactSheet(const QString &path, qint64 durationMs,
+                                             int frameCount, QSize frameSize) {
+    ContactSheetResult result;
+    const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    if (ffmpeg.isEmpty()) { result.error = QStringLiteral("ffmpeg not found"); return result; }
+    if (durationMs <= 0 || frameCount <= 0 || frameSize.isEmpty()) {
+        result.error = QStringLiteral("invalid contact sheet dimensions");
+        return result;
+    }
+
+    const double fps = frameCount * 1000.0 / durationMs;
+    const QString filter = QStringLiteral(
+        "fps=%1,scale=%2:%3:force_original_aspect_ratio=decrease,"
+        "pad=%2:%3:(ow-iw)/2:(oh-ih)/2,tile=%4x1")
+        .arg(fps, 0, 'f', 6).arg(frameSize.width()).arg(frameSize.height()).arg(frameCount);
+    QProcess process;
+    process.start(ffmpeg, {
+        QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+        QStringLiteral("-i"), path, QStringLiteral("-vf"), filter,
+        QStringLiteral("-frames:v"), QStringLiteral("1"),
+        QStringLiteral("-f"), QStringLiteral("image2pipe"),
+        QStringLiteral("-vcodec"), QStringLiteral("png"), QStringLiteral("pipe:1")
+    });
+    if (!process.waitForFinished(15000)) {
+        process.kill(); process.waitForFinished();
+        result.error = QStringLiteral("timeline preview timed out");
+        return result;
+    }
+    const QByteArray png = process.readAllStandardOutput();
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0
+        || !result.image.loadFromData(png, "PNG")) {
+        result.error = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        if (result.error.isEmpty()) result.error = QStringLiteral("could not build timeline preview");
+        return result;
+    }
+    result.ok = true;
+    return result;
+}
+
 }

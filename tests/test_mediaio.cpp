@@ -81,6 +81,23 @@ private slots:
         QCOMPARE(r.document.nativeSize(), QSize(64, 48));
         QVERIFY(r.document.video.durationMs > 0);
     }
+
+    void generatesContactSheetInMemory() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString video = dir.filePath(QStringLiteral("in.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {
+            QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+            QStringLiteral("-y"), QStringLiteral("-f"), QStringLiteral("lavfi"),
+            QStringLiteral("-i"), QStringLiteral("testsrc2=s=96x54:d=2:r=8"),
+            QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), video
+        }));
+
+        const ContactSheetResult result = generateVideoContactSheet(video, 2000, 4, QSize(80, 45));
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QCOMPARE(result.image.size(), QSize(320, 45));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestMediaIo)

@@ -8,7 +8,7 @@ class QToolButton;
 namespace eddy {
 
 // Floating bar of the four redact modes. Lives as a child of the canvas viewport;
-// EditorWindow shows/positions it over the selected redact item.
+// EditorWindow shows/positions it near the selected redact item.
 class RedactBar : public QWidget {
     Q_OBJECT
 public:

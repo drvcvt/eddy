@@ -3,6 +3,12 @@
 namespace eddy {
 EllipseItem::EllipseItem(const QRectF &r) : m_rect(r.normalized()) {}
 void EllipseItem::setRect(const QRectF &r) { prepareGeometryChange(); m_rect = r.normalized(); update(); }
+EllipseItem *EllipseItem::clone() const {
+    auto *copy = new EllipseItem(m_rect);
+    copy->setStrokeColor(m_stroke);
+    copy->setStrokeWidth(m_width);
+    return copy;
+}
 QRectF EllipseItem::boundingRect() const { const double p = m_width + 2; return m_rect.adjusted(-p,-p,p,p); }
 void EllipseItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) {
     p->setRenderHint(QPainter::Antialiasing, true);

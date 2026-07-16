@@ -163,7 +163,8 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     auto *icon = new QLabel(this);
     icon->setObjectName("DragPillIcon");
     icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"),
-                                      QColor("#d0d0d0"), QColor("#d0d0d0"))
+                                      QApplication::palette().color(QPalette::WindowText),
+                                      QApplication::palette().color(QPalette::WindowText))
                         .pixmap(QSize(16, 16)));   // ↗ box-arrow, boltsnap-style
     lay->addWidget(icon);
     auto *label = new QLabel(QStringLiteral("Drag out"), this);
@@ -173,6 +174,14 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
 
 DragPill::~DragPill() {
     if (!m_lastTempPath.isEmpty()) QFile::remove(m_lastTempPath);
+}
+
+void DragPill::refreshTheme() {
+    auto *icon = findChild<QLabel *>(QStringLiteral("DragPillIcon"));
+    if (!icon) return;
+    const QColor color = QApplication::palette().color(QPalette::WindowText);
+    icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"), color, color)
+                        .pixmap(QSize(16, 16)));
 }
 
 void DragPill::setImageProvider(std::function<QImage()> provider) { m_provider = std::move(provider); }
@@ -216,7 +225,6 @@ void DragPill::startDrag() {
         if (img.isNull()) return;
         preview = img;
         clipboardFallbackImage = true;
-        removeAfterUse = false;
         mime = makeImageDropMime(img, &path);
         concreteMimeType = QStringLiteral("image/png");
     }

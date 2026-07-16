@@ -6,9 +6,11 @@
 #include "toolcontroller.h"
 #include "undocommands.h"
 #include "items/arrowitem.h"
+#include "items/ellipseitem.h"
 #include "items/rectitem.h"
 #include "items/redactitem.h"
 #include "items/textitem.h"
+#include "items/spotlightitem.h"
 
 using namespace eddy;
 
@@ -24,6 +26,113 @@ private slots:
         auto *a = dynamic_cast<ArrowItem*>(scene.items().first());
         QVERIFY(a);
         QCOMPARE(a->end(), QPointF(80,80));
+    }
+    void shiftRectCreatesSquare() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tc.setAnimationsEnabled(false);
+        tc.setTool(ToolType::Rect);
+        tc.begin({10,10});
+        tc.finish({40,25}, Qt::ShiftModifier);
+        auto *rect = dynamic_cast<RectItem *>(scene.items().first());
+        QVERIFY(rect);
+        QCOMPARE(rect->rect(), QRectF(10,10,30,30));
+    }
+    void shiftArrowSnapsToFortyFiveDegreeIncrement() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tc.setAnimationsEnabled(false);
+        tc.setTool(ToolType::Arrow);
+        tc.begin({0,0});
+        tc.finish({30,10}, Qt::ShiftModifier);
+        auto *arrow = dynamic_cast<ArrowItem *>(scene.items().first());
+        QVERIFY(arrow);
+        QVERIFY(qAbs(arrow->end().y()) < 0.001);
+    }
+    void altEllipseCreatesFromCenter() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tc.setAnimationsEnabled(false);
+        tc.setTool(ToolType::Ellipse);
+        tc.begin({50,50});
+        tc.finish({70,60}, Qt::AltModifier);
+        auto *ellipse = dynamic_cast<EllipseItem *>(scene.items().first());
+        QVERIFY(ellipse);
+        QCOMPARE(ellipse->rect(), QRectF(30,40,40,20));
+    }
+    void cancelActiveDiscardsPreviewWithoutUndo() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tc.setTool(ToolType::Rect);
+        tc.begin({10,10});
+        QCOMPARE(scene.items().size(), 1);
+        QVERIFY(tc.cancelActive());
+        QCOMPARE(scene.items().size(), 0);
+        QCOMPARE(undo.count(), 0);
+        QVERIFY(!tc.cancelActive());
+    }
+    void duplicateSelectionIsOneUndoStep() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        auto *rect = new RectItem(QRectF(0,0,20,10));
+        rect->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        rect->setPos(12, 18);
+        rect->setSelected(true);
+        scene.addItem(rect);
+
+        QVERIFY(tc.duplicateSelection(QPointF(8,8)));
+        QCOMPARE(scene.items().size(), 2);
+        QCOMPARE(undo.count(), 1);
+        const auto selected = scene.selectedItems();
+        QCOMPARE(selected.size(), 1);
+        auto *copy = dynamic_cast<RectItem *>(selected.first());
+        QVERIFY(copy);
+        QVERIFY(copy != rect);
+        QCOMPARE(copy->rect(), rect->rect());
+        QCOMPARE(copy->pos(), QPointF(20,26));
+
+        undo.undo();
+        QCOMPARE(scene.items().size(), 1);
+        undo.redo();
+        QCOMPARE(scene.items().size(), 2);
+    }
+    void nudgeSelectionIsOneUndoStep() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        auto *a = new RectItem(QRectF(0,0,10,10));
+        auto *b = new EllipseItem(QRectF(20,20,10,10));
+        for (QGraphicsItem *item : {static_cast<QGraphicsItem *>(a), static_cast<QGraphicsItem *>(b)}) {
+            item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+            scene.addItem(item);
+            item->setSelected(true);
+        }
+
+        QVERIFY(tc.nudgeSelection(QPointF(10,-10)));
+        QCOMPARE(a->pos(), QPointF(10,-10));
+        QCOMPARE(b->pos(), QPointF(10,-10));
+        QCOMPARE(undo.count(), 1);
+        undo.undo();
+        QCOMPARE(a->pos(), QPointF());
+        QCOMPARE(b->pos(), QPointF());
+    }
+    void duplicateMoveIsOneUndoStep() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        auto *rect = new RectItem(QRectF(0,0,20,10));
+        rect->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene.addItem(rect);
+        rect->setSelected(true);
+
+        QVERIFY(tc.beginDuplicateMove());
+        QCOMPARE(scene.items().size(), 2);
+        auto *copy = scene.selectedItems().first();
+        copy->setPos(14, 9);
+        tc.finishMove();
+        QCOMPARE(undo.count(), 1);
+
+        undo.undo();
+        QCOMPARE(scene.items().size(), 1);
+        QCOMPARE(rect->pos(), QPointF());
     }
     void undoRemovesItem() {
         QGraphicsScene scene; QUndoStack undo;
@@ -57,17 +166,73 @@ private slots:
         QVERIFY(r->flags() & QGraphicsItem::ItemIsMovable);
         QVERIFY(r->flags() & QGraphicsItem::ItemIsSelectable);
     }
-    void placeTextAddsEditableItem() {
+    void newTextCommitsAsOneUndoStep() {
         QGraphicsScene scene; QUndoStack undo;
         ToolController tc(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
-        auto *t = tc.placeText({10,10});
+        auto *t = dynamic_cast<TextItem *>(tc.placeText({10,10}));
         QVERIFY(t);
         QVERIFY(scene.items().contains(t));
-        QVERIFY(dynamic_cast<TextItem*>(t));
         QVERIFY(t->flags() & QGraphicsItem::ItemIsMovable);
         QVERIFY(t->flags() & QGraphicsItem::ItemIsSelectable);
+        QCOMPARE(undo.count(), 0);
+        t->setPlainText(QStringLiteral("hello\nworld"));
+        QVERIFY(tc.commitTextEdit());
+        QCOMPARE(undo.count(), 1);
         undo.undo();
         QVERIFY(!scene.items().contains(t));
+    }
+    void escapeCancelsNewTextWithoutUndo() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
+        tc.placeText({10,10});
+        QVERIFY(tc.cancelTextEdit());
+        QCOMPARE(scene.items().size(), 0);
+        QCOMPARE(undo.count(), 0);
+    }
+    void existingTextEditCommitsOrRestoresAsOneTransaction() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
+        auto *text = new TextItem(QStringLiteral("before"), Qt::red, 18);
+        text->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene.addItem(text);
+
+        tc.editText(text);
+        text->setPlainText(QStringLiteral("temporary"));
+        QVERIFY(tc.cancelTextEdit());
+        QCOMPARE(text->toPlainText(), QStringLiteral("before"));
+        QCOMPARE(undo.count(), 0);
+
+        tc.editText(text);
+        text->setPlainText(QStringLiteral("after\nline"));
+        QVERIFY(tc.commitTextEdit());
+        QCOMPARE(undo.count(), 1);
+        undo.undo();
+        QCOMPARE(text->toPlainText(), QStringLiteral("before"));
+        undo.redo();
+        QCOMPARE(text->toPlainText(), QStringLiteral("after\nline"));
+    }
+    void newSpotlightReplacesOldInOneUndoStep() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));
+        tc.setAnimationsEnabled(false); tc.setTool(ToolType::Spotlight);
+        tc.begin({10,10}); tc.finish({40,40});
+        QCOMPARE(tc.tool(), ToolType::Move);
+        QCOMPARE(scene.selectedItems().size(), 1);
+        tc.setTool(ToolType::Spotlight);
+        tc.begin({50,50}); tc.finish({90,90});
+        QCOMPARE(scene.items().size(), 1);
+        QCOMPARE(undo.count(), 2);
+        QCOMPARE(dynamic_cast<SpotlightItem *>(scene.items().first())->rect(), QRectF(50,50,40,40));
+        undo.undo();
+        QCOMPARE(dynamic_cast<SpotlightItem *>(scene.items().first())->rect(), QRectF(10,10,30,30));
+    }
+    void placeTextUsesConfiguredFont() {
+        QGraphicsScene scene; QUndoStack undo;
+        ToolController tc(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
+        tc.setTextFont(QStringLiteral("DejaVu Sans Mono"));
+        auto *t = dynamic_cast<TextItem *>(tc.placeText({10,10}));
+        QVERIFY(t);
+        QCOMPARE(t->font().family(), QStringLiteral("DejaVu Sans Mono"));
     }
     void toolChangedEmittedOnlyOnChange() {
         QGraphicsScene scene; QUndoStack undo;

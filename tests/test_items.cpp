@@ -3,6 +3,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QUndoStack>
+#include <memory>
 #include "items/arrowitem.h"
 #include "items/rectitem.h"
 #include "items/ellipseitem.h"
@@ -10,6 +11,7 @@
 #include "items/redactitem.h"
 #include "items/penpathitem.h"
 #include "items/textitem.h"
+#include "items/spotlightitem.h"
 #include "undocommands.h"
 
 using namespace eddy;
@@ -28,6 +30,100 @@ static QImage renderScene(QGraphicsScene &scene, QSize size) {
 class TestItems : public QObject {
     Q_OBJECT
 private slots:
+    void annotationClonesRetainGeometryAndStyle() {
+        ArrowItem arrow({1,2}, {30,40});
+        arrow.setStrokeColor(QColor("#123456"));
+        arrow.setStrokeWidth(7);
+        std::unique_ptr<ArrowItem> arrowCopy(arrow.clone());
+        QCOMPARE(arrowCopy->start(), arrow.start());
+        QCOMPARE(arrowCopy->end(), arrow.end());
+        QCOMPARE(arrowCopy->strokeColor(), arrow.strokeColor());
+        QCOMPARE(arrowCopy->strokeWidth(), arrow.strokeWidth());
+
+        RectItem rect(QRectF(2,3,40,20));
+        rect.setStrokeColor(QColor("#654321"));
+        rect.setStrokeWidth(5);
+        std::unique_ptr<RectItem> rectCopy(rect.clone());
+        QCOMPARE(rectCopy->rect(), rect.rect());
+        QCOMPARE(rectCopy->strokeColor(), rect.strokeColor());
+        QCOMPARE(rectCopy->strokeWidth(), rect.strokeWidth());
+
+        EllipseItem ellipse(QRectF(4,5,30,10));
+        std::unique_ptr<EllipseItem> ellipseCopy(ellipse.clone());
+        QCOMPARE(ellipseCopy->rect(), ellipse.rect());
+
+        HighlightItem highlight(QRectF(6,7,50,12));
+        std::unique_ptr<HighlightItem> highlightCopy(highlight.clone());
+        QCOMPARE(highlightCopy->rect(), highlight.rect());
+        QCOMPARE(highlightCopy->strokeColor(), highlight.strokeColor());
+        QCOMPARE(highlightCopy->strokeWidth(), highlight.strokeWidth());
+    }
+    void statefulClonesRetainContent() {
+        QImage source(80,80,QImage::Format_ARGB32); source.fill(Qt::white);
+        RedactItem redact(RedactMode::OcrBlacken, source, QRectF(10,10,40,30));
+        redact.setTextRects({QRectF(14,15,20,8)});
+        redact.setDetecting(true);
+        std::unique_ptr<RedactItem> redactCopy(redact.clone());
+        QCOMPARE(redactCopy->mode(), redact.mode());
+        QCOMPARE(redactCopy->rect(), redact.rect());
+        QCOMPARE(redactCopy->textRects(), redact.textRects());
+        QCOMPARE(redactCopy->isDetecting(), redact.isDetecting());
+
+        PenPathItem pen({1,1});
+        pen.addPoint({5,6});
+        pen.addPoint({9,3});
+        pen.setStrokeColor(QColor("#abcdef"));
+        pen.setStrokeWidth(3);
+        std::unique_ptr<PenPathItem> penCopy(pen.clone());
+        QCOMPARE(penCopy->pointCount(), pen.pointCount());
+        QCOMPARE(penCopy->strokeColor(), pen.strokeColor());
+        QCOMPARE(penCopy->strokeWidth(), pen.strokeWidth());
+
+        TextItem text("hello", QColor("#fedcba"), 18);
+        text.setTextWidth(140);
+        text.setTextInteractionFlags(Qt::TextEditorInteraction);
+        std::unique_ptr<TextItem> textCopy(text.clone());
+        QCOMPARE(textCopy->toPlainText(), text.toPlainText());
+        QCOMPARE(textCopy->defaultTextColor(), text.defaultTextColor());
+        QCOMPARE(textCopy->font(), text.font());
+        QCOMPARE(textCopy->textWidth(), text.textWidth());
+        QCOMPARE(textCopy->textInteractionFlags(), text.textInteractionFlags());
+    }
+    void filledTextUsesReadableForegroundAndRetainsState() {
+        TextItem text("Label", QColor("#f0f0f0"), 18);
+        text.setLabelStyle(TextLabelStyle::Filled);
+        text.setAlignment(Qt::AlignHCenter);
+        QFont bold = text.font(); bold.setBold(true); text.setFont(bold);
+        QCOMPARE(text.defaultTextColor(), QColor("#1A1A1A"));
+        QCOMPARE(text.annotationColor(), QColor("#f0f0f0"));
+        QCOMPARE(text.labelStyle(), TextLabelStyle::Filled);
+        QCOMPARE(text.alignment(), Qt::AlignHCenter);
+
+        std::unique_ptr<TextItem> copy(text.clone());
+        QCOMPARE(copy->state(), text.state());
+    }
+    void spotlightDimsOnlyOutsideFocusRegion() {
+        QGraphicsScene scene(0,0,100,100);
+        auto *spot = new SpotlightItem(QRectF(30,30,40,40), QSizeF(100,100));
+        spot->setIntensity(3); scene.addItem(spot);
+        const QImage image = renderScene(scene, QSize(100,100));
+        QCOMPARE(image.pixelColor(50,50).alpha(), 0);
+        QVERIFY(image.pixelColor(10,10).alpha() > 150);
+        spot->setSpotlightShape(SpotlightShape::Ellipse);
+        QCOMPARE(spot->spotlightShape(), SpotlightShape::Ellipse);
+    }
+    void movingSpotlightKeepsDimLayerOnCanvas() {
+        QGraphicsScene scene(0,0,100,100);
+        auto *spot = new SpotlightItem(QRectF(20,20,30,30), QSizeF(100,100));
+        spot->setIntensity(3);
+        scene.addItem(spot);
+        spot->moveBy(20, 10);
+
+        const QImage image = renderScene(scene, QSize(100,100));
+        QVERIFY(image.pixelColor(5,5).alpha() > 150);
+        QVERIFY(image.pixelColor(95,95).alpha() > 150);
+        QCOMPARE(image.pixelColor(50,40).alpha(), 0);
+    }
     void arrowDrawsAlongLine() {
         QGraphicsScene scene(0, 0, 100, 100);
         auto *a = new ArrowItem(QPointF(10,50), QPointF(90,50));
@@ -181,6 +277,15 @@ private slots:
         QImage img2 = renderScene(scene, QSize(80,80));
         QVERIFY(!r->isDetecting());
         QCOMPARE(img2.pixelColor(62,62).alpha(), 0);        // now uncovered (only the text rect is)
+    }
+    void emptyOcrResultKeepsRegionCovered() {
+        QGraphicsScene scene(0,0,80,80);
+        QImage src(80,80,QImage::Format_ARGB32); src.fill(Qt::white);
+        auto *r = new RedactItem(RedactMode::OcrBlacken, src, QRectF(10,10,60,60));
+        r->setTextRects({});
+        r->setDetecting(false);
+        scene.addItem(r);
+        QCOMPARE(renderScene(scene, QSize(80,80)).pixelColor(40,40).alpha(), 255);
     }
     void setRedactModeCommandUndoRedo() {
         QImage src(40,40,QImage::Format_ARGB32); src.fill(Qt::white);
