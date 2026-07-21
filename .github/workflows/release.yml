@@ -30,6 +30,7 @@ jobs:
           python -m pip install --disable-pip-version-check "aqtinstall==3.3.0"
           python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 `
             -O C:\Qt -m qtmultimedia
+          "C:\Qt\6.8.3\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Configure
         shell: pwsh
