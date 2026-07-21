@@ -1,89 +1,115 @@
-/* eddy — flat integrated toolbar, quickshell "mono" palette */
-QWidget#EditorRoot { background-color: #121212; }
+/* eddy — mt-ui-style semantic tokens, expanded once at startup. */
+QWidget {
+    font-family: "Geist", "Inter", sans-serif;
+    font-size: 15px;
+}
+QToolTip {
+    background-color: @raise2;
+    color: @fg;
+    border: none;
+    border-radius: 9px;
+    padding: 6px 9px;
+    font-family: "Geist", "Inter", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+}
+QWidget#EditorRoot { background-color: @bg; }
 
 QWidget#Toolbar {
-    background-color: #1a1a1a;
+    background-color: @raise1;
     border: none;
-    border-bottom: 1px solid #2a2a2a;
-}
-/* Selected-tool highlight: a soft squircle, boltsnap CARD_RADIUS=10 aesthetic.
-   Inset 2px from the 34px button (see Toolbar::movePillTo) so it reads as a
-   contained chip, not a full-cell box. */
-QWidget#Pill {
-    background-color: #e6e6e6;
-    border-radius: 10px;
 }
 
 QToolButton {
     background-color: transparent;
-    color: #a8a8a8;
+    color: @sub;
     border: none;
-    border-radius: 10px;
-    font-family: "Inter", "sans-serif";
+    border-radius: 9px;
+    font-family: "Geist", "Inter", sans-serif;
     font-size: 12px;
     font-weight: 600;
 }
-QToolButton:hover  { background-color: rgba(255,255,255,0.07); color: #ffffff; }
-/* Active state is the sliding pill, not a per-button background. */
-QToolButton:checked { background-color: transparent; }
-/* The width chooser has no pill, so its active size needs a visible marker. */
+QToolButton:hover { background-color: @raise2; color: @fg; }
+QToolButton:checked { background-color: @chip-on; color: @chip-on-fg; }
+QToolButton:checked:hover { background-color: @chip-on; color: @chip-on-fg; }
 QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:checked {
-    background-color: rgba(255,255,255,0.11); color: #ffffff;
+    background-color: @raise3;
+    color: @fg;
 }
 
-/* Swatch is a painted colour-disc icon (see Toolbar::setSwatchColor); the
-   generic QToolButton:hover already covers its hover background. */
 QToolButton#Save, QToolButton#Copy, QToolButton#SendToShelf {
-    padding-left: 12px; padding-right: 12px;
+    padding-left: 12px;
+    padding-right: 12px;
 }
 
-QFrame#Sep { color: #2a2a2a; }
-
-QWidget#ColorPopover { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 9px; }
+QWidget#ColorPopover {
+    background-color: @raise1;
+    border: none;
+    border-radius: 14px;
+}
 QWidget#ColorPopover QToolButton#Custom {
-    color: #d0d0d0; border: 1px solid #2a2a2a; border-radius: 5px;
-    font-family: "Inter","sans-serif"; font-size: 11px;
+    color: @sub;
+    border: none;
+    border-radius: 9px;
+    font-family: "Geist", "Inter", sans-serif;
+    font-size: 11px;
 }
-QWidget#ColorPopover QToolButton#Custom:hover { background-color: rgba(255,255,255,0.06); }
+QWidget#ColorPopover QToolButton#Custom:hover { background-color: @raise2; color: @fg; }
 
-QWidget#RedactBar { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 9px; }
-QWidget#RedactBar QToolButton {
-    color: #a8a8a8; padding: 0 8px; border-radius: 6px;
-    font-family: "Inter","sans-serif"; font-size: 11px; font-weight: 600;
+QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar {
+    background-color: @raise1;
+    border: none;
+    border-radius: 14px;
 }
-QWidget#RedactBar QToolButton:hover   { background-color: rgba(255,255,255,0.06); color: #ffffff; }
-QWidget#RedactBar QToolButton:checked { background-color: rgba(255,255,255,0.12); color: #ffffff; }
+QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar QToolButton {
+    color: @sub;
+    padding: 0 8px;
+    border-radius: 9px;
+    font-family: "Geist", "Inter", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+}
+QWidget#RedactBar QToolButton:hover, QWidget#TextBar QToolButton:hover, QWidget#SpotlightBar QToolButton:hover { background-color: @raise2; color: @fg; }
+QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked { background-color: @raise3; color: @fg; }
 
 QWidget#PlaybackBar {
-    background-color: #121212;
-    border-top: 1px solid #2a2a2a;
+    background-color: @raise1;
+    border: none;
 }
-QWidget#PlaybackBar QToolButton#PlaybackPlay {
-    background-color: #1a1a1a;
-    border: 1px solid #2a2a2a;
-    border-radius: 7px;
-    color: #d0d0d0;
-    font-family: "Inter","sans-serif";
+QWidget#PlaybackBar QToolButton#PlaybackPlay,
+QWidget#PlaybackBar QToolButton#PlaybackMute,
+QWidget#PlaybackBar QToolButton#TrimSetIn,
+QWidget#PlaybackBar QToolButton#TrimSetOut,
+QWidget#PlaybackBar QToolButton#TrimReset {
+    background-color: @raise2;
+    border: none;
+    border-radius: 9px;
+    color: @fg;
+    font-family: "Geist", "Inter", sans-serif;
     font-size: 12px;
     font-weight: 700;
 }
-QWidget#PlaybackBar QToolButton#PlaybackPlay:hover {
-    background-color: #222222;
-    color: #ffffff;
-}
-QWidget#PlaybackBar QLabel#PlaybackTime {
-    color: #a8a8a8;
-    font-family: "Inter","sans-serif";
+QWidget#PlaybackBar QToolButton#PlaybackPlay:hover,
+QWidget#PlaybackBar QToolButton#PlaybackMute:hover,
+QWidget#PlaybackBar QToolButton#TrimSetIn:hover,
+QWidget#PlaybackBar QToolButton#TrimSetOut:hover,
+QWidget#PlaybackBar QToolButton#TrimReset:hover { background-color: @raise3; }
+QWidget#PlaybackBar QLabel#PlaybackTime,
+QWidget#PlaybackBar QLabel#TrimLabel,
+QWidget#PlaybackBar QLabel#TrimInTime,
+QWidget#PlaybackBar QLabel#TrimOutTime {
+    color: @sub;
+    font-family: "Geist", "Inter", sans-serif;
     font-size: 11px;
     font-weight: 600;
 }
 QWidget#PlaybackBar QSlider::groove:horizontal {
     height: 4px;
-    background: #2a2a2a;
+    background: @raise3;
     border-radius: 2px;
 }
 QWidget#PlaybackBar QSlider::sub-page:horizontal {
-    background: #cccccc;
+    background: @fg;
     border-radius: 2px;
 }
 QWidget#PlaybackBar QSlider::handle:horizontal {
@@ -91,16 +117,33 @@ QWidget#PlaybackBar QSlider::handle:horizontal {
     height: 12px;
     margin: -4px 0;
     border-radius: 6px;
-    background: #d0d0d0;
+    background: @fg;
 }
-QWidget#PlaybackBar QSlider::handle:horizontal:hover { background: #ffffff; }
+QWidget#PlaybackBar QSlider::handle:horizontal:hover { background: @chip-on; }
 
-QWidget#Toast { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 9px; }
-QLabel#ToastText { color: #d0d0d0; font-family: "Inter","sans-serif"; font-size: 12px; }
+QWidget#Toast {
+    background-color: @raise1;
+    border: none;
+    border-radius: 14px;
+}
+QLabel#ToastText {
+    color: @fg;
+    font-family: "Geist", "Inter", sans-serif;
+    font-size: 12px;
+}
 
-QWidget#Footer { background-color: #121212; }
-/* Drag-out pill: same surface/border language as the toolbar chips, fully
-   rounded ends so it stays a pill at its 32px height. */
-QWidget#DragPill { background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; }
-QWidget#DragPill:hover { background-color: #222222; border-color: #3a3a3a; }
-QLabel#DragPillText { color: #d0d0d0; font-family: "Inter","sans-serif"; font-size: 12px; font-weight: 600; }
+QWidget#Footer { background-color: @bg; }
+QWidget#DragPill {
+    background-color: @raise1;
+    border: none;
+    border-radius: 9px;
+}
+QWidget#DragPill:hover { background-color: @raise2; }
+QWidget#DragPill:disabled { background-color: @raise1; }
+QLabel#DragPillText {
+    color: @fg;
+    font-family: "Geist", "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+}
+QWidget#DragPill:disabled QLabel#DragPillText { color: @faint; }

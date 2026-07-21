@@ -7,6 +7,7 @@ public:
     explicit PenPathItem(const QPointF &start);
     void addPoint(const QPointF &p);
     int pointCount() const { return m_pts.size(); }
+    PenPathItem *clone() const override;
     QRectF boundingRect() const override;
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override;
 private:

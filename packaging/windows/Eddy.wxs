@@ -1,0 +1,140 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="Eddy"
+           Manufacturer="drvcvt"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="4553B8CB-C007-49F8-A7EB-A02F64A81EE0"
+           Language="1033"
+           Scope="perMachine"
+           InstallerVersion="500">
+    <SummaryInformation Description="Eddy image and video annotation editor" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Eddy is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Eddy" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="EddyProgramMenuFolder" Name="Eddy" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Eddy" Level="1">
+      <Files Include="$(var.SourceDir)\**" Directory="INSTALLFOLDER" />
+      <ComponentRef Id="ShellIntegration" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ShellIntegration"
+                 Guid="82DCD329-7568-4387-ACB9-058E2DF687A5"
+                 Bitness="always64">
+        <RegistryValue Root="HKLM" Key="Software\RegisteredApplications"
+                       Name="Eddy" Value="Software\Eddy\Capabilities"
+                       Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities"
+                       Name="ApplicationName" Value="Eddy" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities"
+                       Name="ApplicationDescription"
+                       Value="Fast image and video annotation editor" Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".png" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".jpg" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".jpeg" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".webp" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".mp4" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".mov" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".webm" Value="Eddy.Media" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations"
+                       Name=".mkv" Value="Eddy.Media" Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Classes\Eddy.Media"
+                       Value="Image or video file" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Eddy.Media\DefaultIcon"
+                       Value="[INSTALLFOLDER]eddy.exe,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Eddy.Media\shell\open\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;"
+                       Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe"
+                       Name="FriendlyAppName" Value="Eddy" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\shell\open\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;"
+                       Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".png" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".jpg" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".jpeg" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".webp" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".mp4" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".mov" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".webm" Value="" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\Applications\eddy.exe\SupportedTypes"
+                       Name=".mkv" Value="" Type="string" />
+
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith"
+                       Name="MUIVerb" Value="Open with Eddy" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith"
+                       Name="Icon" Value="[INSTALLFOLDER]eddy.exe,0" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith"
+                       Name="MultiSelectModel" Value="Single" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;"
+                       Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\video\shell\Eddy.OpenWith"
+                       Name="MUIVerb" Value="Open with Eddy" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\video\shell\Eddy.OpenWith"
+                       Name="Icon" Value="[INSTALLFOLDER]eddy.exe,0" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\video\shell\Eddy.OpenWith"
+                       Name="MultiSelectModel" Value="Single" Type="string" />
+        <RegistryValue Root="HKLM"
+                       Key="Software\Classes\SystemFileAssociations\video\shell\Eddy.OpenWith\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;"
+                       Type="string" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="EddyProgramMenuFolder">
+      <Component Id="StartMenuShortcut"
+                 Guid="3295525B-B1DD-436B-B7F6-73EA22A57577"
+                 Bitness="always64">
+        <Shortcut Id="EddyStartMenuShortcut" Name="Eddy"
+                  Description="Eddy image and video annotation editor"
+                  Target="[INSTALLFOLDER]eddy.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveEddyProgramMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy"
+                       Name="StartMenuShortcut" Value="1" Type="integer" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+  </Package>
+</Wix>

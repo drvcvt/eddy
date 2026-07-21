@@ -13,6 +13,12 @@ private slots:
         QCOMPARE(r.options.input.path, QString("shot.png"));
         QVERIFY(r.options.output.copyToClipboard); // default
     }
+    void preservesUnicodeFilePath() {
+        const QString path = QStringLiteral("C:/Bilder/Grüße/截图.png");
+        const auto r = parseArgs({path});
+        QVERIFY(r.ok);
+        QCOMPARE(r.options.input.path, path);
+    }
     void swappyFileAlias() {
         auto r = parseArgs({"-f", "shot.png"});
         QVERIFY(r.ok);
@@ -63,6 +69,22 @@ private slots:
         auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--no-anim")});
         QVERIFY(r.ok);
         QVERIFY(r.options.noAnim);
+    }
+    void parsesBoltsnapCardId() {
+        auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--boltsnap-card-id"),
+                            QStringLiteral("184467")});
+        QVERIFY(r.ok);
+        QCOMPARE(r.options.boltsnapCardId, quint64(184467));
+    }
+    void rejectsInvalidBoltsnapCardId() {
+        auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--boltsnap-card-id"),
+                            QStringLiteral("nope")});
+        QVERIFY(!r.ok);
+    }
+    void rejectsBoltsnapCardIdOutsideJsonIntegerRange() {
+        auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--boltsnap-card-id"),
+                            QStringLiteral("9223372036854775808")});
+        QVERIFY(!r.ok);
     }
 };
 

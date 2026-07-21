@@ -4,14 +4,11 @@
 #include <QHBoxLayout>
 #include <QToolButton>
 #include <QButtonGroup>
-#include <QFrame>
-#include <QPropertyAnimation>
-#include <QShowEvent>
-#include <QResizeEvent>
 #include <QPainter>
 #include <QPixmap>
 #include <QIcon>
 #include <QPen>
+#include <QApplication>
 
 namespace eddy {
 
@@ -30,20 +27,14 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     setObjectName("Toolbar");
     setAttribute(Qt::WA_StyledBackground, true);
 
-    // The sliding accent pill lives behind the buttons.
-    m_pill = new QWidget(this);
-    m_pill->setObjectName("Pill");
-    m_pill->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-    m_pill->resize(30, 30);   // initial only — movePillTo drives geometry (don't fix the size, or the inset can't shrink it)
-    m_pill->hide();
-    m_pillAnim = new QPropertyAnimation(m_pill, "geometry", this);
-    m_pillAnim->setDuration(190);
-    m_pillAnim->setEasingCurve(QEasingCurve::OutExpo);   // smooth glide, no overshoot
-
     auto *lay = new QHBoxLayout(this);
     lay->setContentsMargins(10, 6, 10, 6);
     lay->setSpacing(4);
     auto *group = new QButtonGroup(this); group->setExclusive(true);
+    const QPalette palette = QApplication::palette();
+    const QColor iconRest = palette.color(QPalette::PlaceholderText);
+    const QColor iconOn = palette.color(QPalette::HighlightedText);
+    const QColor iconHover = palette.color(QPalette::WindowText);
 
     m_undoBtn = mkBtn(false, true); m_undoBtn->setObjectName("Undo");
     m_undoBtn->setText(QString::fromUtf8("\xE2\x86\xB6"));   // ↶
@@ -57,10 +48,6 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     connect(m_redoBtn, &QToolButton::clicked, this, [this]{ emit redoRequested(); });
     lay->addWidget(m_redoBtn);
 
-    auto *usep = new QFrame; usep->setObjectName("Sep");
-    usep->setFrameShape(QFrame::VLine); usep->setFixedHeight(20);
-    lay->addWidget(usep);
-
     struct T { ToolType type; const char *id; const char *name; const char *key; };
     const QVector<T> tools = {
         {ToolType::Move,"move","Move","M"}, {ToolType::Arrow,"arrow","Arrow","A"},
@@ -68,31 +55,37 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         {ToolType::Ellipse,"ellipse","Ellipse","E"}, {ToolType::Highlight,"highlight","Highlight","H"},
         {ToolType::Text,"text","Text","T"},
         {ToolType::Redact,"redact","Redact","X"},
+        {ToolType::Spotlight,"spotlight","Spotlight",""},
     };
     for (const T &t : tools) {
         auto *b = mkBtn(true, true);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(t.id),
-                                     QColor(theme::kIconRest), QColor(theme::kIconActive)));
+                                     iconRest, iconOn));
         b->setIconSize(QSize(20, 20));
-        b->setToolTip(QString("%1 \xC2\xB7 %2").arg(t.name, t.key));
+        b->setObjectName(QString::fromLatin1(t.id));
+        b->setToolTip(*t.key ? QString("%1 \xC2\xB7 %2").arg(t.name, t.key)
+                             : QString::fromLatin1(t.name));
         group->addButton(b);
         m_btns.insert(int(t.type), b);
         connect(b, &QToolButton::clicked, this, [this, tt=t.type]{ emit toolChosen(tt); });
         lay->addWidget(b);
     }
 
-    auto *wsep = new QFrame; wsep->setObjectName("Sep");
-    wsep->setFrameShape(QFrame::VLine); wsep->setFixedHeight(20);
-    lay->addWidget(wsep);
-
     auto *wgroup = new QButtonGroup(this); wgroup->setExclusive(true);
-    struct W { const char *id; const char *label; double w; };
-    const QVector<W> widths = { {"WidthS","S",2.0}, {"WidthM","M",4.0}, {"WidthL","L",8.0} };
+    struct W { const char *id; const char *icon; const char *tip; double w; };
+    const QVector<W> widths = {
+        {"WidthS", "width-thin", "Thin line · 2 px", 2.0},
+        {"WidthM", "width-medium", "Medium line · 4 px", 4.0},
+        {"WidthL", "width-thick", "Thick line · 8 px", 8.0},
+    };
     for (const W &x : widths) {
         auto *b = mkBtn(true, true);
         b->setObjectName(x.id);
-        b->setText(x.label);
-        b->setToolTip(QString("Line width %1").arg(x.label));
+        b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(x.icon),
+                                     iconRest, iconHover));
+        b->setIconSize(QSize(20, 20));
+        b->setToolTip(QString::fromUtf8(x.tip));
+        b->setAccessibleName(b->toolTip());
         if (x.w == 4.0) b->setChecked(true);             // default M
         wgroup->addButton(b);
         connect(b, &QToolButton::clicked, this, [this, w=x.w]{ emit widthChosen(w); });
@@ -120,15 +113,11 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     });
     lay->addWidget(color);
 
-    auto *sep = new QFrame; sep->setObjectName("Sep");
-    sep->setFrameShape(QFrame::VLine); sep->setFixedHeight(20);
-    lay->addWidget(sep);
-
     // Save/Copy are not checkable (no sliding pill), so hover brightens to white
     // rather than kIconActive (which is dark, meant for the light pill behind tools).
     auto *save = mkBtn(false, false); save->setObjectName("Save");
     save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
-                                    QColor(theme::kIconRest), QColor("#ffffff")));
+                                    iconRest, iconHover));
     save->setIconSize(QSize(20, 20));
     save->setToolTip("Save \xC2\xB7 Enter");
     connect(save, &QToolButton::clicked, this, [this]{ emit saveRequested(); });
@@ -136,7 +125,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     auto *copy = mkBtn(false, false); copy->setObjectName("Copy");
     copy->setIcon(theme::tintedIcon(QStringLiteral(":/icons/copy.svg"),
-                                    QColor(theme::kIconRest), QColor("#ffffff")));
+                                    iconRest, iconHover));
     copy->setIconSize(QSize(20, 20));
     copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
@@ -144,55 +133,43 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     auto *shelf = mkBtn(false, false); shelf->setObjectName("SendToShelf");
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
-                                     QColor(theme::kIconRest), QColor("#ffffff")));
+                                     iconRest, iconHover));
     shelf->setIconSize(QSize(20, 20));
     shelf->setToolTip("Send to Boltsnap shelf");
     connect(shelf, &QToolButton::clicked, this, [this]{ emit sendToShelfRequested(); });
     lay->addWidget(shelf);
 
+    m_themeBtn = mkBtn(false, true);
+    m_themeBtn->setObjectName(QStringLiteral("Theme"));
+    m_themeBtn->setIconSize(QSize(20, 20));
+    connect(m_themeBtn, &QToolButton::clicked, this, &Toolbar::themeToggleRequested);
+    lay->addWidget(m_themeBtn);
+
     syncTool(ToolType::Arrow);   // sensible default highlight (snaps on first show)
+    setDark(QApplication::palette().color(QPalette::Window).lightness() < 128);
 }
 
 void Toolbar::syncTool(ToolType t) {
     auto *b = m_btns.value(int(t), nullptr);
     if (!b) return;
     b->setChecked(true);                 // exclusive group unchecks the rest
-    m_active = b;
-    movePillTo(b, m_anim && isVisible());
-}
-
-void Toolbar::movePillTo(QToolButton *b, bool animate) {
-    if (!b) return;
-    const QRect target = b->geometry().adjusted(2, 2, -2, -2);  // inset → contained squircle chip
-    m_pill->show();
-    m_pill->lower();                     // behind buttons, above the bar background
-    if (animate) {
-        m_pillAnim->stop();
-        m_pillAnim->setStartValue(m_pill->geometry());
-        m_pillAnim->setEndValue(target);
-        m_pillAnim->start();
-    } else {
-        m_pill->setGeometry(target);
-    }
-}
-
-void Toolbar::showEvent(QShowEvent *e) {
-    QWidget::showEvent(e);
-    if (m_active) movePillTo(m_active, false);   // first real layout: snap
-}
-
-void Toolbar::resizeEvent(QResizeEvent *e) {
-    QWidget::resizeEvent(e);
-    if (m_active) movePillTo(m_active, false);
 }
 
 void Toolbar::setUndoEnabled(bool on) { if (m_undoBtn) m_undoBtn->setEnabled(on); }
 void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on); }
 
+void Toolbar::setCompact(bool compact) {
+    for (const char *name : {"Undo", "Redo", "WidthS", "WidthM", "WidthL", "Save", "Copy"})
+        if (auto *button = findChild<QToolButton *>(QString::fromLatin1(name)))
+            button->setVisible(!compact);
+    updateGeometry();
+}
+
 // Paint a crisp colour disc as the swatch icon: a filled circle in the current
 // stroke colour with a subtle dark ring for contrast on the dark toolbar.
 void Toolbar::setSwatchColor(const QColor &c) {
     if (!m_swatch) return;
+    m_swatchColor = c;
     constexpr int d = 18;
     const qreal dpr = m_swatch->devicePixelRatioF();   // crisp on HiDPI, like tintedIcon
     QPixmap pm(qRound(d * dpr), qRound(d * dpr));
@@ -201,11 +178,38 @@ void Toolbar::setSwatchColor(const QColor &c) {
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setBrush(c);
-    p.setPen(QPen(QColor(0, 0, 0, 110), 1));
+    QColor ring = QApplication::palette().color(QPalette::WindowText);
+    ring.setAlpha(90);
+    p.setPen(QPen(ring, 1));
     p.drawEllipse(QRectF(1, 1, d - 2, d - 2));         // logical coords; painter is DPR-scaled
     p.end();
     m_swatch->setIcon(QIcon(pm));
     m_swatch->setIconSize(QSize(d, d));
+}
+
+void Toolbar::setDark(bool dark) {
+    const QPalette palette = QApplication::palette();
+    const QColor rest = palette.color(QPalette::PlaceholderText);
+    const QColor active = palette.color(QPalette::HighlightedText);
+    const QColor hover = palette.color(QPalette::WindowText);
+    for (QToolButton *button : m_btns)
+        button->setIcon(theme::tintedIcon(
+            QStringLiteral(":/icons/%1.svg").arg(button->objectName()), rest, active));
+    const struct { const char *name; const char *icon; } actions[] = {
+        {"Save", "save"}, {"Copy", "copy"}, {"SendToShelf", "shelf"},
+        {"WidthS", "width-thin"}, {"WidthM", "width-medium"}, {"WidthL", "width-thick"}};
+    for (const auto &action : actions)
+        if (auto *button = findChild<QToolButton *>(QString::fromLatin1(action.name)))
+            button->setIcon(theme::tintedIcon(
+                QStringLiteral(":/icons/%1.svg").arg(QString::fromLatin1(action.icon)), rest, hover));
+    m_themeBtn->setText({});
+    m_themeBtn->setIcon(theme::tintedIcon(
+        dark ? QStringLiteral(":/icons/sun.svg") : QStringLiteral(":/icons/moon.svg"),
+        rest, hover));
+    m_themeBtn->setToolTip(dark ? QStringLiteral("Switch to light theme")
+                                : QStringLiteral("Switch to dark theme"));
+    m_themeBtn->setAccessibleName(m_themeBtn->toolTip());
+    setSwatchColor(m_swatchColor);
 }
 
 }

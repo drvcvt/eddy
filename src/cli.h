@@ -1,6 +1,7 @@
 #pragma once
 #include <QString>
 #include <QStringList>
+#include <QtGlobal>
 
 namespace eddy {
 
@@ -30,6 +31,7 @@ struct CliOptions {
     bool earlyExit = false;
     bool noAnim = false;
     bool useGpuViewport = false;
+    quint64 boltsnapCardId = 0;
 };
 
 // Result of parsing. ok==false means print `error` to stderr and exit 2.
