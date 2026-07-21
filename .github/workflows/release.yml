@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows x86_64 MSI
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Resolve release version
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Release tag must use vMAJOR.MINOR.PATCH: ${{ github.ref_name }}"
+          }
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install Qt
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "aqtinstall==3.3.0"
+          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 `
+            -O C:\Qt -m qtmultimedia
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
+          -DCMAKE_PREFIX_PATH=C:\Qt\6.8.3\msvc2022_64
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 3
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build -C Release --parallel 3 --output-on-failure
+
+      - name: Package MSI
+        shell: pwsh
+        run: ./packaging/windows/build-msi.ps1 `
+          -BuildDirectory build `
+          -QtDirectory C:\Qt\6.8.3\msvc2022_64 `
+          -Version $env:RELEASE_VERSION
+
+      - name: Generate checksum
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem dist/msi -Filter '*.msi' -File
+          if ($msi.Count -ne 1) { throw "Expected one MSI, found $($msi.Count)" }
+          "$(($msi | Get-FileHash -Algorithm SHA256).Hash.ToLower())  $($msi.Name)" |
+            Set-Content -Encoding ascii dist/SHA256SUMS-windows
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          name: Eddy ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/msi/*.msi
+            dist/SHA256SUMS-windows

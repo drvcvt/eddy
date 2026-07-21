@@ -73,4 +73,3 @@
 - [ ] Add both trim label selectors to the existing metadata rule.
 - [ ] Re-run targeted tests, then the full Eddy suite.
 - [ ] Render and inspect dark/light previews with `eddy_preview`.
-

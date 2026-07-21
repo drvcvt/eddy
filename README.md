@@ -126,6 +126,17 @@ boltsnap area --no-copy -o - | eddy -f -
 
 ---
 
+## Install
+
+Windows releases provide a standalone x86-64 MSI with the required Qt and
+compiler runtimes. Download it from the
+[latest Eddy release](https://github.com/drvcvt/eddy/releases/latest). The
+Boltsnap Windows installer also includes a compatible Eddy build.
+
+On Linux, build from source with the Qt packages supplied by your distribution.
+
+---
+
 ## Build
 
 Requires Qt 6 Widgets, Multimedia, and SVG. Windows additionally uses Qt Network for Boltsnap named-pipe IPC.
@@ -165,4 +176,4 @@ or Explorer COM extensions.
 
 ## License
 
-MIT. A `LICENSE` file may be added in a future release.
+[MIT](LICENSE).
