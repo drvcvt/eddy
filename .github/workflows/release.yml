@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   windows:
-    name: Windows x86_64 MSI
+    name: Windows x86_64 installers
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -45,20 +45,32 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build -C Release --parallel 3 --output-on-failure
 
-      - name: Package MSI
+      - name: Install NSIS
         shell: pwsh
-        run: ./packaging/windows/build-msi.ps1 `
-          -BuildDirectory build `
-          -QtDirectory C:\Qt\6.8.3\msvc2022_64 `
-          -Version $env:RELEASE_VERSION
+        run: choco install nsis --no-progress --yes
+
+      - name: Package installers
+        shell: pwsh
+        run: |
+          ./packaging/windows/build-msi.ps1 `
+            -BuildDirectory build `
+            -QtDirectory C:\Qt\6.8.3\msvc2022_64 `
+            -Version $env:RELEASE_VERSION
+          ./packaging/windows/build-nsis.ps1 `
+            -BuildDirectory build `
+            -QtDirectory C:\Qt\6.8.3\msvc2022_64 `
+            -Version $env:RELEASE_VERSION
 
       - name: Generate checksum
         shell: pwsh
         run: |
           $msi = Get-ChildItem dist/msi -Filter '*.msi' -File
           if ($msi.Count -ne 1) { throw "Expected one MSI, found $($msi.Count)" }
-          "$(($msi | Get-FileHash -Algorithm SHA256).Hash.ToLower())  $($msi.Name)" |
-            Set-Content -Encoding ascii dist/SHA256SUMS-windows
+          $nsis = Get-ChildItem dist/nsis -Filter '*.exe' -File
+          if ($nsis.Count -ne 1) { throw "Expected one NSIS installer, found $($nsis.Count)" }
+          @($msi, $nsis) | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content -Encoding ascii dist/SHA256SUMS-windows
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
@@ -68,4 +80,5 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             dist/msi/*.msi
+            dist/nsis/*.exe
             dist/SHA256SUMS-windows

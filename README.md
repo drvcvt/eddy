@@ -128,8 +128,8 @@ boltsnap area --no-copy -o - | eddy -f -
 
 ## Install
 
-Windows releases provide a standalone x86-64 MSI with the required Qt and
-compiler runtimes. Download it from the
+Windows releases provide standalone x86-64 MSI and NSIS installers with the
+required Qt and compiler runtimes. Download either format from the
 [latest Eddy release](https://github.com/drvcvt/eddy/releases/latest). The
 Boltsnap Windows installer also includes a compatible Eddy build.
 
@@ -155,16 +155,17 @@ cmake --build build-rel --parallel 3
 ```
 
 On Windows, configure with a Qt 6 MSVC kit and Visual Studio 2022. Launching
-`eddy.exe` without arguments opens the native media picker. A conventional MSI
-can be produced after the Release build with:
+`eddy.exe` without arguments opens the native media picker. Conventional MSI
+and NSIS installers can be produced after the Release build with:
 
 ```powershell
 .\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64
+.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64
 ```
 
-The MSI installs Eddy per machine, adds a Start-menu shortcut, and registers the
-classic **Open with Eddy** action. It does not install certificates, MSIX identity,
-or Explorer COM extensions.
+Both installers install Eddy per machine, add a Start-menu shortcut, and register
+the classic **Open with Eddy** action. They do not install certificates, MSIX
+identity, or Explorer COM extensions. Building the NSIS format requires NSIS 3.
 
 ---
 
