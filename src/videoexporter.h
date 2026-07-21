@@ -1,6 +1,8 @@
 #pragma once
 #include <QImage>
+#include <QRect>
 #include <QString>
+#include <QVector>
 #include "exporter.h"
 
 namespace eddy {
@@ -12,6 +14,7 @@ struct VideoExportRequest {
     qint64 trimInMs = 0;
     qint64 trimOutMs = -1;
     int timeoutMs = 30 * 60 * 1000;
+    QVector<QRect> blurRects;
 };
 
 DeliverResult replaceFileAtomically(const QString &from, const QString &to);
