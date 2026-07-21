@@ -31,18 +31,22 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMimeData>
+#include <QPainter>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QVideoFrame>
+#include <QVideoFrameFormat>
+#include <QVideoSink>
 #include <QSettings>
 #include <QApplication>
 #include <QUndoStack>
+#include <cstring>
 #ifndef Q_OS_WIN
 #include <cerrno>
 #include <chrono>
-#include <cstring>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -416,6 +420,24 @@ private slots:
         QImage out = w.exportComposite();
         QCOMPARE(out.size(), QSize(64,48));
     }
+    void imageBlurWorksThroughEditorExport() {
+        QImage bg(96, 64, QImage::Format_ARGB32_Premultiplied);
+        for (int y = 0; y < bg.height(); ++y)
+            for (int x = 0; x < bg.width(); ++x)
+                bg.setPixelColor(x, y, ((x / 2 + y / 2) % 2) ? Qt::white : Qt::black);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(bg, cfg, {});
+        auto *tools = window.findChild<ToolController *>();
+        QVERIFY(tools);
+        tools->setTool(ToolType::Redact);
+        tools->begin({16, 12});
+        tools->finish({80, 52});
+
+        const QImage out = window.exportComposite();
+        QCOMPARE(out.pixelColor(4, 4), bg.pixelColor(4, 4));
+        QVERIFY(out.pixelColor(48, 32) != bg.pixelColor(48, 32));
+        QVERIFY(qAbs(out.pixelColor(48, 32).red() - out.pixelColor(49, 32).red()) < 30);
+    }
     void exportKeepsAnnotationSelected() {
         QImage bg(64,48,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
         Config cfg; CliOptions cli;
@@ -531,6 +553,60 @@ private slots:
         QImage overlay = w.exportComposite();
         QCOMPARE(overlay.size(), QSize(64, 48));
         QCOMPARE(overlay.pixelColor(10, 10).alpha(), 0);
+    }
+    void currentVideoFrameFeedsExistingAndNewBlurItems() {
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-video-frame-test.mp4");
+        doc.video.size = QSize(64, 48);
+        doc.video.durationMs = 1000;
+        Config cfg;
+        cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        auto *scene = window.findChild<QGraphicsScene *>();
+        auto *tools = window.findChild<ToolController *>();
+        QVERIFY(scene && tools);
+
+        tools->setTool(ToolType::Redact);
+        tools->begin({4, 4});
+        tools->finish({24, 24});
+
+        window.show();
+        QTRY_VERIFY_WITH_TIMEOUT(sceneHasVideoItem(window), 1000);
+        QGraphicsVideoItem *videoItem = nullptr;
+        for (QGraphicsItem *item : scene->items())
+            if ((videoItem = dynamic_cast<QGraphicsVideoItem *>(item))) break;
+        QVERIFY(videoItem);
+
+        QVideoFrame frame(QVideoFrameFormat(doc.video.size,
+                                            QVideoFrameFormat::Format_BGRA8888));
+        QVERIFY(frame.map(QVideoFrame::WriteOnly));
+        for (int y = 0; y < frame.height(); ++y)
+            std::memset(frame.bits(0) + y * frame.bytesPerLine(0), 0xff,
+                        size_t(frame.width() * 4));
+        frame.unmap();
+        videoItem->videoSink()->setVideoFrame(frame);
+        QCoreApplication::processEvents();
+
+        tools->setTool(ToolType::Redact);
+        tools->begin({32, 4});
+        tools->finish({52, 24});
+
+        videoItem->setVisible(false);
+        QImage preview(doc.video.size, QImage::Format_ARGB32_Premultiplied);
+        preview.fill(Qt::transparent);
+        {
+            QPainter painter(&preview);
+            scene->render(&painter, QRectF(QPointF(), doc.video.size),
+                          QRectF(QPointF(), doc.video.size));
+        }
+        videoItem->setVisible(true);
+        QVERIFY(preview.pixelColor(14, 14).red() > 225);
+        QVERIFY(preview.pixelColor(42, 14).red() > 225);
+
+        const QImage overlay = window.exportComposite();
+        QCOMPARE(overlay.pixelColor(14, 14).alpha(), 0);
+        QCOMPARE(overlay.pixelColor(42, 14).alpha(), 0);
     }
     void videoTrimKeyboardControlsUpdateTheRange() {
         MediaDocument doc;

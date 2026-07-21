@@ -2,6 +2,8 @@
 param(
     [string]$BuildDirectory = "build-win",
     [string]$QtDirectory = "",
+    [Parameter(Mandatory = $true)]
+    [string]$TesseractDirectory,
     [string]$Version = "0.1.0",
     [string]$OutputDirectory = "dist\nsis"
 )
@@ -22,8 +24,13 @@ $windeployqt = if ($QtDirectory) {
 }
 $source = Join-Path $PSScriptRoot "Eddy.nsi"
 $license = Join-Path $PSScriptRoot "License.rtf"
+$tesseract = Join-Path $TesseractDirectory "tesseract.exe"
+$deu = Join-Path $TesseractDirectory "tessdata\deu.traineddata"
+$osd = Join-Path $TesseractDirectory "tessdata\osd.traineddata"
+$ocrLicense = Join-Path $TesseractDirectory "LICENSE"
 
-foreach ($required in @($releaseExecutable, $windeployqt, $source, $license)) {
+foreach ($required in @($releaseExecutable, $windeployqt, $source, $license,
+        $tesseract, $deu, $osd, $ocrLicense)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Required file not found: $required"
     }
@@ -59,9 +66,17 @@ New-Item -ItemType Directory -Path $stage -Force | Out-Null
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 
 Copy-Item -LiteralPath $releaseExecutable -Destination (Join-Path $stage "eddy.exe")
+Copy-Item -LiteralPath $TesseractDirectory -Destination (Join-Path $stage "ocr") -Recurse
 & $windeployqt --release --compiler-runtime --dir $stage $releaseExecutable
 if ($LASTEXITCODE -ne 0) {
     throw "windeployqt failed with exit code $LASTEXITCODE"
+}
+
+$ocr = Join-Path $stage "ocr\tesseract.exe"
+$ocrData = Join-Path $stage "ocr\tessdata"
+$languages = & $ocr --tessdata-dir $ocrData --list-langs 2>&1
+if ($LASTEXITCODE -ne 0 -or $languages -notcontains "deu" -or $languages -notcontains "osd") {
+    throw "Packaged Tesseract smoke test failed: $($languages -join ' ')"
 }
 
 $installer = Join-Path $output "Eddy-$Version-windows-x64-setup.exe"

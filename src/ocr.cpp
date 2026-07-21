@@ -3,10 +3,12 @@
 #include <map>
 #include <tuple>
 #include <QProcess>
+#include <QCoreApplication>
 #include <QTemporaryFile>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QStandardPaths>
 
 namespace eddy::ocr {
 
@@ -219,6 +221,40 @@ QString chooseTessdataDir(const QString &explicitDir, const QString &envPrefix,
     return QString();
 }
 
+OcrRuntime resolveOcrRuntime(
+    const OcrOptions &opts,
+    const QString &applicationDir,
+    const std::function<bool(const QString &)> &exists,
+    const std::function<QString(const QString &)> &findExecutable) {
+    OcrRuntime runtime;
+    const QString ocrDir = QDir(applicationDir).filePath(QStringLiteral("ocr"));
+    const QString packagedExe = QDir(ocrDir).filePath(QStringLiteral("tesseract.exe"));
+    const QString packagedProgram = exists(packagedExe)
+        ? packagedExe : QDir(ocrDir).filePath(QStringLiteral("tesseract"));
+    runtime.program = exists(packagedProgram)
+        ? packagedProgram : findExecutable(QStringLiteral("tesseract"));
+
+    const QString envPrefix = qEnvironmentVariable("TESSDATA_PREFIX");
+    if (!opts.tessdataDir.isEmpty()) {
+        runtime.tessdataDir = opts.tessdataDir;
+    } else if (!envPrefix.isEmpty()) {
+        runtime.tessdataDir = envPrefix;
+    } else {
+        const QString packagedData = QDir(ocrDir).filePath(QStringLiteral("tessdata"));
+        bool hasPackagedLanguage = true;
+        for (const QString &language : opts.language.split(QLatin1Char('+'), Qt::SkipEmptyParts)) {
+            if (!exists(QDir(packagedData).filePath(language + QStringLiteral(".traineddata")))) {
+                hasPackagedLanguage = false;
+                break;
+            }
+        }
+        runtime.tessdataDir = hasPackagedLanguage
+            ? packagedData
+            : chooseTessdataDir({}, {}, QDir::homePath(), opts.language, exists);
+    }
+    return runtime;
+}
+
 OcrRunner::OcrRunner(QObject *parent) : QObject(parent) {}
 
 OcrRunner::~OcrRunner() { cleanup(); }
@@ -231,6 +267,15 @@ void OcrRunner::recognizeRegion(const QImage &bg, const QRect &region, const Ocr
     const QRect crop = padded.intersected(bg.rect());
     if (crop.width() <= 0 || crop.height() <= 0) {
         reportFailed(QStringLiteral("redact region is empty"));
+        return;
+    }
+
+    const OcrRuntime runtime = resolveOcrRuntime(
+        opts, QCoreApplication::applicationDirPath(),
+        [](const QString &path) { return QFileInfo(path).isFile(); },
+        [](const QString &program) { return QStandardPaths::findExecutable(program); });
+    if (runtime.program.isEmpty()) {
+        reportFailed(QStringLiteral("OCR unavailable: tesseract executable not found"));
         return;
     }
 
@@ -254,17 +299,13 @@ void OcrRunner::recognizeRegion(const QImage &bg, const QRect &region, const Ocr
         return;
     }
 
-    const QString tessdata = chooseTessdataDir(
-        opts.tessdataDir, qEnvironmentVariable("TESSDATA_PREFIX"), QDir::homePath(),
-        opts.language, [](const QString &p) { return QFileInfo::exists(p); });
-
     QStringList args;
     args << m_tmpPath << QStringLiteral("stdout")
          << QStringLiteral("-l") << opts.language
          << QStringLiteral("--psm") << QString::number(opts.psm)
          << QStringLiteral("-c") << QStringLiteral("tessedit_create_tsv=1");
-    if (!tessdata.isEmpty())
-        args << QStringLiteral("--tessdata-dir") << tessdata;
+    if (!runtime.tessdataDir.isEmpty())
+        args << QStringLiteral("--tessdata-dir") << runtime.tessdataDir;
 
     m_proc = new QProcess(this);
     connect(m_proc, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
@@ -292,7 +333,7 @@ void OcrRunner::recognizeRegion(const QImage &bg, const QRect &region, const Ocr
         reportFinished(mapToSourceCoords(doc, cropOrigin, scale));
     });
 
-    m_proc->start(QStringLiteral("tesseract"), args);
+    m_proc->start(runtime.program, args);
 }
 
 void OcrRunner::cleanup() {

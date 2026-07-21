@@ -72,6 +72,17 @@ struct OcrOptions {
     QString tessdataDir;   // empty = auto-resolve
 };
 
+struct OcrRuntime {
+    QString program;
+    QString tessdataDir;
+};
+
+OcrRuntime resolveOcrRuntime(
+    const OcrOptions &opts,
+    const QString &applicationDir,
+    const std::function<bool(const QString &)> &exists,
+    const std::function<QString(const QString &)> &findExecutable);
+
 // Async tesseract runner: crops `bg` to `region` (+small pad), upscales small
 // crops, writes a temp PNG, runs tesseract, parses TSV, maps rects back to `bg`
 // (scene) coordinates. Emits exactly one of finished()/failed() per call. One

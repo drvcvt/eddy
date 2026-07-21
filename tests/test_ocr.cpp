@@ -127,6 +127,47 @@ private slots:
         const auto noneHasLang = [](const QString &) { return false; };
         QCOMPARE(chooseTessdataDir("", "", "/home/me", "deu", noneHasLang), QString());
     }
+    void resolvesPackagedOcrBeforePath() {
+        OcrOptions opts;
+        const auto exists = [](const QString &path) {
+            return path == QStringLiteral("C:/Eddy/ocr/tesseract.exe")
+                || path == QStringLiteral("C:/Eddy/ocr/tessdata/deu.traineddata");
+        };
+        const auto find = [](const QString &) {
+            return QStringLiteral("C:/PATH/tesseract.exe");
+        };
+
+        const OcrRuntime runtime = resolveOcrRuntime(
+            opts, QStringLiteral("C:/Eddy"), exists, find);
+
+        QCOMPARE(runtime.program, QStringLiteral("C:/Eddy/ocr/tesseract.exe"));
+        QCOMPARE(runtime.tessdataDir, QStringLiteral("C:/Eddy/ocr/tessdata"));
+    }
+    void explicitTessdataOverridesPackagedData() {
+        OcrOptions opts;
+        opts.tessdataDir = QStringLiteral("C:/custom/tessdata");
+        const auto exists = [](const QString &path) {
+            return path == QStringLiteral("C:/Eddy/ocr/tesseract.exe")
+                || path == QStringLiteral("C:/Eddy/ocr/tessdata/deu.traineddata");
+        };
+
+        const OcrRuntime runtime = resolveOcrRuntime(
+            opts, QStringLiteral("C:/Eddy"), exists,
+            [](const QString &) { return QStringLiteral("C:/PATH/tesseract.exe"); });
+
+        QCOMPARE(runtime.program, QStringLiteral("C:/Eddy/ocr/tesseract.exe"));
+        QCOMPARE(runtime.tessdataDir, QStringLiteral("C:/custom/tessdata"));
+    }
+    void fallsBackToPathOcr() {
+        OcrOptions opts;
+        const auto never = [](const QString &) { return false; };
+        const auto find = [](const QString &) { return QStringLiteral("/usr/bin/tesseract"); };
+
+        const OcrRuntime runtime = resolveOcrRuntime(
+            opts, QStringLiteral("/opt/eddy"), never, find);
+
+        QCOMPARE(runtime.program, QStringLiteral("/usr/bin/tesseract"));
+    }
     void runnerDetectsRenderedText() {
         if (QStandardPaths::findExecutable("tesseract").isEmpty())
             QSKIP("tesseract not installed");

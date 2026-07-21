@@ -24,6 +24,8 @@
 #include <QGraphicsVideoItem>
 #include <QAudioOutput>
 #include <QMediaPlayer>
+#include <QVideoFrame>
+#include <QVideoSink>
 #include <QUndoStack>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -673,6 +675,20 @@ void EditorWindow::ensureVideoPlayer() {
         }
         m_videoItem = videoItem;
         m_backgroundItem = m_videoItem;
+        connect(videoItem->videoSink(), &QVideoSink::videoFrameChanged, this,
+                [this](const QVideoFrame &frame) {
+            QImage image = frame.toImage();
+            if (image.isNull()) return;
+            if (image.size() != m_media.nativeSize())
+                image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio,
+                                     Qt::SmoothTransformation);
+            m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            m_tools->setBackground(m_bg);
+            m_ocr->setBackground(m_bg);
+            for (QGraphicsItem *item : m_scene->items())
+                if (auto *redact = dynamic_cast<RedactItem *>(item))
+                    redact->setSource(m_bg);
+        });
     }
     m_player = new QMediaPlayer(this);
     m_audioOutput = new QAudioOutput(this);
@@ -876,6 +892,14 @@ QImage EditorWindow::exportComposite() {
 QImage EditorWindow::renderAnnotationOverlay() {
     const auto selection = m_scene->selectedItems();
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the video
+    QList<RedactItem *> visibleBlurItems;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *redact = dynamic_cast<RedactItem *>(item);
+        if (redact && RedactItem::isBlur(redact->mode()) && redact->isVisible()) {
+            visibleBlurItems.append(redact);
+            redact->hide();
+        }
+    }
     const bool hadBackground = m_backgroundItem != nullptr;
     const bool wasVisible = hadBackground && m_backgroundItem->isVisible();
     m_renderingVideoOverlay = true;
@@ -883,6 +907,7 @@ QImage EditorWindow::renderAnnotationOverlay() {
     if (hadBackground) m_backgroundItem->setVisible(false);
     QImage overlay = renderToImage(*m_scene, m_media.nativeSize());
     if (hadBackground) m_backgroundItem->setVisible(wasVisible);
+    for (RedactItem *redact : visibleBlurItems) redact->show();
     for (QGraphicsItem *item : selection) item->setSelected(true);
     QTimer::singleShot(50, this, [this, renderGeneration]{
         if (renderGeneration == m_videoOverlayRenderGeneration)
@@ -992,10 +1017,13 @@ void EditorWindow::startVideoExportCache() {
     }
 
     const int revision = m_videoRevision;
-    const VideoExportRequest request{
+    VideoExportRequest request{
         m_media.path, path, renderAnnotationOverlay(),
         m_trimInMs, hasTrim() ? m_trimOutMs : -1
     };
+    for (QGraphicsItem *item : m_scene->items())
+        if (auto *redact = dynamic_cast<RedactItem *>(item))
+            request.blurRects += redact->blurRectsInScene();
     m_videoExportInProgress = true;
 
     QPointer<EditorWindow> receiver(this);

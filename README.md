@@ -40,6 +40,15 @@ With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact
 
 With the **Text tool**, drag existing text to move it, double-click it to edit, or click empty canvas space to create a new text annotation.
 
+### Redaction and OCR
+
+Windows installers include the OCR runtime and German language data. Linux builds
+use `tesseract` from `PATH` and require the language selected by `ocr_lang`.
+
+On video, Blur is applied frame-by-frame during export. OCR detects text in the
+currently displayed frame and keeps those redaction rectangles fixed for the clip;
+it does not track moving text.
+
 ---
 
 ## Keyboard shortcuts
@@ -122,6 +131,8 @@ boltsnap area --no-copy -o - | eddy -f -
 | `early_exit` | Exit after first save (`true`/`false`) |
 | `copy_on_save` | Copy to clipboard on save (`true`/`false`) |
 | `animations` | Enable window/tool animations (default: `true`) |
+| `ocr_lang` | Tesseract language(s) used by OCR redaction (default: `deu`) |
+| `ocr_psm` | Tesseract page-segmentation mode (default: `6`) |
 | `theme` | `system` (default), `dark`, or `light` |
 
 ---
@@ -159,8 +170,8 @@ On Windows, configure with a Qt 6 MSVC kit and Visual Studio 2022. Launching
 and NSIS installers can be produced after the Release build with:
 
 ```powershell
-.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64
-.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64
+.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime
+.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime
 ```
 
 Both installers install Eddy per machine, add a Start-menu shortcut, and register
