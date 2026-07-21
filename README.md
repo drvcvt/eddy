@@ -153,17 +153,19 @@ $env:BOLTSNAP_EDITOR = "$PWD\dist\eddy\bin\eddy.exe"
 boltsnap area --edit
 ```
 
-Build the standalone MSI after the Release build:
+Build either standalone Windows installer after the Release build:
 
 ```powershell
 .\packaging\windows\build-msi.ps1
+.\packaging\windows\build-nsis.ps1
 ```
 
-The MSI is written to `dist\msi`. Its English setup wizard uses black text and shows the target
-directory and installation progress, requests elevation, installs Eddy into
-Program Files and creates a Start menu shortcut. It also adds **Open with Eddy**
+The MSI is written to `dist\msi`; the NSIS setup executable is written to `dist\nsis`.
+Both English setup wizards show the target directory and installation progress,
+request elevation, install Eddy into Program Files and create a Start menu shortcut.
+They also add **Open with Eddy**
 to the primary Windows 11 image context menu through a packaged Explorer command,
-keeps a classic-menu fallback and registers Eddy under Windows' **Open with** and
+keep a classic-menu fallback and register Eddy under Windows' **Open with** and
 **Default apps** lists for common image formats. Starting Eddy without a file
 opens the native Windows file picker.
 
