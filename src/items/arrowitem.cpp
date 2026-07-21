@@ -10,6 +10,13 @@ ArrowItem::ArrowItem(const QPointF &start, const QPointF &end)
 void ArrowItem::setStart(const QPointF &start) { prepareGeometryChange(); m_start = start; update(); }
 void ArrowItem::setEnd(const QPointF &end) { prepareGeometryChange(); m_end = end; update(); }
 
+ArrowItem *ArrowItem::clone() const {
+    auto *copy = new ArrowItem(m_start, m_end);
+    copy->setStrokeColor(m_stroke);
+    copy->setStrokeWidth(m_width);
+    return copy;
+}
+
 QRectF ArrowItem::boundingRect() const {
     const double pad = m_width * 4 + 4; // room for the head
     return QRectF(m_start, m_end).normalized().adjusted(-pad, -pad, pad, pad);

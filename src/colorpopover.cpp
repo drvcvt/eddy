@@ -4,6 +4,7 @@
 #include <QToolButton>
 #include <QColorDialog>
 #include <QIcon>
+#include <QApplication>
 
 namespace eddy {
 
@@ -22,8 +23,8 @@ ColorPopover::ColorPopover(QWidget *parent) : QWidget(parent, Qt::Popup) {
         auto *b = new QToolButton;
         b->setFixedSize(24, 24);
         b->setCursor(Qt::PointingHandCursor);
-        b->setStyleSheet(QString("QToolButton{border:1px solid #2a2a2a;"
-                                 "border-radius:5px;background:%1;}").arg(presets[i]));
+        b->setStyleSheet(QString("QToolButton{border:none;"
+                                 "border-radius:9px;background:%1;}").arg(presets[i]));
         const QColor c(presets[i]);
         connect(b, &QToolButton::clicked, this, [this, c]{ emit picked(c); close(); });
         grid->addWidget(b, i / 4, i % 4);
@@ -44,7 +45,8 @@ ColorPopover::ColorPopover(QWidget *parent) : QWidget(parent, Qt::Popup) {
     pipette->setObjectName("Custom");           // reuse the Custom button styling
     pipette->setText("Pipette");
     pipette->setIcon(theme::tintedIcon(QStringLiteral(":/icons/eyedropper.svg"),
-                                       QColor("#d0d0d0"), QColor("#ffffff")));
+                                       QApplication::palette().color(QPalette::PlaceholderText),
+                                       QApplication::palette().color(QPalette::WindowText)));
     pipette->setIconSize(QSize(15, 15));
     pipette->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     pipette->setFixedHeight(24);

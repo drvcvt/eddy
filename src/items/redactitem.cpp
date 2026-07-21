@@ -13,6 +13,15 @@ RedactItem::RedactItem(RedactMode mode, const QImage &source, const QRectF &regi
     rebuildCache();
 }
 
+RedactItem *RedactItem::clone() const {
+    auto *copy = new RedactItem(m_mode, m_source, m_region);
+    copy->setTextRects(m_textRects);
+    copy->setDetecting(m_detecting);
+    copy->setStrokeColor(m_stroke);
+    copy->setStrokeWidth(m_width);
+    return copy;
+}
+
 void RedactItem::setRect(const QRectF &r) {
     prepareGeometryChange();
     m_region = r.normalized();
@@ -52,7 +61,7 @@ void RedactItem::rebuildCache() {
 QVector<QRectF> RedactItem::coverRects() const {
     // Non-OCR, or an OCR mode still detecting: cover the WHOLE region — never expose
     // source while detection is pending. Once detection completes, narrow to text rects.
-    if (!isOcr(m_mode) || m_detecting) return { m_region };
+    if (!isOcr(m_mode) || m_detecting || m_textRects.isEmpty()) return { m_region };
     QVector<QRectF> out;
     for (const QRectF &tr : m_textRects) {
         const QRectF c = tr.intersected(m_region);

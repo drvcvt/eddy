@@ -8,10 +8,23 @@ using namespace eddy;
 class TestConfig : public QObject {
     Q_OBJECT
 private slots:
+    void themeDefaultsToSystemAndParsesOverrides() {
+        QCOMPARE(loadConfig("/nonexistent/eddy/config").theme, ThemeMode::System);
+        QTemporaryFile f; QVERIFY(f.open());
+        { QTextStream ts(&f); ts << "[eddy]\ntheme=light\n"; }
+        f.flush();
+        QCOMPARE(loadConfig(f.fileName()).theme, ThemeMode::Light);
+
+        QTemporaryFile dark; QVERIFY(dark.open());
+        { QTextStream ts(&dark); ts << "[eddy]\ntheme=dark\n"; }
+        dark.flush();
+        QCOMPARE(loadConfig(dark.fileName()).theme, ThemeMode::Dark);
+    }
     void missingFileGivesDefaults() {
         Config c = loadConfig("/nonexistent/eddy/config");
         QCOMPARE(c.defaultTool, QString("arrow"));
         QCOMPARE(c.lineWidth, 4.0);
+        QVERIFY(c.saveDir.isEmpty());
     }
     void readsValuesFromIni() {
         QTemporaryFile f; QVERIFY(f.open());

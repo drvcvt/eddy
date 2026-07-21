@@ -9,7 +9,7 @@
 #include <QPixmap>
 #include <QImage>
 
-#if defined(EDDY_HAVE_WAYLAND_CLIENT) && QT_CONFIG(wayland)
+#if defined(EDDY_HAVE_WAYLAND_CLIENT)
 #include <QtGui/qguiapplication_platform.h>
 #include <qpa/qplatformnativeinterface.h>
 #include <wayland-client.h>
@@ -24,7 +24,7 @@
 
 namespace eddy {
 
-#if defined(EDDY_HAVE_WAYLAND_CLIENT) && QT_CONFIG(wayland)
+#if defined(EDDY_HAVE_WAYLAND_CLIENT)
 namespace {
 
 QString canonicalOrAbsolute(const QString &path) {
@@ -310,7 +310,7 @@ void commitDragIcon(NativeDrag *drag) {
 
 bool startWaylandFileDrag(QWidget *origin, const QString &path, const QStringList &mimeTypes,
                           const QPixmap &ghost) {
-#if defined(EDDY_HAVE_WAYLAND_CLIENT) && QT_CONFIG(wayland)
+#if defined(EDDY_HAVE_WAYLAND_CLIENT)
     if (path.isEmpty() || mimeTypes.isEmpty())
         return false;
     auto *waylandApp = qGuiApp

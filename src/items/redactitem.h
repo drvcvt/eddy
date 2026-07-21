@@ -19,6 +19,7 @@ public:
 
     void setRect(const QRectF &r) override;        // updates region; rebuilds blur cache
     QRectF rect() const override { return m_region; }
+    RedactItem *clone() const override;
     QRectF boundingRect() const override;
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override;
     QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;

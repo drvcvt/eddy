@@ -2,18 +2,19 @@
 #include <QWidget>
 #include <QHash>
 #include "toolcontroller.h"
-class QToolButton; class QPropertyAnimation; class QShowEvent; class QResizeEvent;
+class QToolButton;
 namespace eddy {
 class Toolbar : public QWidget {
     Q_OBJECT
 public:
     explicit Toolbar(QWidget *parent=nullptr);
-    void setAnimationsEnabled(bool on) { m_anim = on; }
 public slots:
     void syncTool(ToolType t);            // reflect external (keyboard) tool change
     void setUndoEnabled(bool on);
     void setRedoEnabled(bool on);
     void setSwatchColor(const QColor &c); // tint the colour-swatch dot to the current stroke colour
+    void setDark(bool dark);
+    void setCompact(bool compact);
 signals:
     void toolChosen(ToolType t);
     void colorChosen(const QColor &c);
@@ -24,18 +25,13 @@ signals:
     void undoRequested();
     void redoRequested();
     void eyedropperRequested();   // user chose the pipette in the colour popover
-protected:
-    void showEvent(QShowEvent *e) override;
-    void resizeEvent(QResizeEvent *e) override;
+    void themeToggleRequested();
 private:
-    void movePillTo(QToolButton *b, bool animate);
     QHash<int, QToolButton*> m_btns;      // keyed by int(ToolType)
-    QWidget *m_pill = nullptr;
-    QPropertyAnimation *m_pillAnim = nullptr;
-    QToolButton *m_active = nullptr;
-    bool m_anim = true;
     QToolButton *m_undoBtn = nullptr;
     QToolButton *m_redoBtn = nullptr;
     QToolButton *m_swatch = nullptr;
+    QToolButton *m_themeBtn = nullptr;
+    QColor m_swatchColor;
 };
 }

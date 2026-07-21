@@ -22,7 +22,7 @@ namespace {
 constexpr int kSquare = 116;   // magnified area, logical px
 constexpr int kLabelH = 22;    // hex readout strip
 constexpr int kPad    = 4;     // panel padding around the square
-constexpr int kRadius = 9;     // squircle corners — matches the app's panels
+constexpr int kRadius = 14;
 }
 
 Loupe::Loupe(QWidget *parent) : QWidget(parent) {
@@ -61,7 +61,7 @@ void Loupe::paintEvent(QPaintEvent *) {
     // Panel.
     const QRectF panel(0.5, 0.5, width() - 1.0, height() - 1.0);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor("#1a1a1a"));
+    p.setBrush(QColor("#1A1A1A"));
     p.drawRoundedRect(panel, kRadius, kRadius);
 
     // Magnified pixel cells (nearest-neighbour grid), clipped to a squircle.
@@ -114,18 +114,13 @@ void Loupe::paintEvent(QPaintEvent *) {
     p.setPen(QPen(QColor(0, 0, 0, 110), 1));
     p.setBrush(m_color);
     p.drawRoundedRect(chip, 3, 3);
-    p.setPen(QColor("#d0d0d0"));
+    p.setPen(QColor("#ECECEC"));
     QFont f = p.font();
     f.setPointSizeF(9.5);
     f.setBold(true);
     p.setFont(f);
     p.drawText(label.adjusted(20, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft,
                m_color.name(QColor::HexRgb).toUpper());
-
-    // Panel border.
-    p.setPen(QPen(QColor("#2a2a2a"), 1));
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(panel, kRadius, kRadius);
 }
 
 }
