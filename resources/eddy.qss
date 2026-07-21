@@ -95,7 +95,9 @@ QWidget#PlaybackBar QToolButton#TrimSetIn:hover,
 QWidget#PlaybackBar QToolButton#TrimSetOut:hover,
 QWidget#PlaybackBar QToolButton#TrimReset:hover { background-color: @raise3; }
 QWidget#PlaybackBar QLabel#PlaybackTime,
-QWidget#PlaybackBar QLabel#TrimLabel {
+QWidget#PlaybackBar QLabel#TrimLabel,
+QWidget#PlaybackBar QLabel#TrimInTime,
+QWidget#PlaybackBar QLabel#TrimOutTime {
     color: @sub;
     font-family: "Geist", "Inter", sans-serif;
     font-size: 11px;
@@ -137,9 +139,11 @@ QWidget#DragPill {
     border-radius: 9px;
 }
 QWidget#DragPill:hover { background-color: @raise2; }
+QWidget#DragPill:disabled { background-color: @raise1; }
 QLabel#DragPillText {
     color: @fg;
     font-family: "Geist", "Inter", sans-serif;
     font-size: 12px;
     font-weight: 600;
 }
+QWidget#DragPill:disabled QLabel#DragPillText { color: @faint; }

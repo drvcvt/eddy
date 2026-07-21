@@ -110,7 +110,7 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
 
     QStringList args = {
         QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
-        QStringLiteral("-y"),
+        QStringLiteral("-nostdin"), QStringLiteral("-y"),
     };
     if (req.trimInMs > 0) {
         args += {
@@ -135,18 +135,19 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     }
     args += {
         QStringLiteral("-avoid_negative_ts"), QStringLiteral("make_zero"),
+        QStringLiteral("-fpsmax"), QStringLiteral("60"),
         QStringLiteral("-shortest"),
         actualOutput,
     };
 
     QProcess p;
     p.start(ffmpeg, args);
-    if (!p.waitForFinished(120000)) {
+    if (!p.waitForFinished(req.timeoutMs)) {
         p.kill();
-        p.waitForFinished();
+        p.waitForFinished(5000);
         QFile::remove(overlayPath);
         if (replaceInput) QFile::remove(actualOutput);
-        r.error = QStringLiteral("ffmpeg timed out");
+        r.error = QStringLiteral("ffmpeg export timed out");
         return r;
     }
     QFile::remove(overlayPath);

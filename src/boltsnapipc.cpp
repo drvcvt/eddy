@@ -17,6 +17,7 @@ namespace {
 
 using Deadline = std::chrono::steady_clock::time_point;
 constexpr auto kSocketTimeout = std::chrono::seconds(1);
+constexpr auto kResponseTimeout = std::chrono::minutes(2);
 
 void appendU32BE(QByteArray &out, quint32 value) {
     out.append(char((value >> 24) & 0xff));
@@ -25,7 +26,7 @@ void appendU32BE(QByteArray &out, quint32 value) {
     out.append(char(value & 0xff));
 }
 
-bool waitWritable(int fd, Deadline deadline) {
+bool waitReady(int fd, short events, Deadline deadline) {
     for (;;) {
         const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
             deadline - std::chrono::steady_clock::now());
@@ -33,9 +34,9 @@ bool waitWritable(int fd, Deadline deadline) {
             errno = ETIMEDOUT;
             return false;
         }
-        pollfd pfd{fd, POLLOUT, 0};
+        pollfd pfd{fd, events, 0};
         const int ready = ::poll(&pfd, 1, int(remaining.count()));
-        if (ready > 0) return true;
+        if (ready > 0) return (pfd.revents & (events | POLLHUP)) != 0;
         if (ready == 0) {
             errno = ETIMEDOUT;
             return false;
@@ -59,11 +60,53 @@ bool writeAll(int fd, const char *data, qsizetype size, Deadline deadline) {
         if (n < 0 && errno == EINTR)
             continue;
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-            if (waitWritable(fd, deadline)) continue;
+            if (waitReady(fd, POLLOUT, deadline)) continue;
         }
         return false;
     }
     return true;
+}
+
+bool readAll(int fd, char *data, qsizetype size, Deadline deadline) {
+    qsizetype off = 0;
+    while (off < size) {
+        const ssize_t n = ::recv(fd, data + off, size_t(size - off), 0);
+        if (n > 0) { off += n; continue; }
+        if (n == 0) { errno = ECONNRESET; return false; }
+        if (errno == EINTR) continue;
+        if ((errno == EAGAIN || errno == EWOULDBLOCK)
+            && waitReady(fd, POLLIN, deadline)) continue;
+        return false;
+    }
+    return true;
+}
+
+quint32 readU32BE(const char *data) {
+    return (quint32(quint8(data[0])) << 24) | (quint32(quint8(data[1])) << 16)
+        | (quint32(quint8(data[2])) << 8) | quint32(quint8(data[3]));
+}
+
+DeliverResult readResponse(int fd, Deadline deadline) {
+    char lengths[8];
+    if (!readAll(fd, lengths, sizeof(lengths), deadline))
+        return {false, QStringLiteral("Boltsnap did not acknowledge the video")};
+    const quint32 headerSize = readU32BE(lengths);
+    const quint32 payloadSize = readU32BE(lengths + 4);
+    if (!headerSize || headerSize > 64 * 1024 || payloadSize)
+        return {false, QStringLiteral("invalid Boltsnap acknowledgement")};
+    QByteArray header(qsizetype(headerSize), Qt::Uninitialized);
+    if (!readAll(fd, header.data(), header.size(), deadline))
+        return {false, QStringLiteral("incomplete Boltsnap acknowledgement")};
+    const QJsonObject response = QJsonDocument::fromJson(header).object();
+    if (!response.value(QStringLiteral("ok")).isBool())
+        return {false, QStringLiteral("invalid Boltsnap acknowledgement")};
+    if (!response.value(QStringLiteral("ok")).toBool())
+        return {false, response.value(QStringLiteral("error")).toString(
+                           QStringLiteral("Boltsnap rejected the video"))};
+    const QString path = response.value(QStringLiteral("path")).toString();
+    if (path.isEmpty())
+        return {false, QStringLiteral("Boltsnap acknowledgement has no owned video path")};
+    return {true, {}, path};
 }
 
 QByteArray buildFrame(const QJsonObject &header, const QByteArray &payload = {}) {
@@ -77,7 +120,7 @@ QByteArray buildFrame(const QJsonObject &header, const QByteArray &payload = {})
     return frame;
 }
 
-DeliverResult sendFrame(const QByteArray &frame) {
+DeliverResult sendFrame(const QByteArray &frame, bool expectResponse = false) {
     DeliverResult result;
     const QString path = boltsnapSocketPath();
     const QByteArray pathBytes = QFile::encodeName(path);
@@ -97,7 +140,7 @@ DeliverResult sendFrame(const QByteArray &frame) {
     const Deadline deadline = std::chrono::steady_clock::now() + kSocketTimeout;
     int connectError = 0;
     if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
-        if ((errno == EINPROGRESS || errno == EAGAIN) && waitWritable(fd, deadline)) {
+        if ((errno == EINPROGRESS || errno == EAGAIN) && waitReady(fd, POLLOUT, deadline)) {
             socklen_t errorSize = sizeof(connectError);
             if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &connectError, &errorSize) != 0)
                 connectError = errno;
@@ -118,8 +161,10 @@ DeliverResult sendFrame(const QByteArray &frame) {
             + QString::fromLocal8Bit(std::strerror(savedErrno));
         return result;
     }
+    result = expectResponse
+        ? readResponse(fd, std::chrono::steady_clock::now() + kResponseTimeout)
+        : DeliverResult{true, {}};
     ::close(fd);
-    result.ok = true;
     return result;
 }
 
@@ -144,12 +189,14 @@ QByteArray buildBoltsnapImageReplaceFrame(quint64 id, const QByteArray &png) {
     }, png);
 }
 
-QByteArray buildBoltsnapVideoReplaceFrame(quint64 id, const QString &path) {
+QByteArray buildBoltsnapVideoReplaceFrame(quint64 id, const QString &path,
+                                          bool takeOwnership) {
     return buildFrame({
         {QStringLiteral("cmd"), QStringLiteral("replace")},
         {QStringLiteral("id"), qint64(id)},
         {QStringLiteral("media"), QStringLiteral("video")},
         {QStringLiteral("path"), path},
+        {QStringLiteral("take_ownership"), takeOwnership},
     });
 }
 
@@ -192,10 +239,10 @@ DeliverResult sendPngToBoltsnapCard(quint64 id, const QByteArray &png) {
     return sendFrame(buildBoltsnapImageReplaceFrame(id, png));
 }
 
-DeliverResult sendVideoToBoltsnapCard(quint64 id, const QString &path) {
+DeliverResult sendVideoToBoltsnapCard(quint64 id, const QString &path, bool takeOwnership) {
     if (!id || path.isEmpty())
         return {false, QStringLiteral("invalid Boltsnap video replacement")};
-    return sendFrame(buildBoltsnapVideoReplaceFrame(id, path));
+    return sendFrame(buildBoltsnapVideoReplaceFrame(id, path, takeOwnership), true);
 }
 
 DeliverResult sendVideoToBoltsnapShelf(const QString &path, const QString &source,
@@ -206,7 +253,7 @@ DeliverResult sendVideoToBoltsnapShelf(const QString &path, const QString &sourc
         return {false, QStringLiteral("invalid video for Boltsnap shelf")};
     if (info.size() >= maxTemporaryVideoBytes)
         return {false, QStringLiteral("video exceeds the 2 GiB temporary shelf limit")};
-    return sendFrame(buildBoltsnapVideoAddFrame(path, source, takeOwnership, output));
+    return sendFrame(buildBoltsnapVideoAddFrame(path, source, takeOwnership, output), true);
 }
 
 }

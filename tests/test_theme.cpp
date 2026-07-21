@@ -55,6 +55,10 @@ private slots:
         QVERIFY(light.contains(QStringLiteral("#FAFAFA")));
         QVERIFY(dark.contains(QStringLiteral("QToolTip")));
         QVERIFY(light.contains(QStringLiteral("QToolTip")));
+        QVERIFY(dark.contains(QStringLiteral("QLabel#TrimInTime")));
+        QVERIFY(dark.contains(QStringLiteral("QLabel#TrimOutTime")));
+        QVERIFY(!dark.contains(QStringLiteral("Z003")));
+        QVERIFY(dark.contains(QStringLiteral("font-family: \"Geist\"")));
     }
 };
 QTEST_MAIN(TestTheme)

@@ -11,6 +11,7 @@ struct VideoExportRequest {
     QImage overlay;
     qint64 trimInMs = 0;
     qint64 trimOutMs = -1;
+    int timeoutMs = 30 * 60 * 1000;
 };
 
 // Re-encodes the source video with a static transparent overlay. Audio is kept

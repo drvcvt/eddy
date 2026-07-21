@@ -21,6 +21,13 @@ private slots:
         QCOMPARE(c.zoom(), 1.0);
         QVERIFY(c.scene() == &scene);
     }
+    void doesNotCacheTheSolidBackground() {
+        QGraphicsScene scene(0,0,50,50);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(50,50,QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        QCOMPARE(canvas.cacheMode(), QGraphicsView::CacheNone);
+    }
     void resizeEmitsViewChanged() {
         QGraphicsScene scene(0,0,100,100);
         QUndoStack undo;
