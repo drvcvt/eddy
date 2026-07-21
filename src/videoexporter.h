@@ -14,6 +14,8 @@ struct VideoExportRequest {
     int timeoutMs = 30 * 60 * 1000;
 };
 
+DeliverResult replaceFileAtomically(const QString &from, const QString &to);
+
 // Re-encodes the source video with a static transparent overlay. Audio is kept
 // for mp4/mov/mkv outputs when ffmpeg can stream-copy it.
 DeliverResult writeVideoWithOverlay(const VideoExportRequest &req);

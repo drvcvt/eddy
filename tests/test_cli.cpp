@@ -13,6 +13,12 @@ private slots:
         QCOMPARE(r.options.input.path, QString("shot.png"));
         QVERIFY(r.options.output.copyToClipboard); // default
     }
+    void preservesUnicodeFilePath() {
+        const QString path = QStringLiteral("C:/Bilder/Grüße/截图.png");
+        const auto r = parseArgs({path});
+        QVERIFY(r.ok);
+        QCOMPARE(r.options.input.path, path);
+    }
     void swappyFileAlias() {
         auto r = parseArgs({"-f", "shot.png"});
         QVERIFY(r.ok);

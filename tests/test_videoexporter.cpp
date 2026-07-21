@@ -32,6 +32,29 @@ static QByteArray processOutput(const QString &program, const QStringList &args)
 class TestVideoExporter : public QObject {
     Q_OBJECT
 private slots:
+    void replacesExistingFileAtomically() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString source = dir.filePath(QStringLiteral("neu-ü.mp4"));
+        const QString destination = dir.filePath(QStringLiteral("alt-ä.mp4"));
+        QFile sourceFile(source);
+        QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+        QCOMPARE(sourceFile.write("new"), qint64(3));
+        sourceFile.close();
+        QFile destinationFile(destination);
+        QVERIFY(destinationFile.open(QIODevice::WriteOnly));
+        QCOMPARE(destinationFile.write("old"), qint64(3));
+        destinationFile.close();
+
+        const auto result = replaceFileAtomically(source, destination);
+
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(!QFileInfo::exists(source));
+        QFile replaced(destination);
+        QVERIFY(replaced.open(QIODevice::ReadOnly));
+        QCOMPARE(replaced.readAll(), QByteArray("new"));
+    }
+
     void rejectsStdoutOutput() {
         QImage overlay(16, 16, QImage::Format_ARGB32_Premultiplied);
         overlay.fill(Qt::transparent);

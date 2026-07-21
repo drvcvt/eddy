@@ -55,6 +55,11 @@
 #include <QSettings>
 #include <limits>
 #include <utility>
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <dwmapi.h>
+#include <windows.h>
+#endif
 
 namespace eddy {
 
@@ -69,6 +74,30 @@ SaveRoute saveRoute(const CliOptions &cli, const Config &cfg) {
 }
 
 namespace {
+
+#ifdef Q_OS_WIN
+void applyWindowsTitleBarTheme(QWidget *window, bool dark) {
+    const HWND handle = reinterpret_cast<HWND>(window->winId());
+    const BOOL darkMode = dark ? TRUE : FALSE;
+    constexpr DWORD immersiveDarkMode = 20;
+    constexpr DWORD immersiveDarkModeBefore20H1 = 19;
+    if (FAILED(DwmSetWindowAttribute(handle, immersiveDarkMode,
+                                     &darkMode, sizeof(darkMode)))) {
+        DwmSetWindowAttribute(handle, immersiveDarkModeBefore20H1,
+                              &darkMode, sizeof(darkMode));
+    }
+
+    constexpr DWORD borderColorAttribute = 34;
+    constexpr DWORD captionColorAttribute = 35;
+    constexpr DWORD textColorAttribute = 36;
+    const COLORREF borderColor = dark ? RGB(0x2a, 0x2a, 0x2a) : RGB(0xde, 0xde, 0xde);
+    const COLORREF captionColor = dark ? RGB(0x12, 0x12, 0x12) : RGB(0xfa, 0xfa, 0xfa);
+    const COLORREF textColor = dark ? RGB(0xec, 0xec, 0xec) : RGB(0x1a, 0x1a, 0x1a);
+    DwmSetWindowAttribute(handle, borderColorAttribute, &borderColor, sizeof(borderColor));
+    DwmSetWindowAttribute(handle, captionColorAttribute, &captionColor, sizeof(captionColor));
+    DwmSetWindowAttribute(handle, textColorAttribute, &textColor, sizeof(textColor));
+}
+#endif
 
 MediaDocument imageDocument(const QImage &image) {
     MediaDocument doc;
@@ -180,7 +209,13 @@ EditorWindow::~EditorWindow() {
 
 EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : QWidget(parent), m_media(media), m_bg(toolBackgroundFor(media)), m_cfg(cfg), m_cli(cli) {
+#ifdef Q_OS_WIN
+    setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint
+                   | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint
+                   | Qt::WindowStaysOnTopHint);
+#else
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+#endif
     setWindowTitle("eddy");
     setObjectName("EditorRoot");
     setAttribute(Qt::WA_StyledBackground, true);
@@ -369,6 +404,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
 
 void EditorWindow::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
+#ifdef Q_OS_WIN
+    applyWindowsTitleBarTheme(this, m_dark);
+#endif
     if (m_shown) return;
     m_shown = true;
     m_canvas->resetZoom();
@@ -812,6 +850,9 @@ void EditorWindow::toggleTheme() {
     m_textBar->refreshTheme();
     m_dragPill->refreshTheme();
     m_scene->update();
+#ifdef Q_OS_WIN
+    applyWindowsTitleBarTheme(this, m_dark);
+#endif
 
     QSettings settings(m_cli.configPath.isEmpty() ? defaultConfigPath() : m_cli.configPath,
                        QSettings::IniFormat);

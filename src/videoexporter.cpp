@@ -7,6 +7,10 @@
 #include <QStandardPaths>
 #include <QTemporaryFile>
 #include <filesystem>
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace eddy {
 
@@ -22,8 +26,19 @@ static bool sameExistingPath(const QString &a, const QString &b) {
     return !ca.isEmpty() && ca == cb;
 }
 
-static DeliverResult renameReplacing(const QString &from, const QString &to) {
+DeliverResult replaceFileAtomically(const QString &from, const QString &to) {
     DeliverResult r;
+#ifdef Q_OS_WIN
+    const std::wstring fromPath = from.toStdWString();
+    const std::wstring toPath = to.toStdWString();
+    if (!::ReplaceFileW(toPath.c_str(), fromPath.c_str(), nullptr,
+                        REPLACEFILE_WRITE_THROUGH, nullptr, nullptr)) {
+        const std::error_code ec(int(::GetLastError()), std::system_category());
+        r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
+                + QString::fromStdString(ec.message());
+        return r;
+    }
+#else
     std::error_code ec;
     std::filesystem::rename(std::filesystem::path(from.toStdString()),
                             std::filesystem::path(to.toStdString()), ec);
@@ -32,6 +47,7 @@ static DeliverResult renameReplacing(const QString &from, const QString &to) {
                 + QString::fromStdString(ec.message());
         return r;
     }
+#endif
     r.ok = true;
     return r;
 }
@@ -159,7 +175,7 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     }
 
     if (replaceInput) {
-        auto renamed = renameReplacing(actualOutput, req.outputPath);
+        auto renamed = replaceFileAtomically(actualOutput, req.outputPath);
         if (!renamed.ok) {
             QFile::remove(actualOutput);
             return renamed;

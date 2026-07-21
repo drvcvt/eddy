@@ -89,6 +89,21 @@ static bool sceneHasVideoItem(const EditorWindow &w) {
 class TestEditorWindow : public QObject {
     Q_OBJECT
 private slots:
+    void usesPlatformWindowChrome() {
+        QImage bg(100, 80, QImage::Format_ARGB32_Premultiplied);
+        bg.fill(Qt::white);
+        Config cfg;
+        cfg.animations = false;
+        EditorWindow window(bg, cfg, {});
+#ifdef Q_OS_WIN
+        QVERIFY(!(window.windowFlags() & Qt::FramelessWindowHint));
+        QVERIFY(window.windowFlags() & Qt::WindowMinMaxButtonsHint);
+#else
+        QVERIFY(window.windowFlags() & Qt::FramelessWindowHint);
+#endif
+        QVERIFY(window.windowFlags() & Qt::WindowStaysOnTopHint);
+    }
+
     void initialViewUsesOneHundredPercentWhenImageFits() {
         QImage large(1000, 500, QImage::Format_ARGB32_Premultiplied); large.fill(Qt::white);
         Config cfg; cfg.animations = false;
