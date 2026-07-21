@@ -32,6 +32,40 @@ jobs:
             -O C:\Qt -m qtmultimedia
           "C:\Qt\6.8.3\msvc2022_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
+      - name: Prepare OCR runtime
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "tesseract-ocr-w64-setup-5.4.0.20240606.exe"
+          $install = Join-Path $env:RUNNER_TEMP "tesseract-install"
+          $runtime = Join-Path $env:RUNNER_TEMP "eddy-ocr-runtime"
+          $deu = Join-Path $env:RUNNER_TEMP "deu.traineddata"
+          Invoke-WebRequest `
+            -Uri "https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-5.4.0.20240606.exe" `
+            -OutFile $installer
+          $installerHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLower()
+          if ($installerHash -ne "c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9") {
+            throw "Unexpected Tesseract installer SHA-256: $installerHash"
+          }
+          Start-Process -FilePath $installer -ArgumentList "/S", "/D=$install" -Wait
+          Invoke-WebRequest `
+            -Uri "https://github.com/tesseract-ocr/tessdata_fast/raw/refs/tags/4.1.0/deu.traineddata" `
+            -OutFile $deu
+          $deuHash = (Get-FileHash -LiteralPath $deu -Algorithm SHA256).Hash.ToLower()
+          if ($deuHash -ne "19d219bbb6672c869d20a9636c6816a81eb9a71796cb93ebe0cb1530e2cdb22d") {
+            throw "Unexpected German tessdata SHA-256: $deuHash"
+          }
+
+          New-Item -ItemType Directory -Path (Join-Path $runtime "tessdata") -Force | Out-Null
+          Copy-Item -LiteralPath (Join-Path $install "tesseract.exe") -Destination $runtime
+          Copy-Item -Path (Join-Path $install "*.dll") -Destination $runtime
+          Copy-Item -LiteralPath (Join-Path $install "tessdata\osd.traineddata") `
+            -Destination (Join-Path $runtime "tessdata")
+          Copy-Item -LiteralPath $deu -Destination (Join-Path $runtime "tessdata")
+          Copy-Item -LiteralPath (Join-Path $install "doc\LICENSE") -Destination $runtime
+          "TESSERACT_RUNTIME=$runtime" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TESSDATA_PREFIX=$(Join-Path $runtime 'tessdata')" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $runtime | Out-File -FilePath $env:GITHUB_PATH -Append
+
       - name: Configure
         shell: pwsh
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
@@ -43,6 +77,7 @@ jobs:
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
+          EDDY_REQUIRE_OCR: 1
         run: ctest --test-dir build -C Release --parallel 3 --output-on-failure
 
       - name: Install NSIS
@@ -55,10 +90,12 @@ jobs:
           ./packaging/windows/build-msi.ps1 `
             -BuildDirectory build `
             -QtDirectory C:\Qt\6.8.3\msvc2022_64 `
+            -TesseractDirectory $env:TESSERACT_RUNTIME `
             -Version $env:RELEASE_VERSION
           ./packaging/windows/build-nsis.ps1 `
             -BuildDirectory build `
             -QtDirectory C:\Qt\6.8.3\msvc2022_64 `
+            -TesseractDirectory $env:TESSERACT_RUNTIME `
             -Version $env:RELEASE_VERSION
 
       - name: Generate checksum
