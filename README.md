@@ -142,7 +142,7 @@ boltsnap area --no-copy -o - | eddy -f -
 Windows releases provide standalone x86-64 MSI and NSIS installers with the
 required Qt and compiler runtimes. Download either format from the
 [latest Eddy release](https://github.com/drvcvt/eddy/releases/latest). The
-Boltsnap Windows installer also includes a compatible Eddy build.
+Boltsnap installer is separate and does not bundle Eddy.
 
 On Linux, build from source with the Qt packages supplied by your distribution.
 
@@ -170,8 +170,8 @@ On Windows, configure with a Qt 6 MSVC kit and Visual Studio 2022. Launching
 and NSIS installers can be produced after the Release build with:
 
 ```powershell
-.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime
-.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime
+.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime -Version 1.0.3
+.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime -Version 1.0.3
 ```
 
 Both installers install Eddy per machine, add a Start-menu shortcut, and register

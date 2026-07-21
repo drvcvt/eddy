@@ -3,7 +3,7 @@
 
 namespace eddy {
 
-QString versionString() { return QStringLiteral("eddy 0.1.0"); }
+QString versionString() { return QStringLiteral("eddy " EDDY_VERSION); }
 
 ParseResult parseArgs(const QStringList &args) {
     ParseResult r;

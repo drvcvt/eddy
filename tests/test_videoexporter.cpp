@@ -6,6 +6,10 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <thread>
 #include "mediaio.h"
 #include "videoexporter.h"
 
@@ -108,6 +112,46 @@ private slots:
         QVERIFY(!result.ok);
         QVERIFY2(timer.elapsed() < 1000, "hung ffmpeg was not terminated promptly");
         QVERIFY(result.error.contains(QStringLiteral("timed out")));
+#endif
+    }
+
+    void cancellationStopsFfmpegPromptly() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString fakeFfmpeg = dir.filePath(QStringLiteral("ffmpeg"));
+        QFile script(fakeFfmpeg);
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        const QByteArray scriptBody("#!/bin/sh\nwhile :; do :; done\n");
+        QCOMPARE(script.write(scriptBody), qint64(scriptBody.size()));
+        script.close();
+        QVERIFY(QFile::setPermissions(fakeFfmpeg,
+            QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        QImage overlay(16, 16, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        const auto cancelRequested = std::make_shared<std::atomic_bool>(false);
+        std::thread cancel([cancelRequested] {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            cancelRequested->store(true);
+        });
+        QElapsedTimer timer;
+        timer.start();
+
+        const auto result = writeVideoWithOverlay({
+            QStringLiteral("/tmp/in.mp4"), dir.filePath(QStringLiteral("out.mp4")),
+            overlay, 0, -1, 5000, cancelRequested
+        });
+
+        cancel.join();
+        qputenv("PATH", oldPath);
+        QVERIFY(!result.ok);
+        QVERIFY2(timer.elapsed() < 1000, "cancelled ffmpeg was not terminated promptly");
+        QVERIFY(result.error.contains(QStringLiteral("cancelled")));
+        QVERIFY(!QFileInfo::exists(dir.filePath(QStringLiteral("out.mp4"))));
 #endif
     }
 

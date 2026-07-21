@@ -1050,6 +1050,48 @@ private slots:
         QVERIFY2(QFileInfo::exists(video), "handoff removed the original video");
     }
 #endif
+    void failedVideoSaveToShelfUsesOnlyTheWindowsClipboardFallback() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString video = dir.filePath(QStringLiteral("input.mp4"));
+        QFile source(video);
+        QVERIFY(source.open(QIODevice::WriteOnly));
+        QCOMPARE(source.write("video"), qint64(5));
+        source.close();
+
+        const QByteArray oldSocket = qgetenv("EDDY_BOLTSNAP_SOCKET");
+        qputenv("EDDY_BOLTSNAP_SOCKET",
+                QFile::encodeName(dir.filePath(QStringLiteral("missing-boltsnap"))));
+        QGuiApplication::clipboard()->setText(QStringLiteral("sentinel"));
+
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = video;
+        doc.video.size = QSize(64, 48);
+        doc.video.durationMs = 1000;
+        Config cfg;
+        cfg.animations = false;
+        cfg.copyOnSave = false;
+        EditorWindow window(doc, cfg, {});
+        auto *toast = window.findChild<Toast *>();
+
+        window.save();
+        QTRY_COMPARE_WITH_TIMEOUT(toast->text(),
+                                  QStringLiteral("Boltsnap shelf unavailable"), 3000);
+#ifdef Q_OS_WIN
+        QVERIFY(QGuiApplication::clipboard()->mimeData()->hasUrls());
+        QCOMPARE(QFileInfo(QGuiApplication::clipboard()->mimeData()->urls().first().toLocalFile())
+                     .canonicalFilePath(),
+                 QFileInfo(video).canonicalFilePath());
+#else
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("sentinel"));
+#endif
+
+        if (oldSocket.isNull())
+            qunsetenv("EDDY_BOLTSNAP_SOCKET");
+        else
+            qputenv("EDDY_BOLTSNAP_SOCKET", oldSocket);
+    }
     void videoDragWaitsForCurrentExport() {
         if (!have(QStringLiteral("ffmpeg")))
             QSKIP("ffmpeg not available");
