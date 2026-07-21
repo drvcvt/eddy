@@ -416,6 +416,24 @@ private slots:
         QImage out = w.exportComposite();
         QCOMPARE(out.size(), QSize(64,48));
     }
+    void imageBlurWorksThroughEditorExport() {
+        QImage bg(96, 64, QImage::Format_ARGB32_Premultiplied);
+        for (int y = 0; y < bg.height(); ++y)
+            for (int x = 0; x < bg.width(); ++x)
+                bg.setPixelColor(x, y, ((x / 2 + y / 2) % 2) ? Qt::white : Qt::black);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(bg, cfg, {});
+        auto *tools = window.findChild<ToolController *>();
+        QVERIFY(tools);
+        tools->setTool(ToolType::Redact);
+        tools->begin({16, 12});
+        tools->finish({80, 52});
+
+        const QImage out = window.exportComposite();
+        QCOMPARE(out.pixelColor(4, 4), bg.pixelColor(4, 4));
+        QVERIFY(out.pixelColor(48, 32) != bg.pixelColor(48, 32));
+        QVERIFY(qAbs(out.pixelColor(48, 32).red() - out.pixelColor(49, 32).red()) < 30);
+    }
     void exportKeepsAnnotationSelected() {
         QImage bg(64,48,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
         Config cfg; CliOptions cli;
