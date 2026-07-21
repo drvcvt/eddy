@@ -1,4 +1,5 @@
 #include "cli.h"
+#include <limits>
 
 namespace eddy {
 
@@ -43,6 +44,14 @@ ParseResult parseArgs(const QStringList &args) {
             o.startTool = next(a); if (!r.ok) return r;
         } else if (a == "--config") {
             o.configPath = next(a); if (!r.ok) return r;
+        } else if (a == "--boltsnap-card-id") {
+            const QString v = next(a); if (!r.ok) return r;
+            bool ok = false;
+            const quint64 id = v.toULongLong(&ok);
+            if (!ok || id == 0 || id > quint64(std::numeric_limits<qint64>::max())) {
+                r.ok = false; r.error = a + " requires a positive integer"; return r;
+            }
+            o.boltsnapCardId = id;
         } else if (a == "--early-exit") {
             o.earlyExit = true;
         } else if (a == "--no-anim") {

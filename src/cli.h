@@ -27,6 +27,7 @@ struct CliOptions {
     OutputSpec output;
     QString startTool;             // empty = config/default
     QString configPath;            // empty = default location
+    quint64 boltsnapCardId = 0;    // non-zero when launched from a shelf card
     bool earlyExit = false;
     bool noAnim = false;
     bool useGpuViewport = false;

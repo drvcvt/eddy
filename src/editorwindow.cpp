@@ -45,6 +45,11 @@
 #include <QThread>
 #include <QPointer>
 #include <limits>
+#ifdef Q_OS_WIN
+#define NOMINMAX
+#include <dwmapi.h>
+#include <windows.h>
+#endif
 
 namespace eddy {
 
@@ -55,6 +60,27 @@ bool imageSaveUsesShelfReturn(const CliOptions &cli) {
 }
 
 namespace {
+
+#ifdef Q_OS_WIN
+void applyWindowsTitleBarTheme(QWidget *window) {
+    const HWND handle = reinterpret_cast<HWND>(window->winId());
+    const BOOL darkMode = TRUE;
+    constexpr DWORD immersiveDarkMode = 20;
+    constexpr DWORD immersiveDarkModeBefore20H1 = 19;
+    if (FAILED(DwmSetWindowAttribute(handle, immersiveDarkMode, &darkMode, sizeof(darkMode))))
+        DwmSetWindowAttribute(handle, immersiveDarkModeBefore20H1, &darkMode, sizeof(darkMode));
+
+    constexpr DWORD borderColorAttribute = 34;
+    constexpr DWORD captionColorAttribute = 35;
+    constexpr DWORD textColorAttribute = 36;
+    const COLORREF borderColor = RGB(0x2a, 0x2a, 0x2a);
+    const COLORREF captionColor = RGB(0x12, 0x12, 0x12);
+    const COLORREF textColor = RGB(0xe6, 0xe6, 0xe6);
+    DwmSetWindowAttribute(handle, borderColorAttribute, &borderColor, sizeof(borderColor));
+    DwmSetWindowAttribute(handle, captionColorAttribute, &captionColor, sizeof(captionColor));
+    DwmSetWindowAttribute(handle, textColorAttribute, &textColor, sizeof(textColor));
+}
+#endif
 
 MediaDocument imageDocument(const QImage &image) {
     MediaDocument doc;
@@ -96,7 +122,16 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
 
 EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : QWidget(parent), m_media(media), m_bg(toolBackgroundFor(media)), m_cfg(cfg), m_cli(cli) {
+#ifdef Q_OS_WIN
+    setWindowFlags(Qt::Window
+                   | Qt::WindowTitleHint
+                   | Qt::WindowSystemMenuHint
+                   | Qt::WindowMinMaxButtonsHint
+                   | Qt::WindowCloseButtonHint
+                   | Qt::WindowStaysOnTopHint);
+#else
     setWindowFlags(Qt::Window | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+#endif
     setWindowTitle("eddy");
     setObjectName("EditorRoot");
     setAttribute(Qt::WA_StyledBackground, true);
@@ -234,6 +269,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
 
 void EditorWindow::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
+#ifdef Q_OS_WIN
+    applyWindowsTitleBarTheme(this);
+#endif
     if (m_shown) return;
     m_shown = true;
     if (isVideo()) scheduleVideoLoad();
@@ -601,6 +639,17 @@ bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
     return true;
 }
 
+void EditorWindow::reloadShelfCardAfterSave() {
+    if (m_cli.boltsnapCardId == 0)
+        return;
+    const DeliverResult res = reloadBoltsnapShelfCard(m_cli.boltsnapCardId);
+    if (!res.ok) {
+        std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
+        if (m_toast)
+            m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
+    }
+}
+
 void EditorWindow::save() {
     if (isVideo()) { saveVideo(); return; }
     QImage img = exportComposite();
@@ -624,7 +673,11 @@ void EditorWindow::save() {
 
     if (!path.isEmpty()) {
         auto res = writePng(img, path);
-        if (!res.ok) std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
+        if (!res.ok) {
+            std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
+        } else if (m_cli.output.toFile) {
+            reloadShelfCardAfterSave();
+        }
     }
     if (m_cfg.copyOnSave || path.isEmpty())
         QApplication::clipboard()->setImage(img);   // always at least copy

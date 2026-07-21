@@ -1,0 +1,117 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+      Name="Eddy"
+      Manufacturer="drvcvt"
+      Version="$(var.ProductVersion)"
+      UpgradeCode="4553B8CB-C007-49F8-A7EB-A02F64A81EE0"
+      Language="1033"
+      Scope="perMachine"
+      InstallerVersion="500">
+    <SummaryInformation Description="Eddy image annotation editor" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Eddy is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Eddy" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="EddyProgramMenuFolder" Name="Eddy" />
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Eddy" Level="1">
+      <Files Include="$(var.SourceDir)\**" Directory="INSTALLFOLDER" />
+      <ComponentRef Id="ShellIntegration" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ShellIntegration" Guid="82DCD329-7568-4387-ACB9-058E2DF687A5" Bitness="always64">
+        <RegistryValue Root="HKLM" Key="Software\RegisteredApplications"
+                       Name="Eddy" Value="Software\Eddy\Capabilities"
+                       Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities"
+                       Name="ApplicationName" Value="Eddy" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities"
+                       Name="ApplicationDescription" Value="Fast image annotation editor" Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".png" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".jpg" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".jpeg" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".bmp" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".gif" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".webp" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".tif" Value="Eddy.Image" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Eddy\Capabilities\FileAssociations" Name=".tiff" Value="Eddy.Image" Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Classes\Eddy.Image"
+                       Value="Image file" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Eddy.Image\DefaultIcon"
+                       Value="[INSTALLFOLDER]eddy.exe,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Eddy.Image\shell\open\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;" Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe"
+                       Name="FriendlyAppName" Value="Eddy" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\shell\open\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".png" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".jpg" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".jpeg" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".bmp" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".gif" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".webp" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".tif" Value="" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Applications\eddy.exe\SupportedTypes" Name=".tiff" Value="" Type="string" />
+
+        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith"
+                       Name="MUIVerb" Value="Open with Eddy" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith"
+                       Name="Icon" Value="[INSTALLFOLDER]eddy.exe,0" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith"
+                       Name="MultiSelectModel" Value="Single" Type="string" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\image\shell\Eddy.OpenWith\command"
+                       Value="&quot;[INSTALLFOLDER]eddy.exe&quot; -f &quot;%1&quot;" Type="string" />
+      </Component>
+    </DirectoryRef>
+
+    <DirectoryRef Id="EddyProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="3295525B-B1DD-436B-B7F6-73EA22A57577" Bitness="always64">
+        <Shortcut Id="EddyStartMenuShortcut" Name="Eddy" Description="Eddy image annotation editor"
+                  Target="[INSTALLFOLDER]eddy.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveEddyProgramMenuFolder" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\Eddy" Name="StartMenuShortcut"
+                       Value="1" Type="integer" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <CustomAction Id="RegisterModernContextMenu"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]RegisterContextMenu.ps1&quot; -InstallDirectory &quot;[INSTALLFOLDER]&quot;"
+                  Execute="immediate" Impersonate="yes" Return="ignore" />
+    <CustomAction Id="UnregisterModernContextMenu"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]UnregisterContextMenu.ps1&quot;"
+                  Execute="immediate" Impersonate="yes" Return="ignore" />
+    <CustomAction Id="InstallModernContextMenuCertificate"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]InstallCertificate.ps1&quot;"
+                  Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="RemoveModernContextMenuCertificate"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]RemoveCertificate.ps1&quot;"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="InstallModernContextMenuCertificate" After="InstallFiles"
+              Condition="NOT Installed" />
+      <Custom Action="UnregisterModernContextMenu" Before="RemoveModernContextMenuCertificate"
+              Condition="REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="RemoveModernContextMenuCertificate" Before="RemoveFiles"
+              Condition="REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="RegisterModernContextMenu" After="InstallFinalize"
+              Condition="NOT Installed" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

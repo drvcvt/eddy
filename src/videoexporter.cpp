@@ -25,8 +25,13 @@ static bool sameExistingPath(const QString &a, const QString &b) {
 static DeliverResult renameReplacing(const QString &from, const QString &to) {
     DeliverResult r;
     std::error_code ec;
+#ifdef Q_OS_WIN
+    std::filesystem::rename(std::filesystem::path(from.toStdWString()),
+                            std::filesystem::path(to.toStdWString()), ec);
+#else
     std::filesystem::rename(std::filesystem::path(from.toStdString()),
                             std::filesystem::path(to.toStdString()), ec);
+#endif
     if (ec) {
         r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
                 + QString::fromStdString(ec.message());

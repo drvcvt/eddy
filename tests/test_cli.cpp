@@ -64,6 +64,20 @@ private slots:
         QVERIFY(r.ok);
         QVERIFY(r.options.noAnim);
     }
+    void parsesBoltsnapCardId() {
+        auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--boltsnap-card-id"),
+                            QStringLiteral("42")});
+        QVERIFY(r.ok);
+        QCOMPARE(r.options.boltsnapCardId, quint64(42));
+    }
+    void rejectsInvalidBoltsnapCardId() {
+        auto r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--boltsnap-card-id"),
+                            QStringLiteral("nope")});
+        QVERIFY(!r.ok);
+        r = parseArgs({QStringLiteral("img.png"), QStringLiteral("--boltsnap-card-id"),
+                       QStringLiteral("0")});
+        QVERIFY(!r.ok);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestCli)

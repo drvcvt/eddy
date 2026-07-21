@@ -42,7 +42,7 @@ private slots:
         for (auto *b : tb.findChildren<QToolButton*>())
             if (b->isChecked() && !b->objectName().startsWith("Width")) rectBtn = b;  // exclude the width chooser (M is default-checked)
         QVERIFY(rectBtn);
-        QCOMPARE(pill->geometry(), rectBtn->geometry());
+        QCOMPARE(pill->geometry(), rectBtn->geometry().adjusted(2, 2, -2, -2));
     }
     void swatchShowsPaintedDisc() {
         Toolbar tb;

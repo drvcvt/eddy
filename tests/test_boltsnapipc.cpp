@@ -5,11 +5,13 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 #include "boltsnapipc.h"
+#ifndef Q_OS_WIN
 #include <cerrno>
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#endif
 
 using namespace eddy;
 
@@ -37,6 +39,43 @@ private slots:
         QCOMPARE(frame.right(png.size()), png);
     }
 
+    void reloadFrameCarriesCardIdWithoutPayload() {
+        const QByteArray frame = buildBoltsnapReloadFrame(42);
+        QDataStream s(frame);
+        s.setByteOrder(QDataStream::BigEndian);
+        quint32 headerLen = 0;
+        quint32 payloadLen = 0;
+        s >> headerLen >> payloadLen;
+        QCOMPARE(payloadLen, quint32(0));
+        const QJsonObject header = QJsonDocument::fromJson(frame.mid(8, int(headerLen))).object();
+        QCOMPARE(header.value(QStringLiteral("cmd")).toString(), QStringLiteral("reload"));
+        QCOMPARE(header.value(QStringLiteral("id")).toInteger(), qint64(42));
+    }
+
+#ifdef Q_OS_WIN
+    void socketPathUsesBoltsnapWindowsPipeContract() {
+        const QByteArray oldDomain = qgetenv("USERDOMAIN");
+        const QByteArray oldUser = qgetenv("USERNAME");
+        const QByteArray oldOverride = qgetenv("EDDY_BOLTSNAP_SOCKET");
+        qputenv("USERDOMAIN", "DOMAIN");
+        qputenv("USERNAME", "A User");
+        qunsetenv("EDDY_BOLTSNAP_SOCKET");
+
+        QCOMPARE(boltsnapSocketPath(), QStringLiteral("\\\\.\\pipe\\boltsnap-domain-a_user"));
+
+        oldDomain.isNull() ? qunsetenv("USERDOMAIN") : qputenv("USERDOMAIN", oldDomain);
+        oldUser.isNull() ? qunsetenv("USERNAME") : qputenv("USERNAME", oldUser);
+        oldOverride.isNull() ? qunsetenv("EDDY_BOLTSNAP_SOCKET")
+                             : qputenv("EDDY_BOLTSNAP_SOCKET", oldOverride);
+    }
+    void liveWindowsNamedPipeContract() {
+        if (!qEnvironmentVariableIsSet("EDDY_TEST_LIVE_BOLTSNAP"))
+            QSKIP("set EDDY_TEST_LIVE_BOLTSNAP with a running Boltsnap daemon");
+        const DeliverResult result = reloadBoltsnapShelfCard(9223372036854775807ULL);
+        QVERIFY(!result.ok);
+        QCOMPARE(result.error, QStringLiteral("unknown shelf card"));
+    }
+#else
     void socketPathUsesRuntimeDirWhenAvailable() {
         QTemporaryDir runtime;
         QVERIFY(runtime.isValid());
@@ -81,6 +120,7 @@ private slots:
 
         QCOMPARE(received, buildBoltsnapAddFrame(png, QStringLiteral("eddy-test")));
     }
+#endif
 };
 
 QTEST_GUILESS_MAIN(TestBoltsnapIpc)

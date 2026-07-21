@@ -1,0 +1,4 @@
+LIBRARY eddy_explorer_command
+EXPORTS
+    DllCanUnloadNow PRIVATE
+    DllGetClassObject PRIVATE

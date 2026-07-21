@@ -1,4 +1,8 @@
 /build/
+/build-*/
+/dist/
+/.wix/
+/aqtinstall.log
 *.o
 *.user
 /result

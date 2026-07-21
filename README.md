@@ -114,7 +114,7 @@ boltsnap area --no-copy -o - | eddy -f -
 
 ## Build
 
-Requires Qt 6 (Widgets). Linux-first; runs Wayland-native or via XWayland.
+Requires Qt 6 with Widgets, SVG and Multimedia. Linux runs Wayland-native or via XWayland; Windows uses the same editor and Qt rendering code without a separate design.
 
 ```sh
 # Debug (default)
@@ -128,6 +128,49 @@ ctest --test-dir build
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
 cmake --build build-rel
 ```
+
+### Windows
+
+Use Visual Studio 2022, CMake and a Qt 6 MSVC x64 installation containing Multimedia:
+
+```powershell
+cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.9.3\msvc2022_64
+cmake --build build-win --config Release
+ctest --test-dir build-win -C Release --output-on-failure
+cmake --install build-win --config Release --prefix "$PWD\dist\eddy"
+```
+
+The install step deploys Eddy and its required Qt runtime files. `ffmpeg`,
+`ffprobe` and `tesseract` remain optional external tools for video export/probe
+and OCR.
+
+To launch this build from Boltsnap for Windows, point Boltsnap at the deployed
+executable:
+
+```powershell
+$env:BOLTSNAP_EDITOR = "$PWD\dist\eddy\bin\eddy.exe"
+boltsnap area --edit
+```
+
+Build the standalone MSI after the Release build:
+
+```powershell
+.\packaging\windows\build-msi.ps1
+```
+
+The MSI is written to `dist\msi`. Its English setup wizard uses black text and shows the target
+directory and installation progress, requests elevation, installs Eddy into
+Program Files and creates a Start menu shortcut. It also adds **Open with Eddy**
+to the primary Windows 11 image context menu through a packaged Explorer command,
+keeps a classic-menu fallback and registers Eddy under Windows' **Open with** and
+**Default apps** lists for common image formats. Starting Eddy without a file
+opens the native Windows file picker.
+
+Boltsnap shelf launches also pass an internal `--boltsnap-card-id` argument.
+Eddy uses the same framed protocol as Boltsnap and talks to its per-user Windows
+Named Pipe, so saving refreshes the originating shelf card. Standalone file,
+stdin/stdout, clipboard, save and drag-out workflows remain available.
 
 ---
 

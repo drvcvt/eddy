@@ -45,6 +45,19 @@ static bool sceneHasVideoItem(const EditorWindow &w) {
 class TestEditorWindow : public QObject {
     Q_OBJECT
 private slots:
+    void usesPlatformWindowFrame() {
+        QImage bg(64,48,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
+        Config cfg; CliOptions cli;
+        EditorWindow w(bg, cfg, cli);
+#ifdef Q_OS_WIN
+        QVERIFY(!(w.windowFlags() & Qt::FramelessWindowHint));
+        QVERIFY(w.windowFlags() & Qt::WindowMinimizeButtonHint);
+        QVERIFY(w.windowFlags() & Qt::WindowMaximizeButtonHint);
+        QVERIFY(w.windowFlags() & Qt::WindowCloseButtonHint);
+#else
+        QVERIFY(w.windowFlags() & Qt::FramelessWindowHint);
+#endif
+    }
     void hasRedactBarAndToast() {
         QImage bg(64,48,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
         Config cfg; CliOptions cli;

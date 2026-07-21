@@ -50,6 +50,7 @@ private:
     DeliverResult exportVideoToFile(const QString &path);
     void copyVideoFile(const QString &path);
     bool postImageToShelf(const QImage &img, bool showSuccessToast);
+    void reloadShelfCardAfterSave();
     void saveVideo();
     void ensureVideoPlayer();
     void scheduleVideoLoad();
