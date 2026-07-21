@@ -70,7 +70,7 @@ target_link_libraries(eddy_core PUBLIC Qt6::Widgets Qt6::Svg Qt6::Multimedia Qt6
 if(WIN32)
     target_link_libraries(eddy_core PRIVATE Qt6::Network dwmapi)
 endif()
-if(WAYLAND_CLIENT_FOUND AND TARGET Qt6::GuiPrivate)
+if(WAYLAND_CLIENT_FOUND AND TARGET Qt6::GuiPrivate AND Qt6_VERSION VERSION_GREATER_EQUAL 6.5)
     target_link_libraries(eddy_core PRIVATE PkgConfig::WAYLAND_CLIENT Qt6::GuiPrivate)
     target_compile_definitions(eddy_core PRIVATE EDDY_HAVE_WAYLAND_CLIENT=1)
 endif()
