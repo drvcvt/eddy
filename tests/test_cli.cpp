@@ -6,6 +6,9 @@ using namespace eddy;
 class TestCli : public QObject {
     Q_OBJECT
 private slots:
+    void reportsCurrentVersion() {
+        QCOMPARE(versionString(), QStringLiteral("eddy 1.0.3"));
+    }
     void positionalFile() {
         auto r = parseArgs({"shot.png"});
         QVERIFY(r.ok);
