@@ -24,6 +24,7 @@ public:
     void setWidth(double w) { m_width = w; }
     void setTextFont(const QString &family) { m_textFont = family; }
     void setAnimationsEnabled(bool on) { m_animations = on; }
+    void setBackground(const QImage &background) { m_bg = background; }
 
     void begin(const QPointF &p);
     void update(const QPointF &p, Qt::KeyboardModifiers modifiers = Qt::NoModifier);

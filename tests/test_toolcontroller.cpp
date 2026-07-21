@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include <QGraphicsScene>
 #include <QGraphicsRectItem>
+#include <QPainter>
 #include <QUndoStack>
 #include "toolcontroller.h"
 #include "undocommands.h"
@@ -13,6 +14,14 @@
 #include "items/spotlightitem.h"
 
 using namespace eddy;
+
+static QImage renderScene(QGraphicsScene &scene, const QSize &size) {
+    QImage image(size, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    QPainter painter(&image);
+    scene.render(&painter, QRectF(QPointF(), size), QRectF(QPointF(), size));
+    return image;
+}
 
 class TestToolController : public QObject {
     Q_OBJECT
@@ -165,6 +174,20 @@ private slots:
         QCOMPARE(r->mode(), RedactMode::Blur);                 // default redact mode is Blur
         QVERIFY(r->flags() & QGraphicsItem::ItemIsMovable);
         QVERIFY(r->flags() & QGraphicsItem::ItemIsSelectable);
+    }
+    void updatedBackgroundFeedsNewRedactItems() {
+        QGraphicsScene scene(0, 0, 40, 40);
+        QUndoStack undo;
+        QImage black(40, 40, QImage::Format_ARGB32_Premultiplied); black.fill(Qt::black);
+        QImage white(40, 40, QImage::Format_ARGB32_Premultiplied); white.fill(Qt::white);
+        ToolController controller(&scene, &undo, black);
+        controller.setAnimationsEnabled(false);
+        controller.setBackground(white);
+        controller.setTool(ToolType::Redact);
+        controller.begin({0, 0});
+        controller.finish({40, 40});
+
+        QVERIFY(renderScene(scene, QSize(40, 40)).pixelColor(20, 20).red() > 225);
     }
     void newTextCommitsAsOneUndoStep() {
         QGraphicsScene scene; QUndoStack undo;

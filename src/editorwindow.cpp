@@ -24,6 +24,8 @@
 #include <QGraphicsVideoItem>
 #include <QAudioOutput>
 #include <QMediaPlayer>
+#include <QVideoFrame>
+#include <QVideoSink>
 #include <QUndoStack>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -673,6 +675,20 @@ void EditorWindow::ensureVideoPlayer() {
         }
         m_videoItem = videoItem;
         m_backgroundItem = m_videoItem;
+        connect(videoItem->videoSink(), &QVideoSink::videoFrameChanged, this,
+                [this](const QVideoFrame &frame) {
+            QImage image = frame.toImage();
+            if (image.isNull()) return;
+            if (image.size() != m_media.nativeSize())
+                image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio,
+                                     Qt::SmoothTransformation);
+            m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            m_tools->setBackground(m_bg);
+            m_ocr->setBackground(m_bg);
+            for (QGraphicsItem *item : m_scene->items())
+                if (auto *redact = dynamic_cast<RedactItem *>(item))
+                    redact->setSource(m_bg);
+        });
     }
     m_player = new QMediaPlayer(this);
     m_audioOutput = new QAudioOutput(this);

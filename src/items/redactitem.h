@@ -26,6 +26,8 @@ public:
 
     RedactMode mode() const { return m_mode; }
     void setMode(RedactMode m);
+    void setSource(const QImage &source);
+    QVector<QRect> blurRectsInScene() const;
     QVector<QRectF> textRects() const { return m_textRects; }
     void setTextRects(const QVector<QRectF> &rects);
 

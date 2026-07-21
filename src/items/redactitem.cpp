@@ -37,6 +37,23 @@ void RedactItem::setMode(RedactMode m) {
     update();
 }
 
+void RedactItem::setSource(const QImage &source) {
+    m_source = source;
+    rebuildCache();
+    update();
+}
+
+QVector<QRect> RedactItem::blurRectsInScene() const {
+    if (!isBlur(m_mode)) return {};
+
+    QVector<QRect> rects;
+    for (const QRectF &rect : coverRects()) {
+        const QRect sceneRect = mapRectToScene(rect).toAlignedRect().intersected(m_source.rect());
+        if (!sceneRect.isEmpty()) rects.append(sceneRect);
+    }
+    return rects;
+}
+
 // Text rects only control *where* we draw; the blur cache covers the whole region,
 // so no rebuild is needed here. Empty rects => OCR modes cover nothing (safe default).
 void RedactItem::setTextRects(const QVector<QRectF> &rects) { m_textRects = rects; update(); }
