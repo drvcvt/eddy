@@ -16,8 +16,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            cmake g++ ninja-build pkg-config libwayland-dev \
-            qt6-base-dev qt6-multimedia-dev qt6-svg-dev \
+            cmake g++ ninja-build pkg-config libwayland-dev libxkbcommon-dev \
+            qt6-base-dev qt6-base-private-dev qt6-multimedia-dev qt6-svg-dev \
             ffmpeg tesseract-ocr
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
