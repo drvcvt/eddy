@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QElapsedTimer>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -33,10 +34,19 @@ DeliverResult replaceFileAtomically(const QString &from, const QString &to) {
     const std::wstring toPath = to.toStdWString();
     if (!::ReplaceFileW(toPath.c_str(), fromPath.c_str(), nullptr,
                         REPLACEFILE_WRITE_THROUGH, nullptr, nullptr)) {
-        const std::error_code ec(int(::GetLastError()), std::system_category());
-        r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
-                + QString::fromStdString(ec.message());
-        return r;
+        // ReplaceFileW requires an existing destination; fall back to a plain
+        // move so this behaves like the POSIX rename when the target is new.
+        const DWORD replaceError = ::GetLastError();
+        const bool destinationMissing = replaceError == ERROR_FILE_NOT_FOUND
+            || replaceError == ERROR_PATH_NOT_FOUND;
+        if (!destinationMissing
+            || !::MoveFileExW(fromPath.c_str(), toPath.c_str(),
+                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            const std::error_code ec(int(replaceError), std::system_category());
+            r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
+                    + QString::fromStdString(ec.message());
+            return r;
+        }
     }
 #else
     std::error_code ec;
@@ -183,12 +193,29 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
 
     QProcess p;
     p.start(ffmpeg, args);
-    if (!p.waitForFinished(req.timeoutMs)) {
+    QElapsedTimer exportTimer;
+    exportTimer.start();
+    bool cancelled = false;
+    bool finished = false;
+    while (!finished) {
+        if (req.cancelRequested && req.cancelRequested->load()) {
+            cancelled = true;
+            break;
+        }
+        const qint64 remaining = req.timeoutMs < 0
+            ? 50
+            : qint64(req.timeoutMs) - exportTimer.elapsed();
+        if (req.timeoutMs >= 0 && remaining <= 0)
+            break;
+        finished = p.waitForFinished(int(qMin<qint64>(50, remaining)));
+    }
+    if (!finished) {
         p.kill();
         p.waitForFinished(5000);
         QFile::remove(overlayPath);
-        if (replaceInput) QFile::remove(actualOutput);
-        r.error = QStringLiteral("ffmpeg export timed out");
+        if (cancelled || replaceInput) QFile::remove(actualOutput);
+        r.error = cancelled ? QStringLiteral("video export cancelled")
+                            : QStringLiteral("ffmpeg export timed out");
         return r;
     }
     QFile::remove(overlayPath);

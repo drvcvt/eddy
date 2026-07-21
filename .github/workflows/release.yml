@@ -22,6 +22,13 @@ jobs:
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
             throw "Release tag must use vMAJOR.MINOR.PATCH: ${{ github.ref_name }}"
           }
+          $project = Select-String -Path CMakeLists.txt `
+            -Pattern 'project\(eddy VERSION (\d+\.\d+\.\d+)'
+          if (-not $project) { throw "Could not read the project version from CMakeLists.txt" }
+          $cmakeVersion = $project.Matches[0].Groups[1].Value
+          if ($cmakeVersion -ne $version) {
+            throw "Tag version $version does not match CMake project version $cmakeVersion"
+          }
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install Qt

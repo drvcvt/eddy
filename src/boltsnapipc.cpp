@@ -167,9 +167,13 @@ bool writeAll(QLocalSocket &socket, const QByteArray &frame, int timeoutMs) {
                                             frame.size() - offset);
         if (written < 0) return false;
         offset += written;
+    }
+    // Drain the send buffer completely: the caller may destroy the socket right
+    // after a fire-and-forget frame, and waitForBytesWritten() only guarantees
+    // a partial flush per call.
+    while (socket.bytesToWrite() > 0) {
         const int remaining = timeoutMs - int(timer.elapsed());
-        if (remaining <= 0 || (socket.bytesToWrite() > 0
-                              && !socket.waitForBytesWritten(remaining)))
+        if (remaining <= 0 || !socket.waitForBytesWritten(remaining))
             return false;
     }
     return true;

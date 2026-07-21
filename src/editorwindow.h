@@ -80,7 +80,8 @@ private:
     void finishVideoFileSave(const QString &path, const DeliverResult &result);
     void copyVideoFile(const QString &path);
     bool postImageToShelf(const QImage &img, bool showSuccessToast);
-    void postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter = false);
+    void postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter = false,
+                          bool fallbackOnFailure = false);
     void saveVideo();
     void ensureVideoPlayer();
     void scheduleVideoLoad();
@@ -120,6 +121,7 @@ private:
     bool m_videoStatusRequested = false;
     bool m_copyVideoPending = false;
     bool m_sendVideoToShelfPending = false;
+    bool m_videoShelfFallbackPending = false;
     bool m_replaceVideoCardPending = false;
     QString m_videoSavePendingPath;
     bool m_videoSavePendingCopy = false;

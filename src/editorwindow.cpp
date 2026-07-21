@@ -1019,7 +1019,7 @@ void EditorWindow::startVideoExportCache() {
     const int revision = m_videoRevision;
     VideoExportRequest request{
         m_media.path, path, renderAnnotationOverlay(),
-        m_trimInMs, hasTrim() ? m_trimOutMs : -1
+        m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000
     };
     for (QGraphicsItem *item : m_scene->items())
         if (auto *redact = dynamic_cast<RedactItem *>(item))
@@ -1203,6 +1203,7 @@ void EditorWindow::failPendingVideoActions() {
     m_videoStatusRequested = false;
     m_copyVideoPending = false;
     m_sendVideoToShelfPending = false;
+    m_videoShelfFallbackPending = false;
     m_replaceVideoCardPending = false;
     m_videoSavePendingPath.clear();
     m_videoSavePendingCopy = false;
@@ -1220,6 +1221,8 @@ void EditorWindow::completePendingVideoActions(const QString &path, bool takeOwn
     m_copyVideoPending = false;
     const bool shelfPending = m_sendVideoToShelfPending;
     m_sendVideoToShelfPending = false;
+    const bool shelfFallback = m_videoShelfFallbackPending;
+    m_videoShelfFallbackPending = false;
     const bool cardPending = m_replaceVideoCardPending;
     m_replaceVideoCardPending = false;
     const QString savePath = m_videoSavePendingPath;
@@ -1236,7 +1239,7 @@ void EditorWindow::completePendingVideoActions(const QString &path, bool takeOwn
         copyPending = false;
     }
     if (shelfPending) {
-        postVideoToShelf(path, takeOwnership, copyPending);
+        postVideoToShelf(path, takeOwnership, copyPending, shelfFallback);
         copyPending = false;
     }
     if (copyPending) copyVideoFile(path);
@@ -1250,6 +1253,9 @@ void EditorWindow::saveVideo() {
     if (route == SaveRoute::Shelf) {
         m_closeAfterVideoShelf = m_cfg.earlyExit;
         m_copyVideoPending = m_copyVideoPending || m_cfg.copyOnSave;
+#ifdef Q_OS_WIN
+        m_videoShelfFallbackPending = true;
+#endif
         sendToShelf();
         return;
     }
@@ -1328,7 +1334,8 @@ bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
     return true;
 }
 
-void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter) {
+void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter,
+                                    bool fallbackOnFailure) {
     const QString output = screen() ? screen()->name() : QString();
     const bool closeAfter = m_closeAfterVideoShelf;
     const QString pinnedPath = path == m_cachedVideoPath ? path : QString();
@@ -1338,12 +1345,12 @@ void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, boo
             return sendVideoToBoltsnapShelf(
                 path, QStringLiteral("eddy"), takeOwnership, output);
         },
-        [this, path, copyAfter, closeAfter](const DeliverResult &result) {
+        [this, path, copyAfter, fallbackOnFailure, closeAfter](const DeliverResult &result) {
             if (!result.ok) {
                 std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
                 if (m_toast)
                     m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
-                if (copyAfter) copyVideoFile(path);
+                if (copyAfter || fallbackOnFailure) copyVideoFile(path);
                 return;
             }
             if (copyAfter) copyVideoFile(result.path);
@@ -1408,14 +1415,18 @@ void EditorWindow::sendToShelf() {
     if (isVideo()) {
         if (!hasVideoEdits()) {
             const bool copyAfter = m_copyVideoPending;
+            const bool fallbackOnFailure = m_videoShelfFallbackPending;
             m_copyVideoPending = false;
-            postVideoToShelf(m_media.path, false, copyAfter);
+            m_videoShelfFallbackPending = false;
+            postVideoToShelf(m_media.path, false, copyAfter, fallbackOnFailure);
             return;
         }
         if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath)) {
             const bool copyAfter = m_copyVideoPending;
+            const bool fallbackOnFailure = m_videoShelfFallbackPending;
             m_copyVideoPending = false;
-            postVideoToShelf(m_cachedVideoPath, true, copyAfter);
+            m_videoShelfFallbackPending = false;
+            postVideoToShelf(m_cachedVideoPath, true, copyAfter, fallbackOnFailure);
             return;
         }
         m_sendVideoToShelfPending = true;

@@ -9,10 +9,34 @@
 #include <QFileDialog>
 #include <fcntl.h>
 #include <io.h>
+#define NOMINMAX
+#include <windows.h>
 #endif
 #include <cstdio>
 
+#ifdef Q_OS_WIN
+namespace {
+// GUI-subsystem builds detach from the parent console, which would swallow
+// help, version, and error output in cmd/PowerShell. Reattach, but leave
+// streams alone that the parent already redirected to a pipe or file.
+void attachParentConsole() {
+    const auto redirected = [](DWORD stream) {
+        const HANDLE handle = GetStdHandle(stream);
+        return handle != nullptr && handle != INVALID_HANDLE_VALUE;
+    };
+    const bool stdoutRedirected = redirected(STD_OUTPUT_HANDLE);
+    const bool stderrRedirected = redirected(STD_ERROR_HANDLE);
+    if (!AttachConsole(ATTACH_PARENT_PROCESS)) return;
+    if (!stdoutRedirected) std::freopen("CONOUT$", "w", stdout);
+    if (!stderrRedirected) std::freopen("CONOUT$", "w", stderr);
+}
+}
+#endif
+
 int main(int argc, char **argv) {
+#ifdef Q_OS_WIN
+    attachParentConsole();
+#endif
     QApplication app(argc, argv);
     const QPalette systemPalette = app.palette();
     QApplication::setStyle("Fusion");
@@ -32,7 +56,11 @@ int main(int argc, char **argv) {
     }
 #endif
     auto pr = eddy::parseArgs(args);
-    if (pr.exitNow) return pr.exitCode;
+    if (pr.exitNow) {
+        if (pr.showHelp) std::fputs(qPrintable(eddy::helpText()), stdout);
+        if (pr.showVersion) std::fprintf(stdout, "%s\n", qPrintable(eddy::versionString()));
+        return pr.exitCode;
+    }
     if (!pr.ok) { std::fprintf(stderr, "eddy: %s\n", qPrintable(pr.error)); return 2; }
 
 #ifdef Q_OS_WIN

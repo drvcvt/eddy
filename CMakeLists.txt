@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(eddy LANGUAGES CXX)
+project(eddy VERSION 1.0.3 LANGUAGES CXX)
 
 include(GNUInstallDirs)
 
@@ -66,6 +66,7 @@ add_library(eddy_core STATIC
     resources/eddy.qrc
 )
 target_include_directories(eddy_core PUBLIC src)
+target_compile_definitions(eddy_core PRIVATE EDDY_VERSION="${PROJECT_VERSION}")
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets Qt6::Svg Qt6::Multimedia Qt6::MultimediaWidgets)
 if(WIN32)
     target_link_libraries(eddy_core PRIVATE Qt6::Network dwmapi)
@@ -78,6 +79,8 @@ endif()
 add_executable(eddy src/main.cpp)
 target_link_libraries(eddy PRIVATE eddy_core)
 if(WIN32)
+    enable_language(RC)
+    target_sources(eddy PRIVATE resources/eddy.rc)
     set_target_properties(eddy PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 if(MSVC)
