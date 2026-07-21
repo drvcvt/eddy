@@ -450,13 +450,7 @@ void EditorWindow::closeEvent(QCloseEvent *e) {
     }
     if (m_videoExportInProgress || m_videoStatusRequested) {
         m_closeAfterVideoExport = true;
-#ifdef Q_OS_WIN
-        if (m_videoExportCancelRequested)
-            m_videoExportCancelRequested->store(true);
-        if (m_toast) m_toast->showMessage(QStringLiteral("Cancelling video export…"));
-#else
         if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video export…"));
-#endif
         e->ignore();
         return;
     }
@@ -1023,15 +1017,13 @@ void EditorWindow::startVideoExportCache() {
     }
 
     const int revision = m_videoRevision;
-    const auto cancelRequested = std::make_shared<std::atomic_bool>(false);
     VideoExportRequest request{
         m_media.path, path, renderAnnotationOverlay(),
-        m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000, cancelRequested
+        m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000
     };
     for (QGraphicsItem *item : m_scene->items())
         if (auto *redact = dynamic_cast<RedactItem *>(item))
             request.blurRects += redact->blurRectsInScene();
-    m_videoExportCancelRequested = cancelRequested;
     m_videoExportInProgress = true;
 
     QPointer<EditorWindow> receiver(this);
@@ -1050,7 +1042,6 @@ void EditorWindow::startVideoExportCache() {
 
 void EditorWindow::finishVideoExportCache(int revision, const QString &path, const DeliverResult &result) {
     m_videoExportInProgress = false;
-    m_videoExportCancelRequested.reset();
     const bool current = result.ok && hasVideoEdits() && revision == m_videoRevision;
     if (current) {
         if (!m_cachedVideoPath.isEmpty() && m_cachedVideoPath != path

@@ -7,9 +7,7 @@
 #include "exporter.h"
 #include <QSet>
 #include <QHash>
-#include <atomic>
 #include <functional>
-#include <memory>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel;
@@ -120,7 +118,6 @@ private:
     int m_cachedVideoRevision = -1;
     bool m_videoExportInProgress = false;
     bool m_videoExportPending = false;
-    std::shared_ptr<std::atomic_bool> m_videoExportCancelRequested;
     bool m_videoStatusRequested = false;
     bool m_copyVideoPending = false;
     bool m_sendVideoToShelfPending = false;
