@@ -144,6 +144,10 @@ required Qt and compiler runtimes. Download either format from the
 [latest Eddy release](https://github.com/drvcvt/eddy/releases/latest). The
 Boltsnap installer is separate and does not bundle Eddy.
 
+Video editing and export need `ffmpeg`/`ffprobe` on `PATH` on every platform;
+the installers do not bundle them. On Windows, `winget install ffmpeg` is
+enough. Image annotation works without them.
+
 On Linux, build from source with the Qt packages supplied by your distribution.
 
 ---
