@@ -49,3 +49,18 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build -C Release --parallel 3 --output-on-failure
+      - name: Stage portable build
+        shell: pwsh
+        run: |
+          $stage = "build\portable\eddy"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item build\Release\eddy.exe $stage
+          & C:\Qt\6.8.3\msvc2022_64\bin\windeployqt.exe --release --compiler-runtime `
+            --dir $stage (Join-Path $stage "eddy.exe")
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
+      - name: Upload portable build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: eddy-windows-x64-${{ github.sha }}
+          path: build/portable
+          if-no-files-found: error
