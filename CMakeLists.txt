@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 project(eddy LANGUAGES CXX)
 
+include(GNUInstallDirs)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
@@ -12,11 +14,17 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Test Svg Multimedia MultimediaWidgets)
-set(QT_NO_PRIVATE_MODULE_WARNING ON)
-find_package(Qt6 COMPONENTS GuiPrivate QUIET)
-find_package(PkgConfig)
-if(PkgConfig_FOUND)
-    pkg_check_modules(WAYLAND_CLIENT wayland-client IMPORTED_TARGET)
+if(WIN32)
+    find_package(Qt6 REQUIRED COMPONENTS Network)
+endif()
+
+if(UNIX AND NOT APPLE)
+    set(QT_NO_PRIVATE_MODULE_WARNING ON)
+    find_package(Qt6 COMPONENTS GuiPrivate QUIET)
+    find_package(PkgConfig)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(WAYLAND_CLIENT wayland-client IMPORTED_TARGET)
+    endif()
 endif()
 
 add_library(eddy_core STATIC
@@ -59,6 +67,9 @@ add_library(eddy_core STATIC
 )
 target_include_directories(eddy_core PUBLIC src)
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets Qt6::Svg Qt6::Multimedia Qt6::MultimediaWidgets)
+if(WIN32)
+    target_link_libraries(eddy_core PRIVATE Qt6::Network dwmapi)
+endif()
 if(WAYLAND_CLIENT_FOUND AND TARGET Qt6::GuiPrivate)
     target_link_libraries(eddy_core PRIVATE PkgConfig::WAYLAND_CLIENT Qt6::GuiPrivate)
     target_compile_definitions(eddy_core PRIVATE EDDY_HAVE_WAYLAND_CLIENT=1)
@@ -66,7 +77,24 @@ endif()
 
 add_executable(eddy src/main.cpp)
 target_link_libraries(eddy PRIVATE eddy_core)
-target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:-O2>)
+if(WIN32)
+    set_target_properties(eddy PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+if(MSVC)
+    target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:/O2>)
+else()
+    target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:-O2>)
+endif()
+
+install(TARGETS eddy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(WIN32)
+    qt_generate_deploy_app_script(
+        TARGET eddy
+        OUTPUT_SCRIPT eddy_deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+    )
+    install(SCRIPT ${eddy_deploy_script})
+endif()
 
 add_executable(eddy_preview tools/eddy_preview.cpp)
 target_link_libraries(eddy_preview PRIVATE eddy_core)
