@@ -68,6 +68,9 @@ private slots:
     }
 
     void timesOutHungFfmpeg() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString fakeFfmpeg = dir.filePath(QStringLiteral("ffmpeg"));
@@ -93,6 +96,7 @@ private slots:
         QVERIFY(!result.ok);
         QVERIFY2(timer.elapsed() < 1000, "hung ffmpeg was not terminated promptly");
         QVERIFY(result.error.contains(QStringLiteral("timed out")));
+#endif
     }
 
     void exportsStaticOverlayOntoVideo() {

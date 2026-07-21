@@ -39,6 +39,7 @@
 #include <QSettings>
 #include <QApplication>
 #include <QUndoStack>
+#ifndef Q_OS_WIN
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -47,6 +48,7 @@
 #include <sys/un.h>
 #include <thread>
 #include <unistd.h>
+#endif
 #include "theme.h"
 using namespace eddy;
 
@@ -60,6 +62,7 @@ static bool runProcess(const QString &program, const QStringList &args) {
     return p.waitForFinished(15000) && p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
 }
 
+#ifndef Q_OS_WIN
 static QByteArray videoResponseFrame(const QString &path) {
     const QByteArray header = QJsonDocument(QJsonObject{
         {QStringLiteral("ok"), true},
@@ -74,6 +77,7 @@ static QByteArray videoResponseFrame(const QString &path) {
     frame.append(header);
     return frame;
 }
+#endif
 
 static bool sceneHasVideoItem(const EditorWindow &w) {
     const auto *scene = w.findChild<QGraphicsScene *>();
@@ -908,6 +912,7 @@ private slots:
         QVERIFY(QFileInfo::exists(
             QGuiApplication::clipboard()->mimeData()->urls().first().toLocalFile()));
     }
+#ifndef Q_OS_WIN
     void videoShelfAcknowledgementDoesNotBlockUi() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
@@ -968,6 +973,7 @@ private slots:
         QCOMPARE(toast->text(), QStringLiteral("Sent to Boltsnap shelf"));
         QVERIFY2(QFileInfo::exists(video), "handoff removed the original video");
     }
+#endif
     void videoDragWaitsForCurrentExport() {
         if (!have(QStringLiteral("ffmpeg")))
             QSKIP("ffmpeg not available");

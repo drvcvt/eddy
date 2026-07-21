@@ -1,8 +1,8 @@
 # eddy
 
-A fast, minimal image-annotation editor for Linux (Qt6) — a standalone swappy replacement.
+A fast, minimal image and video annotation editor for Linux and Windows (Qt 6).
 
-Takes an image (from a file or stdin), opens a frameless floating editor, lets you annotate it, then outputs the result to the clipboard, a file, or stdout. Independent of any capture tool; meant to be dropped in place of swappy in keybinds and scripts.
+Takes an image or video from a file (images also support stdin), lets you annotate it, then outputs the result to the clipboard, a file, stdout, or the Boltsnap shelf. Linux keeps the frameless floating workflow; Windows uses native window controls and file dialogs.
 
 ---
 
@@ -128,20 +128,32 @@ boltsnap area --no-copy -o - | eddy -f -
 
 ## Build
 
-Requires Qt 6 (Widgets). Linux-first; runs Wayland-native or via XWayland.
+Requires Qt 6 Widgets, Multimedia, and SVG. Windows additionally uses Qt Network for Boltsnap named-pipe IPC.
 
 ```sh
 # Debug (default)
 cmake -S . -B build
-cmake --build build
+cmake --build build --parallel 3
 
 # Run tests
-ctest --test-dir build
+ctest --test-dir build --parallel 3 --output-on-failure
 
 # Release
 cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
-cmake --build build-rel
+cmake --build build-rel --parallel 3
 ```
+
+On Windows, configure with a Qt 6 MSVC kit and Visual Studio 2022. Launching
+`eddy.exe` without arguments opens the native media picker. A conventional MSI
+can be produced after the Release build with:
+
+```powershell
+.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64
+```
+
+The MSI installs Eddy per machine, adds a Start-menu shortcut, and registers the
+classic **Open with Eddy** action. It does not install certificates, MSIX identity,
+or Explorer COM extensions.
 
 ---
 
