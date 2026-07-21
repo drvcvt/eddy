@@ -31,6 +31,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMimeData>
+#include <QPainter>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -590,9 +591,22 @@ private slots:
         tools->setTool(ToolType::Redact);
         tools->begin({32, 4});
         tools->finish({52, 24});
+
+        videoItem->setVisible(false);
+        QImage preview(doc.video.size, QImage::Format_ARGB32_Premultiplied);
+        preview.fill(Qt::transparent);
+        {
+            QPainter painter(&preview);
+            scene->render(&painter, QRectF(QPointF(), doc.video.size),
+                          QRectF(QPointF(), doc.video.size));
+        }
+        videoItem->setVisible(true);
+        QVERIFY(preview.pixelColor(14, 14).red() > 225);
+        QVERIFY(preview.pixelColor(42, 14).red() > 225);
+
         const QImage overlay = window.exportComposite();
-        QVERIFY(overlay.pixelColor(14, 14).red() > 225);
-        QVERIFY(overlay.pixelColor(42, 14).red() > 225);
+        QCOMPARE(overlay.pixelColor(14, 14).alpha(), 0);
+        QCOMPARE(overlay.pixelColor(42, 14).alpha(), 0);
     }
     void videoTrimKeyboardControlsUpdateTheRange() {
         MediaDocument doc;

@@ -124,6 +124,31 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
             codecArgs += {QStringLiteral("-b:a"), QStringLiteral("192k")};
     }
 
+    constexpr int videoBlurRadius = 12;
+    QString filter;
+    QString current = QStringLiteral("[0:v]");
+    int blurIndex = 0;
+    for (const QRect &requested : req.blurRects) {
+        const QRect rect = requested.intersected(req.overlay.rect());
+        if (rect.isEmpty()) continue;
+        const QString base = QStringLiteral("[blurbase%1]").arg(blurIndex);
+        const QString crop = QStringLiteral("[blurcrop%1]").arg(blurIndex);
+        const QString blurred = QStringLiteral("[blurpatch%1]").arg(blurIndex);
+        const QString next = QStringLiteral("[blurvideo%1]").arg(blurIndex);
+        filter += current + QStringLiteral("split=2") + base + crop + QStringLiteral(";");
+        filter += crop + QStringLiteral(
+            "crop=%1:%2:%3:%4,boxblur="
+            "luma_radius=min(%5\\,(min(w\\,h)-1)/2):luma_power=2:"
+            "chroma_radius=min(%5\\,(min(cw\\,ch)-1)/2):chroma_power=2")
+            .arg(rect.width()).arg(rect.height()).arg(rect.x()).arg(rect.y())
+            .arg(videoBlurRadius) + blurred + QStringLiteral(";");
+        filter += base + blurred + QStringLiteral("overlay=%1:%2:format=auto")
+            .arg(rect.x()).arg(rect.y()) + next + QStringLiteral(";");
+        current = next;
+        ++blurIndex;
+    }
+    filter += current + QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1[v]");
+
     QStringList args = {
         QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
         QStringLiteral("-nostdin"), QStringLiteral("-y"),
@@ -138,7 +163,7 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         QStringLiteral("-loop"), QStringLiteral("1"),
         QStringLiteral("-i"), overlayPath,
         QStringLiteral("-filter_complex"),
-        QStringLiteral("[0:v][1:v]overlay=0:0:format=auto:shortest=1[v]"),
+        filter,
         QStringLiteral("-map"), QStringLiteral("[v]"),
         QStringLiteral("-map"), QStringLiteral("0:a?"),
     };

@@ -29,6 +29,18 @@ static QByteArray processOutput(const QString &program, const QStringList &args)
     return p.readAllStandardOutput().trimmed();
 }
 
+static double horizontalContrast(const QImage &image, const QRect &rect) {
+    qint64 total = 0;
+    qint64 samples = 0;
+    for (int y = rect.top(); y <= rect.bottom(); ++y) {
+        for (int x = rect.left(); x < rect.right(); ++x) {
+            total += qAbs(qGray(image.pixel(x, y)) - qGray(image.pixel(x + 1, y)));
+            ++samples;
+        }
+    }
+    return samples > 0 ? double(total) / double(samples) : 0.0;
+}
+
 class TestVideoExporter : public QObject {
     Q_OBJECT
 private slots:
@@ -145,6 +157,45 @@ private slots:
         QVERIFY2(c.red() > 120 && c.green() < 100 && c.blue() < 100,
                  qPrintable(QStringLiteral("expected red-ish overlay pixel, got %1,%2,%3")
                                 .arg(c.red()).arg(c.green()).arg(c.blue())));
+    }
+
+    void exportsBlurredRegionsOntoVideo() {
+        if (!have(QStringLiteral("ffmpeg")))
+            QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        const QString output = dir.filePath(QStringLiteral("output.mp4"));
+        const QString frame = dir.filePath(QStringLiteral("frame.png"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {
+            QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+            QStringLiteral("-y"), QStringLiteral("-f"), QStringLiteral("lavfi"),
+            QStringLiteral("-i"),
+            QStringLiteral("nullsrc=s=96x64:d=1:r=5,geq=lum='mod(floor(X/2)+floor(Y/2)+N,2)*219+16':cb=128:cr=128"),
+            QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"), input
+        }));
+
+        QImage overlay(96, 64, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, output, overlay};
+        request.blurRects = {QRect(20, 12, 56, 40)};
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {
+            QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
+            QStringLiteral("-y"), QStringLiteral("-i"), output,
+            QStringLiteral("-frames:v"), QStringLiteral("1"), frame
+        }));
+
+        const QImage extracted(frame);
+        QVERIFY(!extracted.isNull());
+        const double outside = horizontalContrast(extracted, QRect(2, 12, 14, 40));
+        const double inside = horizontalContrast(extracted, QRect(28, 20, 40, 24));
+        QVERIFY2(outside > 60.0,
+                 qPrintable(QStringLiteral("outside contrast was only %1").arg(outside)));
+        QVERIFY2(inside < outside * 0.35,
+                 qPrintable(QStringLiteral("inside contrast %1 was not below outside %2")
+                                .arg(inside).arg(outside)));
     }
 
     void trimsVideoAndKeepsAudioInSync() {
