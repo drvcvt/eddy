@@ -71,6 +71,25 @@ private slots:
         QCOMPARE(replaced.readAll(), QByteArray("new"));
     }
 
+    void replacesMissingDestination() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString source = dir.filePath(QStringLiteral("neu-ü.mp4"));
+        const QString destination = dir.filePath(QStringLiteral("fehlt-ö.mp4"));
+        QFile sourceFile(source);
+        QVERIFY(sourceFile.open(QIODevice::WriteOnly));
+        QCOMPARE(sourceFile.write("new"), qint64(3));
+        sourceFile.close();
+
+        const auto result = replaceFileAtomically(source, destination);
+
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(!QFileInfo::exists(source));
+        QFile moved(destination);
+        QVERIFY(moved.open(QIODevice::ReadOnly));
+        QCOMPARE(moved.readAll(), QByteArray("new"));
+    }
+
     void rejectsStdoutOutput() {
         QImage overlay(16, 16, QImage::Format_ARGB32_Premultiplied);
         overlay.fill(Qt::transparent);
