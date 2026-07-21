@@ -6,6 +6,7 @@
 #include <QTemporaryDir>
 #include <QElapsedTimer>
 #include "boltsnapipc.h"
+#ifndef Q_OS_WIN
 #include <cerrno>
 #include <cstring>
 #include <sys/socket.h>
@@ -13,6 +14,7 @@
 #include <unistd.h>
 #include <thread>
 #include <chrono>
+#endif
 
 using namespace eddy;
 
@@ -134,6 +136,24 @@ private slots:
         QCOMPARE(payloadLen, quint32(0));
     }
 
+#ifdef Q_OS_WIN
+    void socketPathUsesBoltsnapWindowsPipeContract() {
+        const QByteArray oldDomain = qgetenv("USERDOMAIN");
+        const QByteArray oldUser = qgetenv("USERNAME");
+        const QByteArray oldOverride = qgetenv("EDDY_BOLTSNAP_SOCKET");
+        qputenv("USERDOMAIN", "DOMAIN");
+        qputenv("USERNAME", "A User");
+        qunsetenv("EDDY_BOLTSNAP_SOCKET");
+
+        QCOMPARE(boltsnapSocketPath(),
+                 QStringLiteral("\\\\.\\pipe\\boltsnap-domain-a_user"));
+
+        oldDomain.isNull() ? qunsetenv("USERDOMAIN") : qputenv("USERDOMAIN", oldDomain);
+        oldUser.isNull() ? qunsetenv("USERNAME") : qputenv("USERNAME", oldUser);
+        oldOverride.isNull() ? qunsetenv("EDDY_BOLTSNAP_SOCKET")
+                             : qputenv("EDDY_BOLTSNAP_SOCKET", oldOverride);
+    }
+#else
     void socketPathUsesRuntimeDirWhenAvailable() {
         QTemporaryDir runtime;
         QVERIFY(runtime.isValid());
@@ -291,6 +311,7 @@ private slots:
         QVERIFY2(elapsed < 1300,
                  qPrintable(QStringLiteral("socket write blocked for %1ms").arg(elapsed)));
     }
+#endif
 };
 
 QTEST_GUILESS_MAIN(TestBoltsnapIpc)

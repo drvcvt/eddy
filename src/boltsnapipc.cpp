@@ -4,20 +4,26 @@
 #include <QJsonObject>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 #include <cstdlib>
+#include <cstring>
+#ifdef Q_OS_WIN
+#include <QElapsedTimer>
+#include <QLocalSocket>
+#else
 #include <chrono>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#endif
 
 namespace eddy {
 
 namespace {
 
-using Deadline = std::chrono::steady_clock::time_point;
-constexpr auto kSocketTimeout = std::chrono::seconds(1);
-constexpr auto kResponseTimeout = std::chrono::minutes(2);
+constexpr int kSocketTimeoutMs = 1000;
+constexpr int kResponseTimeoutMs = 2 * 60 * 1000;
 
 void appendU32BE(QByteArray &out, quint32 value) {
     out.append(char((value >> 24) & 0xff));
@@ -25,6 +31,9 @@ void appendU32BE(QByteArray &out, quint32 value) {
     out.append(char((value >> 8) & 0xff));
     out.append(char(value & 0xff));
 }
+
+#ifndef Q_OS_WIN
+using Deadline = std::chrono::steady_clock::time_point;
 
 bool waitReady(int fd, short events, Deadline deadline) {
     for (;;) {
@@ -80,12 +89,30 @@ bool readAll(int fd, char *data, qsizetype size, Deadline deadline) {
     }
     return true;
 }
+#endif
 
 quint32 readU32BE(const char *data) {
     return (quint32(quint8(data[0])) << 24) | (quint32(quint8(data[1])) << 16)
         | (quint32(quint8(data[2])) << 8) | quint32(quint8(data[3]));
 }
 
+DeliverResult parseResponse(const QByteArray &header) {
+    const QJsonDocument document = QJsonDocument::fromJson(header);
+    if (!document.isObject())
+        return {false, QStringLiteral("invalid Boltsnap acknowledgement")};
+    const QJsonObject response = document.object();
+    if (!response.value(QStringLiteral("ok")).isBool())
+        return {false, QStringLiteral("invalid Boltsnap acknowledgement")};
+    if (!response.value(QStringLiteral("ok")).toBool())
+        return {false, response.value(QStringLiteral("error")).toString(
+                           QStringLiteral("Boltsnap rejected the video"))};
+    const QString path = response.value(QStringLiteral("path")).toString();
+    if (path.isEmpty())
+        return {false, QStringLiteral("Boltsnap acknowledgement has no owned video path")};
+    return {true, {}, path};
+}
+
+#ifndef Q_OS_WIN
 DeliverResult readResponse(int fd, Deadline deadline) {
     char lengths[8];
     if (!readAll(fd, lengths, sizeof(lengths), deadline))
@@ -97,17 +124,9 @@ DeliverResult readResponse(int fd, Deadline deadline) {
     QByteArray header(qsizetype(headerSize), Qt::Uninitialized);
     if (!readAll(fd, header.data(), header.size(), deadline))
         return {false, QStringLiteral("incomplete Boltsnap acknowledgement")};
-    const QJsonObject response = QJsonDocument::fromJson(header).object();
-    if (!response.value(QStringLiteral("ok")).isBool())
-        return {false, QStringLiteral("invalid Boltsnap acknowledgement")};
-    if (!response.value(QStringLiteral("ok")).toBool())
-        return {false, response.value(QStringLiteral("error")).toString(
-                           QStringLiteral("Boltsnap rejected the video"))};
-    const QString path = response.value(QStringLiteral("path")).toString();
-    if (path.isEmpty())
-        return {false, QStringLiteral("Boltsnap acknowledgement has no owned video path")};
-    return {true, {}, path};
+    return parseResponse(header);
 }
+#endif
 
 QByteArray buildFrame(const QJsonObject &header, const QByteArray &payload = {}) {
     const QByteArray headerBytes = QJsonDocument(header).toJson(QJsonDocument::Compact);
@@ -120,6 +139,80 @@ QByteArray buildFrame(const QJsonObject &header, const QByteArray &payload = {})
     return frame;
 }
 
+QString windowsPipeUserKey() {
+    const auto env = QProcessEnvironment::systemEnvironment();
+    const QString domain = env.value(QStringLiteral("USERDOMAIN"));
+    const QString user = env.value(QStringLiteral("USERNAME"), QStringLiteral("user"));
+    const QString raw = domain + QLatin1Char('-') + user;
+    QString key;
+    key.reserve(raw.size());
+    for (const QChar ch : raw) {
+        const ushort value = ch.unicode();
+        const bool safe = (value >= 'a' && value <= 'z')
+            || (value >= 'A' && value <= 'Z')
+            || (value >= '0' && value <= '9')
+            || value == '-' || value == '_';
+        key += safe ? ch.toLower() : QLatin1Char('_');
+    }
+    return key;
+}
+
+#ifdef Q_OS_WIN
+bool writeAll(QLocalSocket &socket, const QByteArray &frame, int timeoutMs) {
+    QElapsedTimer timer;
+    timer.start();
+    qsizetype offset = 0;
+    while (offset < frame.size()) {
+        const qint64 written = socket.write(frame.constData() + offset,
+                                            frame.size() - offset);
+        if (written < 0) return false;
+        offset += written;
+        const int remaining = timeoutMs - int(timer.elapsed());
+        if (remaining <= 0 || (socket.bytesToWrite() > 0
+                              && !socket.waitForBytesWritten(remaining)))
+            return false;
+    }
+    return true;
+}
+
+bool readAll(QLocalSocket &socket, QByteArray &data, qsizetype size, int timeoutMs) {
+    QElapsedTimer timer;
+    timer.start();
+    while (data.size() < size) {
+        if (socket.bytesAvailable() == 0) {
+            const int remaining = timeoutMs - int(timer.elapsed());
+            if (remaining <= 0 || !socket.waitForReadyRead(remaining)) return false;
+        }
+        data += socket.read(size - data.size());
+    }
+    return true;
+}
+
+DeliverResult sendFrame(const QByteArray &frame, bool expectResponse = false) {
+    QLocalSocket socket;
+    const QString path = boltsnapSocketPath();
+    socket.connectToServer(path, QIODevice::ReadWrite);
+    if (!socket.waitForConnected(kSocketTimeoutMs))
+        return {false, QStringLiteral("cannot connect to Boltsnap shelf at ")
+                           + path + QStringLiteral(": ") + socket.errorString()};
+    if (!writeAll(socket, frame, kSocketTimeoutMs))
+        return {false, QStringLiteral("cannot write to Boltsnap shelf: ")
+                           + socket.errorString()};
+    if (!expectResponse) return {true, {}};
+
+    QByteArray lengths;
+    if (!readAll(socket, lengths, 8, kResponseTimeoutMs))
+        return {false, QStringLiteral("Boltsnap did not acknowledge the video")};
+    const quint32 headerSize = readU32BE(lengths.constData());
+    const quint32 payloadSize = readU32BE(lengths.constData() + 4);
+    if (!headerSize || headerSize > 64 * 1024 || payloadSize)
+        return {false, QStringLiteral("invalid Boltsnap acknowledgement")};
+    QByteArray header;
+    if (!readAll(socket, header, qsizetype(headerSize), kResponseTimeoutMs))
+        return {false, QStringLiteral("incomplete Boltsnap acknowledgement")};
+    return parseResponse(header);
+}
+#else
 DeliverResult sendFrame(const QByteArray &frame, bool expectResponse = false) {
     DeliverResult result;
     const QString path = boltsnapSocketPath();
@@ -137,7 +230,8 @@ DeliverResult sendFrame(const QByteArray &frame, bool expectResponse = false) {
     sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
     std::memcpy(addr.sun_path, pathBytes.constData(), size_t(pathBytes.size()));
-    const Deadline deadline = std::chrono::steady_clock::now() + kSocketTimeout;
+    const Deadline deadline = std::chrono::steady_clock::now()
+        + std::chrono::milliseconds(kSocketTimeoutMs);
     int connectError = 0;
     if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
         if ((errno == EINPROGRESS || errno == EAGAIN) && waitReady(fd, POLLOUT, deadline)) {
@@ -162,11 +256,13 @@ DeliverResult sendFrame(const QByteArray &frame, bool expectResponse = false) {
         return result;
     }
     result = expectResponse
-        ? readResponse(fd, std::chrono::steady_clock::now() + kResponseTimeout)
+        ? readResponse(fd, std::chrono::steady_clock::now()
+                               + std::chrono::milliseconds(kResponseTimeoutMs))
         : DeliverResult{true, {}};
     ::close(fd);
     return result;
 }
+#endif
 
 }
 
@@ -217,9 +313,13 @@ QString boltsnapSocketPath() {
         overridePath && *overridePath) {
         return QString::fromLocal8Bit(overridePath);
     }
+#ifdef Q_OS_WIN
+    return QStringLiteral("\\\\.\\pipe\\boltsnap-") + windowsPipeUserKey();
+#else
     if (const char *runtime = std::getenv("XDG_RUNTIME_DIR"); runtime && *runtime)
         return QDir(QString::fromLocal8Bit(runtime)).filePath(QStringLiteral("boltsnap.sock"));
     return QDir(QDir::tempPath()).filePath(QStringLiteral("boltsnap.sock"));
+#endif
 }
 
 DeliverResult sendPngToBoltsnapShelf(const QByteArray &png, const QString &source,
