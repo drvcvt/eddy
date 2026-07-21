@@ -312,6 +312,32 @@ private slots:
         QImage b = renderScene(scene, QSize(80,40));
         QVERIFY(b.pixelColor(60,10).red() > 175);          // re-sampled -> blurred white -> light
     }
+    void redactBlurRefreshesSource() {
+        QGraphicsScene scene(0, 0, 40, 40);
+        QImage black(40, 40, QImage::Format_ARGB32); black.fill(Qt::black);
+        auto *redact = new RedactItem(RedactMode::Blur, black, QRectF(0, 0, 40, 40));
+        scene.addItem(redact);
+        QVERIFY(renderScene(scene, QSize(40, 40)).pixelColor(20, 20).red() < 30);
+
+        QImage white(40, 40, QImage::Format_ARGB32); white.fill(Qt::white);
+        redact->setSource(white);
+
+        QVERIFY(renderScene(scene, QSize(40, 40)).pixelColor(20, 20).red() > 225);
+    }
+    void blurRectsInSceneFollowCoverageRules() {
+        QImage src(100, 80, QImage::Format_ARGB32); src.fill(Qt::white);
+        RedactItem redact(RedactMode::Blur, src, QRectF(10, 10, 40, 30));
+        redact.setPos(20, 5);
+        QCOMPARE(redact.blurRectsInScene(), QVector<QRect>{QRect(30, 15, 40, 30)});
+
+        redact.setMode(RedactMode::OcrBlur);
+        redact.setTextRects({QRectF(15, 16, 20, 8)});
+        redact.setDetecting(false);
+        QCOMPARE(redact.blurRectsInScene(), QVector<QRect>{QRect(35, 21, 20, 8)});
+
+        redact.setMode(RedactMode::OcrBlacken);
+        QVERIFY(redact.blurRectsInScene().isEmpty());
+    }
     void ocrRedactResizeCoversWholeRegionUntilRedetect() {
         QImage src(80,80,QImage::Format_ARGB32); src.fill(Qt::white);
         auto *r = new RedactItem(RedactMode::OcrBlacken, src, QRectF(10,10,40,40));

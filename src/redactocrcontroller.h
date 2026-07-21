@@ -22,6 +22,7 @@ class RedactOcrController : public QObject {
 public:
     RedactOcrController(QImage background, ocr::OcrOptions options, QObject *parent = nullptr);
 
+    void setBackground(const QImage &background) { m_bg = background; }
     void detectFor(RedactItem *item);
     void forget(const RedactItem *item);   // drop the in-flight result if it targets `item`
     void cancel();                         // forget any current target
