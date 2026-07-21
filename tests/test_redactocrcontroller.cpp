@@ -57,8 +57,11 @@ private slots:
         QVERIFY(!item.isDetecting());         // detecting flag cleared by the failed handler
     }
     void detectsRealTextEndToEnd() {
-        if (QStandardPaths::findExecutable("tesseract").isEmpty())
+        const bool required = qEnvironmentVariableIntValue("EDDY_REQUIRE_OCR") == 1;
+        if (QStandardPaths::findExecutable("tesseract").isEmpty()) {
+            if (required) QFAIL("tesseract is required by this test run");
             QSKIP("tesseract not installed");
+        }
         QImage bg(420,140,QImage::Format_ARGB32);
         bg.fill(Qt::white);
         QPainter p(&bg);
@@ -74,8 +77,10 @@ private slots:
                          &ctl, [&](const QString &m){ failMsg = m; });
         ctl.detectFor(&item);
         QTRY_VERIFY_WITH_TIMEOUT(!item.isDetecting(), 15000);
-        if (!failMsg.isEmpty())
+        if (!failMsg.isEmpty()) {
+            if (required) QFAIL(qPrintable(failMsg));
             QSKIP(qPrintable("tesseract unavailable / language missing: " + failMsg));
+        }
         QVERIFY(!item.textRects().isEmpty());                 // detected "Hallo" -> a cover rect
     }
     void applyResultMapsSceneRectsForMovedItem() {
