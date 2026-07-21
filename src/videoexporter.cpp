@@ -34,10 +34,19 @@ DeliverResult replaceFileAtomically(const QString &from, const QString &to) {
     const std::wstring toPath = to.toStdWString();
     if (!::ReplaceFileW(toPath.c_str(), fromPath.c_str(), nullptr,
                         REPLACEFILE_WRITE_THROUGH, nullptr, nullptr)) {
-        const std::error_code ec(int(::GetLastError()), std::system_category());
-        r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
-                + QString::fromStdString(ec.message());
-        return r;
+        // ReplaceFileW requires an existing destination; fall back to a plain
+        // move so this behaves like the POSIX rename when the target is new.
+        const DWORD replaceError = ::GetLastError();
+        const bool destinationMissing = replaceError == ERROR_FILE_NOT_FOUND
+            || replaceError == ERROR_PATH_NOT_FOUND;
+        if (!destinationMissing
+            || !::MoveFileExW(fromPath.c_str(), toPath.c_str(),
+                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            const std::error_code ec(int(replaceError), std::system_category());
+            r.error = QStringLiteral("cannot replace ") + to + QStringLiteral(": ")
+                    + QString::fromStdString(ec.message());
+            return r;
+        }
     }
 #else
     std::error_code ec;
