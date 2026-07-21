@@ -1,7 +1,7 @@
 #pragma once
 #include <QString>
 #include <QStringList>
-#include <QtTypes>
+#include <QtGlobal>
 
 namespace eddy {
 
