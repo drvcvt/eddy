@@ -33,8 +33,10 @@
 #include <QApplication>
 #include <QDir>
 #include <QDateTime>
+#include <QCloseEvent>
 #include <QFile>
 #include <QFileInfo>
+#include <QSaveFile>
 #include <QTemporaryFile>
 #include <QToolButton>
 #include <QSlider>
@@ -52,6 +54,7 @@
 #include <QScreen>
 #include <QSettings>
 #include <limits>
+#include <utility>
 
 namespace eddy {
 
@@ -135,6 +138,33 @@ QPoint contextBarPosition(const QRect &item, const QSize &bar, const QSize &view
     return {x, overlap(bottomY) <= overlap(topY) ? bottomY : topY};
 }
 
+DeliverResult copyVideoAtomically(const QString &sourcePath, const QString &destinationPath) {
+    const QFileInfo sourceInfo(sourcePath);
+    const QFileInfo destinationInfo(destinationPath);
+    if (!sourceInfo.isFile())
+        return {false, QStringLiteral("video source is unavailable")};
+    if (sourceInfo.canonicalFilePath() == destinationInfo.canonicalFilePath()
+        && !sourceInfo.canonicalFilePath().isEmpty())
+        return {true, {}};
+    QFile source(sourcePath);
+    QSaveFile destination(destinationPath);
+    if (!source.open(QIODevice::ReadOnly))
+        return {false, source.errorString()};
+    if (!destination.open(QIODevice::WriteOnly))
+        return {false, destination.errorString()};
+    QByteArray buffer(1024 * 1024, Qt::Uninitialized);
+    for (;;) {
+        const qint64 count = source.read(buffer.data(), buffer.size());
+        if (count < 0) return {false, source.errorString()};
+        if (count == 0) break;
+        if (destination.write(buffer.constData(), count) != count)
+            return {false, destination.errorString()};
+    }
+    if (!destination.commit())
+        return {false, destination.errorString()};
+    return {true, {}};
+}
+
 }
 
 EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOptions &cli, QWidget *parent)
@@ -143,7 +173,8 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
 EditorWindow::~EditorWindow() {
     QObject::disconnect(m_scene, nullptr, this, nullptr);
     QObject::disconnect(m_undo, nullptr, this, nullptr);
-    if (!m_cachedVideoPath.isEmpty() && !m_handedOffVideoPaths.contains(m_cachedVideoPath))
+    if (!m_cachedVideoPath.isEmpty() && !m_clipboardVideoPaths.contains(m_cachedVideoPath)
+        && !m_videoIpcPaths.contains(m_cachedVideoPath))
         QFile::remove(m_cachedVideoPath);
 }
 
@@ -156,6 +187,21 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     setFocusPolicy(Qt::StrongFocus);
 
     m_scene = new QGraphicsScene(this);
+    connect(QApplication::clipboard(), &QClipboard::changed, this, [this] {
+        QSet<QString> referenced;
+        const QMimeData *mime = QApplication::clipboard()->mimeData();
+        if (mime) {
+            for (const QUrl &url : mime->urls())
+                referenced.insert(url.toLocalFile());
+        }
+        for (const QString &path : std::as_const(m_clipboardVideoPaths)) {
+            if (!referenced.contains(path) && path != m_cachedVideoPath
+                && !m_videoIpcPaths.contains(path)) {
+                QFile::remove(path);
+            }
+        }
+        m_clipboardVideoPaths.intersect(referenced);
+    });
     const QSize native = m_media.nativeSize();
     m_scene->setSceneRect(0,0,native.width(),native.height());
     if (isVideo()) {
@@ -167,6 +213,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_backgroundItem = bgItem;
     } else {
         auto *bgItem = m_scene->addPixmap(QPixmap::fromImage(m_bg));
+        bgItem->setTransformationMode(Qt::SmoothTransformation);
         bgItem->setZValue(-1000);
         m_backgroundItem = bgItem;
     }
@@ -266,6 +313,8 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     });
     connect(m_ocr, &RedactOcrController::noTextDetected, this,
             [this]{ m_toast->showMessage(QStringLiteral("No text detected")); });
+    connect(m_ocr, &RedactOcrController::contentChanged,
+            this, &EditorWindow::onVideoContentChanged);
     connect(m_ocr, &RedactOcrController::ocrFailed, this,
             [this](const QString &msg){ m_toast->showMessage(QStringLiteral("OCR failed: ") + msg); });
     connect(m_handles, &SelectionHandles::resizeFinished, this, [this](QGraphicsItem *it){
@@ -309,17 +358,24 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
     if (cfg.animations) setWindowOpacity(0.0);   // entrance fade starts transparent
 
-    // size to image, capped
+    // Size the canvas to the image at 100%; only oversized media starts fitted.
     const int maxW = 1700, maxH = 1000;
-    resize(qMin(native.width(), maxW), qMin(native.height()+40, maxH));
     const int barH = m_toolbar->sizeHint().height();
-    setMinimumSize(520, barH + 120);
+    const int chromeH = lay->sizeHint().height() - m_canvas->sizeHint().height();
+    const int minW = qMax(760, m_toolbar->sizeHint().width());
+    setMinimumSize(minW, barH + 120);
+    resize(qMin(qMax(native.width(), minW), maxW), qMin(native.height() + chromeH, maxH));
 }
 
 void EditorWindow::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
     if (m_shown) return;
     m_shown = true;
+    m_canvas->resetZoom();
+    const QSize viewport = m_canvas->viewport()->size();
+    const QSize native = m_media.nativeSize();
+    if (native.width() > viewport.width() || native.height() > viewport.height())
+        m_canvas->fitMedia();
     if (isVideo()) { scheduleVideoLoad(); scheduleContactSheetLoad(); }
     if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
     auto *a = new QPropertyAnimation(this, "windowOpacity", this);
@@ -331,6 +387,34 @@ void EditorWindow::showEvent(QShowEvent *e) {
 void EditorWindow::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
     updateCompactMode();
+}
+
+void EditorWindow::closeEvent(QCloseEvent *e) {
+    if (m_videoSaveInProgress) {
+        m_closeAfterVideoSave = true;
+        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video save…"));
+        e->ignore();
+        return;
+    }
+    if (!m_videoSavePendingPath.isEmpty()) {
+        m_videoSavePendingClose = true;
+        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video export…"));
+        e->ignore();
+        return;
+    }
+    if (m_videoIpcInProgress > 0) {
+        m_closeAfterVideoIpc = true;
+        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video handoff…"));
+        e->ignore();
+        return;
+    }
+    if (m_videoExportInProgress || m_videoStatusRequested) {
+        m_closeAfterVideoExport = true;
+        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video export…"));
+        e->ignore();
+        return;
+    }
+    QWidget::closeEvent(e);
 }
 
 void EditorWindow::updateCompactMode() {
@@ -824,8 +908,13 @@ QString EditorWindow::videoDeliveryPath() {
 void EditorWindow::onVideoContentChanged() {
     if (!isVideo()) return;
     ++m_videoRevision;
-    if (hasVideoEdits())
+    const bool edited = hasVideoEdits();
+    if (m_dragPill) m_dragPill->setEnabled(!edited);
+    if (edited) {
         scheduleVideoExportCache();
+    } else if (m_videoStatusRequested) {
+        completePendingVideoActions(m_media.path, false);
+    }
 }
 
 void EditorWindow::scheduleVideoExportCache(int delayMs) {
@@ -856,7 +945,10 @@ void EditorWindow::startVideoExportCache() {
     }
 
     const QString path = createVideoTempPath();
-    if (path.isEmpty()) return;
+    if (path.isEmpty()) {
+        if (m_videoStatusRequested) failPendingVideoActions();
+        return;
+    }
 
     const int revision = m_videoRevision;
     const VideoExportRequest request{
@@ -884,11 +976,13 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
     const bool current = result.ok && hasVideoEdits() && revision == m_videoRevision;
     if (current) {
         if (!m_cachedVideoPath.isEmpty() && m_cachedVideoPath != path
-            && !m_handedOffVideoPaths.contains(m_cachedVideoPath)) {
+            && !m_clipboardVideoPaths.contains(m_cachedVideoPath)
+            && !m_videoIpcPaths.contains(m_cachedVideoPath)) {
             QFile::remove(m_cachedVideoPath);
         }
         m_cachedVideoPath = path;
         m_cachedVideoRevision = revision;
+        if (m_dragPill) m_dragPill->setEnabled(true);
     } else {
         QFile::remove(path);
         if (!result.ok && revision == m_videoRevision)
@@ -896,91 +990,213 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
     }
 
     if (revision == m_videoRevision && m_videoStatusRequested) {
-        m_videoStatusRequested = false;
-        if (!result.ok) {
-            m_sendVideoToShelfPending = false;
-            m_closeAfterVideoShelf = false;
-            if (m_toast) m_toast->showMessage(QStringLiteral("Video export failed"));
-        } else if (m_sendVideoToShelfPending) {
-            m_sendVideoToShelfPending = false;
-            postVideoToShelf(m_cachedVideoPath, true);
-        } else if (m_toast) {
-            m_toast->showMessage(QStringLiteral("Video ready"));
-        }
+        if (result.ok)
+            completePendingVideoActions(m_cachedVideoPath, true);
+        else
+            failPendingVideoActions();
     }
 
-    const bool needsFreshExport = hasVideoEdits() && m_cachedVideoRevision != m_videoRevision;
+    const bool needsFreshExport = hasVideoEdits() && revision != m_videoRevision;
     if (m_videoExportPending || needsFreshExport) {
         m_videoExportPending = false;
         scheduleVideoExportCache(100);
+    } else if (m_closeAfterVideoExport) {
+        m_closeAfterVideoExport = false;
+        close();
     }
-}
-
-DeliverResult EditorWindow::exportVideoToFile(const QString &path) {
-    if (!hasVideoEdits()) {
-        const QFileInfo src(m_media.path);
-        const QFileInfo dst(path);
-        if (src.canonicalFilePath() == dst.canonicalFilePath())
-            return {true, {}};
-        if (dst.exists() && !QFile::remove(path))
-            return {false, QStringLiteral("cannot replace ") + path};
-        if (!QFile::copy(m_media.path, path))
-            return {false, QStringLiteral("cannot copy video to ") + path};
-        return {true, {}};
-    }
-    return writeVideoWithOverlay({
-        m_media.path, path, renderAnnotationOverlay(),
-        m_trimInMs, hasTrim() ? m_trimOutMs : -1
-    });
 }
 
 void EditorWindow::copyVideoFile(const QString &path) {
     if (path.isEmpty()) return;
+    for (const QString &oldPath : std::as_const(m_clipboardVideoPaths)) {
+        if (oldPath != path && oldPath != m_cachedVideoPath
+            && !m_videoIpcPaths.contains(oldPath)) {
+            QFile::remove(oldPath);
+        }
+    }
+    m_clipboardVideoPaths.clear();
+    // ponytail: clipboard URLs need the file after Eddy exits; OS temp cleanup owns expiry.
+    if (path == m_cachedVideoPath || m_videoIpcPaths.contains(path))
+        m_clipboardVideoPaths.insert(path);
     QApplication::clipboard()->setMimeData(makeUrlDropMime(path));
+}
+
+void EditorWindow::runVideoIpc(
+    const std::function<DeliverResult()> &operation,
+    const std::function<void(const DeliverResult &)> &completion,
+    const QString &pinnedPath) {
+    ++m_videoIpcInProgress;
+    if (!pinnedPath.isEmpty()) ++m_videoIpcPaths[pinnedPath];
+    QPointer<EditorWindow> receiver(this);
+    auto *thread = QThread::create([receiver, operation, completion, pinnedPath] {
+        const DeliverResult result = operation();
+        QMetaObject::invokeMethod(qApp, [receiver, result, completion, pinnedPath] {
+            if (!receiver) return;
+            --receiver->m_videoIpcInProgress;
+            completion(result);
+            if (!receiver) return;
+            if (!pinnedPath.isEmpty()) {
+                auto pin = receiver->m_videoIpcPaths.find(pinnedPath);
+                if (pin != receiver->m_videoIpcPaths.end() && --pin.value() == 0)
+                    receiver->m_videoIpcPaths.erase(pin);
+            }
+            if (!pinnedPath.isEmpty() && !receiver->m_videoIpcPaths.contains(pinnedPath)
+                && pinnedPath != receiver->m_cachedVideoPath
+                && !receiver->m_clipboardVideoPaths.contains(pinnedPath)) {
+                QFile::remove(pinnedPath);
+            }
+            if (receiver && receiver->m_videoIpcInProgress == 0
+                && receiver->m_closeAfterVideoIpc) {
+                receiver->m_closeAfterVideoIpc = false;
+                receiver->close();
+            }
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void EditorWindow::replaceVideoCard(const QString &path, bool copyAfter) {
+    const bool closeAfter = m_closeAfterVideoCard;
+    m_closeAfterVideoCard = false;
+    const quint64 cardId = m_cli.boltsnapCardId;
+    const bool shouldCopy = m_cfg.copyOnSave || copyAfter;
+    const QString pinnedPath = path == m_cachedVideoPath ? path : QString();
+    runVideoIpc(
+        [cardId, path] { return sendVideoToBoltsnapCard(cardId, path); },
+        [this, path, shouldCopy, closeAfter](const DeliverResult &result) {
+            if (!result.ok) {
+                std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
+                copyVideoFile(path);
+                if (m_toast)
+                    m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
+                return;
+            }
+            if (shouldCopy) copyVideoFile(result.path);
+            if (m_toast) m_toast->showMessage(QStringLiteral("Video saved"));
+            if (closeAfter) close();
+        }, pinnedPath);
+}
+
+void EditorWindow::startVideoFileSave(const QString &source, const QString &destination,
+                                      bool copyAfter, bool closeAfter) {
+    if (m_videoSaveInProgress) return;
+    m_videoSaveInProgress = true;
+    m_videoSaveSourcePath = source;
+    m_copyAfterVideoSave = copyAfter;
+    m_closeAfterVideoSave = closeAfter;
+    if (m_toast) m_toast->showMessage(QStringLiteral("Saving video…"));
+
+    QPointer<EditorWindow> receiver(this);
+    auto *thread = QThread::create([receiver, source, destination] {
+        const DeliverResult result = copyVideoAtomically(source, destination);
+        QMetaObject::invokeMethod(qApp, [receiver, destination, result] {
+            if (receiver) receiver->finishVideoFileSave(destination, result);
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void EditorWindow::finishVideoFileSave(const QString &path, const DeliverResult &result) {
+    m_videoSaveInProgress = false;
+    const bool copyAfter = m_copyAfterVideoSave;
+    const bool closeAfter = m_closeAfterVideoSave;
+    const QString sourcePath = m_videoSaveSourcePath;
+    m_videoSaveSourcePath.clear();
+    m_copyAfterVideoSave = false;
+    m_closeAfterVideoSave = false;
+    if (!result.ok) {
+        std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
+        if (m_toast) m_toast->showMessage(QStringLiteral("Video save failed"));
+        return;
+    }
+    const auto finish = [this, path, copyAfter, closeAfter] {
+        if (copyAfter) copyVideoFile(path);
+        if (m_toast) m_toast->showMessage(QStringLiteral("Video saved"));
+        if (closeAfter) close();
+    };
+    if (m_cli.boltsnapCardId && sourcePath != m_media.path) {
+        const quint64 cardId = m_cli.boltsnapCardId;
+        runVideoIpc(
+            [cardId, path] { return sendVideoToBoltsnapCard(cardId, path, false); },
+            [finish](const DeliverResult &replaced) {
+                if (!replaced.ok)
+                    std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
+                finish();
+            });
+        return;
+    }
+    finish();
+}
+
+void EditorWindow::failPendingVideoActions() {
+    m_videoStatusRequested = false;
+    m_copyVideoPending = false;
+    m_sendVideoToShelfPending = false;
+    m_replaceVideoCardPending = false;
+    m_videoSavePendingPath.clear();
+    m_videoSavePendingCopy = false;
+    m_videoSavePendingClose = false;
+    m_closeAfterVideoShelf = false;
+    m_closeAfterVideoCard = false;
+    if (m_toast) m_toast->showMessage(QStringLiteral("Video export failed"));
+}
+
+void EditorWindow::completePendingVideoActions(const QString &path, bool takeOwnership) {
+    const bool requested = m_videoStatusRequested;
+    m_videoStatusRequested = false;
+
+    bool copyPending = m_copyVideoPending;
+    m_copyVideoPending = false;
+    const bool shelfPending = m_sendVideoToShelfPending;
+    m_sendVideoToShelfPending = false;
+    const bool cardPending = m_replaceVideoCardPending;
+    m_replaceVideoCardPending = false;
+    const QString savePath = m_videoSavePendingPath;
+    const bool saveCopy = m_videoSavePendingCopy;
+    const bool saveClose = m_videoSavePendingClose;
+    m_videoSavePendingPath.clear();
+    m_videoSavePendingCopy = false;
+    m_videoSavePendingClose = false;
+
+    if (!savePath.isEmpty())
+        startVideoFileSave(path, savePath, saveCopy, saveClose);
+    if (cardPending) {
+        replaceVideoCard(path, copyPending);
+        copyPending = false;
+    }
+    if (shelfPending) {
+        postVideoToShelf(path, takeOwnership, copyPending);
+        copyPending = false;
+    }
+    if (copyPending) copyVideoFile(path);
+    if (requested && !copyPending && savePath.isEmpty() && !cardPending && !shelfPending
+        && m_toast)
+        m_toast->showMessage(QStringLiteral("Video ready"));
 }
 
 void EditorWindow::saveVideo() {
     const SaveRoute route = saveRoute(m_cli, m_cfg);
     if (route == SaveRoute::Shelf) {
         m_closeAfterVideoShelf = m_cfg.earlyExit;
+        m_copyVideoPending = m_copyVideoPending || m_cfg.copyOnSave;
         sendToShelf();
-        if (m_cfg.copyOnSave) copyVideoFile(videoDeliveryPath());
         return;
     }
     if (route == SaveRoute::BoltsnapCard) {
-        QString replacementPath = m_media.path;
-        bool freshTemp = false;
-        if (hasVideoEdits()) {
-            if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath)) {
-                replacementPath = m_cachedVideoPath;
-            } else {
-                replacementPath = createVideoTempPath();
-                freshTemp = !replacementPath.isEmpty();
-                if (freshTemp) {
-                    const DeliverResult exported = exportVideoToFile(replacementPath);
-                    if (!exported.ok) {
-                        std::fprintf(stderr, "eddy: %s\n", qPrintable(exported.error));
-                        QFile::remove(replacementPath);
-                        replacementPath.clear();
-                    }
-                }
-            }
+        m_closeAfterVideoCard = m_cfg.earlyExit;
+        if (!hasVideoEdits()) {
+            replaceVideoCard(m_media.path);
+        } else if (m_cachedVideoRevision == m_videoRevision
+                   && QFileInfo::exists(m_cachedVideoPath)) {
+            replaceVideoCard(m_cachedVideoPath);
+        } else {
+            m_replaceVideoCardPending = true;
+            m_videoStatusRequested = true;
+            if (m_toast) m_toast->showMessage(QStringLiteral("Preparing video export…"));
+            scheduleVideoExportCache(0);
         }
-
-        DeliverResult replaced{false, QStringLiteral("video export unavailable")};
-        if (!replacementPath.isEmpty())
-            replaced = sendVideoToBoltsnapCard(m_cli.boltsnapCardId, replacementPath);
-        if (!replaced.ok) {
-            std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
-            if (freshTemp) QFile::remove(replacementPath);
-        } else if (replacementPath != m_media.path) {
-            // Boltsnap stores video replacements by path, so successful hand-offs
-            // must outlive this editor window.
-            m_handedOffVideoPaths.insert(replacementPath);
-        }
-        if (m_cfg.copyOnSave || !replaced.ok)
-            copyVideoFile(replacementPath);
-        if (m_cfg.earlyExit) close();
         return;
     }
 
@@ -1007,30 +1223,25 @@ void EditorWindow::saveVideo() {
             + QStringLiteral(".") + suffix);
     }
 
-    QString copiedPath;
-    if (!path.isEmpty()) {
-        if (hasVideoEdits() && m_toast)
-            m_toast->showMessage(QStringLiteral("Preparing video export…"));
-        auto res = exportVideoToFile(path);
-        if (!res.ok) {
-            std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
-            if (m_toast) m_toast->showMessage(QStringLiteral("Video export failed"));
-        } else {
-            copiedPath = path;
-            if (m_toast) m_toast->showMessage(QStringLiteral("Video saved"));
-            if (m_cli.boltsnapCardId) {
-                const DeliverResult replaced = sendVideoToBoltsnapCard(m_cli.boltsnapCardId, path);
-                if (!replaced.ok)
-                    std::fprintf(stderr, "eddy: %s\n", qPrintable(replaced.error));
-            }
-        }
+    if (path.isEmpty()) {
+        copy();
+        if (m_cfg.earlyExit && !hasVideoEdits()) close();
+        return;
     }
-    if (m_cfg.copyOnSave || path.isEmpty()) {
-        if (copiedPath.isEmpty())
-            copiedPath = videoDeliveryPath();
-        copyVideoFile(copiedPath);
+
+    if (!hasVideoEdits()) {
+        startVideoFileSave(m_media.path, path, m_cfg.copyOnSave, m_cfg.earlyExit);
+    } else if (m_cachedVideoRevision == m_videoRevision
+               && QFileInfo::exists(m_cachedVideoPath)) {
+        startVideoFileSave(m_cachedVideoPath, path, m_cfg.copyOnSave, m_cfg.earlyExit);
+    } else {
+        m_videoSavePendingPath = path;
+        m_videoSavePendingCopy = m_cfg.copyOnSave;
+        m_videoSavePendingClose = m_cfg.earlyExit;
+        m_videoStatusRequested = true;
+        if (m_toast) m_toast->showMessage(QStringLiteral("Preparing video export…"));
+        scheduleVideoExportCache(0);
     }
-    if (m_cfg.earlyExit) close();
 }
 
 bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
@@ -1048,21 +1259,28 @@ bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
     return true;
 }
 
-bool EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership) {
+void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter) {
     const QString output = screen() ? screen()->name() : QString();
-    const DeliverResult result = sendVideoToBoltsnapShelf(
-        path, QStringLiteral("eddy"), takeOwnership, output);
-    if (!result.ok) {
-        std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
-        if (m_toast) m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
-        m_closeAfterVideoShelf = false;
-        return false;
-    }
-    if (takeOwnership) m_handedOffVideoPaths.insert(path);
-    if (m_toast) m_toast->showMessage(QStringLiteral("Sent to Boltsnap shelf"));
-    if (m_closeAfterVideoShelf) close();
+    const bool closeAfter = m_closeAfterVideoShelf;
+    const QString pinnedPath = path == m_cachedVideoPath ? path : QString();
     m_closeAfterVideoShelf = false;
-    return true;
+    runVideoIpc(
+        [path, takeOwnership, output] {
+            return sendVideoToBoltsnapShelf(
+                path, QStringLiteral("eddy"), takeOwnership, output);
+        },
+        [this, path, copyAfter, closeAfter](const DeliverResult &result) {
+            if (!result.ok) {
+                std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
+                if (m_toast)
+                    m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
+                if (copyAfter) copyVideoFile(path);
+                return;
+            }
+            if (copyAfter) copyVideoFile(result.path);
+            if (m_toast) m_toast->showMessage(QStringLiteral("Sent to Boltsnap shelf"));
+            if (closeAfter) close();
+        }, pinnedPath);
 }
 
 void EditorWindow::save() {
@@ -1120,11 +1338,15 @@ void EditorWindow::save() {
 void EditorWindow::sendToShelf() {
     if (isVideo()) {
         if (!hasVideoEdits()) {
-            postVideoToShelf(m_media.path, false);
+            const bool copyAfter = m_copyVideoPending;
+            m_copyVideoPending = false;
+            postVideoToShelf(m_media.path, false, copyAfter);
             return;
         }
         if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath)) {
-            postVideoToShelf(m_cachedVideoPath, true);
+            const bool copyAfter = m_copyVideoPending;
+            m_copyVideoPending = false;
+            postVideoToShelf(m_cachedVideoPath, true, copyAfter);
             return;
         }
         m_sendVideoToShelfPending = true;
@@ -1138,7 +1360,11 @@ void EditorWindow::sendToShelf() {
 
 void EditorWindow::copy() {
     if (isVideo()) {
-        copyVideoFile(videoDeliveryPath());
+        const QString path = videoDeliveryPath();
+        if (path.isEmpty())
+            m_copyVideoPending = true;
+        else
+            copyVideoFile(path);
         return;
     }
     QApplication::clipboard()->setImage(exportComposite());

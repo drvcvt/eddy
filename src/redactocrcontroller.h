@@ -26,11 +26,12 @@ public:
     void forget(const RedactItem *item);   // drop the in-flight result if it targets `item`
     void cancel();                         // forget any current target
 
-    // Pure: set `item`'s text rects from `doc` (lines intersecting the item's region,
-    // merged), clear its detecting flag. Returns true if any text rect was produced.
-    bool applyResult(RedactItem *item, const ocr::OcrDocument &doc) const;
+    // Set `item`'s text rects from `doc` (lines intersecting the item's region,
+    // merged), clear its detecting flag, and notify the export cache.
+    bool applyResult(RedactItem *item, const ocr::OcrDocument &doc);
 
 signals:
+    void contentChanged();
     void noTextDetected();
     void ocrFailed(const QString &message);
 

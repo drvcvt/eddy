@@ -16,6 +16,21 @@
 
 using namespace eddy;
 
+static QByteArray responseFrame(bool ok, const QString &error = {}, const QString &path = {}) {
+    const QByteArray header = QJsonDocument(QJsonObject{
+        {QStringLiteral("ok"), ok},
+        {QStringLiteral("error"), error.isEmpty() ? QJsonValue() : QJsonValue(error)},
+        {QStringLiteral("path"), path.isEmpty() ? QJsonValue() : QJsonValue(path)},
+        {QStringLiteral("snapshot"), QJsonValue()},
+    }).toJson(QJsonDocument::Compact);
+    QByteArray frame;
+    QDataStream out(&frame, QIODevice::WriteOnly);
+    out.setByteOrder(QDataStream::BigEndian);
+    out << quint32(header.size()) << quint32(0);
+    frame.append(header);
+    return frame;
+}
+
 class TestBoltsnapIpc : public QObject {
     Q_OBJECT
 private slots:
@@ -86,6 +101,19 @@ private slots:
         QCOMPARE(header.value(QStringLiteral("id")).toInteger(), qint64(43));
         QCOMPARE(header.value(QStringLiteral("media")).toString(), QStringLiteral("video"));
         QCOMPARE(header.value(QStringLiteral("path")).toString(), QStringLiteral("/tmp/edited clip.mp4"));
+        QCOMPARE(header.value(QStringLiteral("take_ownership")).toBool(), true);
+        QCOMPARE(payloadLen, quint32(0));
+    }
+
+    void savedVideoReplacementKeepsPermanentPath() {
+        const QByteArray frame = buildBoltsnapVideoReplaceFrame(
+            44, QStringLiteral("/home/user/Videos/saved.mp4"), false);
+        QDataStream s(frame);
+        s.setByteOrder(QDataStream::BigEndian);
+        quint32 headerLen = 0, payloadLen = 0;
+        s >> headerLen >> payloadLen;
+        const QJsonObject header = QJsonDocument::fromJson(frame.mid(8, int(headerLen))).object();
+        QCOMPARE(header.value(QStringLiteral("take_ownership")).toBool(), false);
         QCOMPARE(payloadLen, quint32(0));
     }
 
@@ -149,6 +177,83 @@ private slots:
         ::close(server);
 
         QCOMPARE(received, buildBoltsnapAddFrame(png, QStringLiteral("eddy-test")));
+    }
+    void videoSendReturnsDaemonRejection() {
+        QTemporaryDir runtime;
+        QVERIFY(runtime.isValid());
+        const QString path = runtime.filePath(QStringLiteral("boltsnap.sock"));
+        const QByteArray pathBytes = QFile::encodeName(path);
+        const QString videoPath = runtime.filePath(QStringLiteral("clip.mp4"));
+        QFile video(videoPath);
+        QVERIFY(video.open(QIODevice::WriteOnly));
+        QCOMPARE(video.write("video"), qint64(5));
+        video.close();
+
+        const int server = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        QVERIFY(server >= 0);
+        sockaddr_un addr{};
+        addr.sun_family = AF_UNIX;
+        std::memcpy(addr.sun_path, pathBytes.constData(), size_t(pathBytes.size()));
+        QVERIFY2(::bind(server, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0,
+                 std::strerror(errno));
+        QVERIFY2(::listen(server, 1) == 0, std::strerror(errno));
+
+        const QByteArray rejection = responseFrame(false, QStringLiteral("temporary shelf is full"));
+        std::thread responder([server, rejection] {
+            const int client = ::accept(server, nullptr, nullptr);
+            if (client >= 0) {
+                ::send(client, rejection.constData(), size_t(rejection.size()), MSG_NOSIGNAL);
+                ::close(client);
+            }
+        });
+        qputenv("EDDY_BOLTSNAP_SOCKET", pathBytes);
+        const DeliverResult result = sendVideoToBoltsnapShelf(
+            videoPath, QStringLiteral("eddy-test"), true);
+        qunsetenv("EDDY_BOLTSNAP_SOCKET");
+        responder.join();
+        ::close(server);
+
+        QVERIFY(result.ok == false);
+        QCOMPARE(result.error, QStringLiteral("temporary shelf is full"));
+    }
+    void videoSendReturnsDaemonOwnedPath() {
+        QTemporaryDir runtime;
+        QVERIFY(runtime.isValid());
+        const QString socketPath = runtime.filePath(QStringLiteral("boltsnap.sock"));
+        const QByteArray socketBytes = QFile::encodeName(socketPath);
+        const QString videoPath = runtime.filePath(QStringLiteral("clip.mp4"));
+        const QString ownedPath = QStringLiteral("/tmp/boltsnap-shelf-video-owned.mp4");
+        QFile video(videoPath);
+        QVERIFY(video.open(QIODevice::WriteOnly));
+        QCOMPARE(video.write("video"), qint64(5));
+        video.close();
+
+        const int server = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        QVERIFY(server >= 0);
+        sockaddr_un addr{};
+        addr.sun_family = AF_UNIX;
+        std::memcpy(addr.sun_path, socketBytes.constData(), size_t(socketBytes.size()));
+        QVERIFY2(::bind(server, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0,
+                 std::strerror(errno));
+        QVERIFY2(::listen(server, 1) == 0, std::strerror(errno));
+
+        const QByteArray response = responseFrame(true, {}, ownedPath);
+        std::thread responder([server, response] {
+            const int client = ::accept(server, nullptr, nullptr);
+            if (client >= 0) {
+                ::send(client, response.constData(), size_t(response.size()), MSG_NOSIGNAL);
+                ::close(client);
+            }
+        });
+        qputenv("EDDY_BOLTSNAP_SOCKET", socketBytes);
+        const DeliverResult result = sendVideoToBoltsnapShelf(
+            videoPath, QStringLiteral("eddy-test"), true);
+        qunsetenv("EDDY_BOLTSNAP_SOCKET");
+        responder.join();
+        ::close(server);
+
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QCOMPARE(result.path, ownedPath);
     }
     void stalledSocketWriteTimesOut() {
         QTemporaryDir runtime;

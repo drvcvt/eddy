@@ -13,7 +13,7 @@ QImage renderToImage(QGraphicsScene &scene, const QSize &nativeSize);
 
 QByteArray encodePng(const QImage &img);
 
-struct DeliverResult { bool ok=false; QString error; };
+struct DeliverResult { bool ok=false; QString error; QString path; };
 
 // Writes PNG to a file path ("-" = stdout). Returns ok/error.
 DeliverResult writePng(const QImage &img, const QString &pathOrDash);

@@ -19,6 +19,8 @@ private slots:
         RedactItem item(RedactMode::OcrBlacken, src, QRectF(10,10,60,60));
         item.setDetecting(true);
         RedactOcrController ctl(src, ocr::OcrOptions{});
+        QSignalSpy changed(&ctl, SIGNAL(contentChanged()));
+        QVERIFY(changed.isValid());
 
         ocr::OcrDocument doc;
         ocr::OcrLine line; line.text = "secret"; line.rect = QRect(20,20,30,10);
@@ -28,6 +30,7 @@ private slots:
         QVERIFY(found);
         QVERIFY(!item.textRects().isEmpty());
         QVERIFY(!item.isDetecting());
+        QCOMPARE(changed.count(), 1);
     }
     void applyResultWithNoIntersectingTextIsEmpty() {
         QImage src(80,80,QImage::Format_ARGB32); src.fill(Qt::white);

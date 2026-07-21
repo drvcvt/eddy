@@ -21,7 +21,6 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
     : QGraphicsView(scene, parent), m_tools(tools) {
     setRenderHint(QPainter::Antialiasing, true);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
-    setCacheMode(QGraphicsView::CacheBackground);
     setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     setDragMode(QGraphicsView::NoDrag);
     setFrameShape(QFrame::NoFrame);

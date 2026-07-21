@@ -6,8 +6,9 @@
 #include "mediaio.h"
 #include "exporter.h"
 #include <QSet>
+#include <QHash>
 #include <functional>
-class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent;
+class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel;
 class QTimer;
@@ -40,6 +41,7 @@ protected:
     void showEvent(QShowEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
+    void closeEvent(QCloseEvent *e) override;
 private:
     bool isVideo() const { return m_media.kind == MediaKind::Video; }
     void updateCompactMode();
@@ -67,10 +69,18 @@ private:
     void startVideoExportCache();
     void finishVideoExportCache(int revision, const QString &path, const DeliverResult &result);
     QString createVideoTempPath() const;
-    DeliverResult exportVideoToFile(const QString &path);
+    void completePendingVideoActions(const QString &path, bool takeOwnership);
+    void failPendingVideoActions();
+    void runVideoIpc(const std::function<DeliverResult()> &operation,
+                     const std::function<void(const DeliverResult &)> &completion,
+                     const QString &pinnedPath = {});
+    void replaceVideoCard(const QString &path, bool copyAfter = false);
+    void startVideoFileSave(const QString &source, const QString &destination,
+                            bool copyAfter, bool closeAfter);
+    void finishVideoFileSave(const QString &path, const DeliverResult &result);
     void copyVideoFile(const QString &path);
     bool postImageToShelf(const QImage &img, bool showSuccessToast);
-    bool postVideoToShelf(const QString &path, bool takeOwnership);
+    void postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter = false);
     void saveVideo();
     void ensureVideoPlayer();
     void scheduleVideoLoad();
@@ -101,14 +111,28 @@ private:
     bool m_contactSheetQueued = false;
     QTimer *m_videoExportTimer = nullptr;
     QString m_cachedVideoPath;
-    QSet<QString> m_handedOffVideoPaths;
+    QSet<QString> m_clipboardVideoPaths;
+    QHash<QString, int> m_videoIpcPaths;
     int m_videoRevision = 0;
     int m_cachedVideoRevision = -1;
     bool m_videoExportInProgress = false;
     bool m_videoExportPending = false;
     bool m_videoStatusRequested = false;
+    bool m_copyVideoPending = false;
     bool m_sendVideoToShelfPending = false;
+    bool m_replaceVideoCardPending = false;
+    QString m_videoSavePendingPath;
+    bool m_videoSavePendingCopy = false;
+    bool m_videoSavePendingClose = false;
+    bool m_videoSaveInProgress = false;
+    QString m_videoSaveSourcePath;
+    bool m_copyAfterVideoSave = false;
+    bool m_closeAfterVideoSave = false;
     bool m_closeAfterVideoShelf = false;
+    bool m_closeAfterVideoCard = false;
+    int m_videoIpcInProgress = 0;
+    bool m_closeAfterVideoIpc = false;
+    bool m_closeAfterVideoExport = false;
     bool m_renderingVideoOverlay = false;
     int m_videoOverlayRenderGeneration = 0;
     SelectionHandles *m_handles = nullptr;
