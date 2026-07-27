@@ -1,8 +1,12 @@
 # eddy
 
-A fast, minimal image and video annotation editor for Linux and Windows (Qt 6).
+A fast, minimal image and video annotation editor for Linux (Qt 6).
 
-Takes an image or video from a file (images also support stdin), lets you annotate it, then outputs the result to the clipboard, a file, stdout, or the Boltsnap shelf. Linux keeps the frameless floating workflow; Windows uses native window controls and file dialogs.
+Linux is the supported platform. Windows builds are experimental and
+community-maintained: CI verifies that they compile and pass automated tests,
+but there is no human regression testing or official Windows release support.
+
+Takes an image or video from a file (images also support stdin), lets you annotate it, then outputs the result to the clipboard, a file, stdout, or the Boltsnap shelf. Linux keeps the frameless floating workflow; the experimental Windows build uses native window controls and file dialogs.
 
 ---
 
@@ -42,8 +46,9 @@ With the **Text tool**, drag existing text to move it, double-click it to edit, 
 
 ### Redaction and OCR
 
-Windows installers include the OCR runtime and German language data. Linux builds
-use `tesseract` from `PATH` and require the language selected by `ocr_lang`.
+Linux uses `tesseract` from `PATH` and requires the language selected by
+`ocr_lang`. The community Windows installer scripts can bundle the OCR runtime
+and German language data; CI preview artifacts do not.
 
 On video, Blur is applied frame-by-frame during export. OCR detects text in the
 currently displayed frame and keeps those redaction rectangles fixed for the clip;
@@ -139,22 +144,22 @@ boltsnap area --no-copy -o - | eddy -f -
 
 ## Install
 
-Windows releases provide standalone x86-64 MSI and NSIS installers with the
-required Qt and compiler runtimes. Download either format from the
-[latest Eddy release](https://github.com/drvcvt/eddy/releases/latest). The
-Boltsnap installer is separate and does not bundle Eddy.
-
-Video editing and export need `ffmpeg`/`ffprobe` on `PATH` on every platform;
-the installers do not bundle them. On Windows, `winget install ffmpeg` is
-enough. Image annotation works without them.
-
 On Linux, build from source with the Qt packages supplied by your distribution.
+
+There are no official Windows releases. CI publishes experimental, untested
+portable preview artifacts for contributors; Windows support is best-effort
+and community-maintained.
+
+Video editing and export need `ffmpeg`/`ffprobe` on `PATH` on every platform.
+Windows preview artifacts and installer scripts do not bundle them. Image
+annotation works without them.
 
 ---
 
 ## Build
 
-Requires Qt 6 Widgets, Multimedia, and SVG. Windows additionally uses Qt Network for Boltsnap named-pipe IPC.
+Requires Qt 6 Widgets, Multimedia, and SVG. The experimental Windows build
+additionally uses Qt Network for Boltsnap named-pipe IPC.
 
 ```sh
 # Debug (default)
@@ -169,9 +174,9 @@ cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
 cmake --build build-rel --parallel 3
 ```
 
-On Windows, configure with a Qt 6 MSVC kit and Visual Studio 2022. Launching
-`eddy.exe` without arguments opens the native media picker. Conventional MSI
-and NSIS installers can be produced after the Release build with:
+Community Windows builds use a Qt 6 MSVC kit and Visual Studio 2022. Launching
+`eddy.exe` without arguments opens the native media picker. MSI and NSIS
+installers can still be produced after the Release build with:
 
 ```powershell
 .\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime -Version 1.0.3
