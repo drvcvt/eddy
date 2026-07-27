@@ -3,7 +3,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QElapsedTimer>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -193,29 +192,12 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
 
     QProcess p;
     p.start(ffmpeg, args);
-    QElapsedTimer exportTimer;
-    exportTimer.start();
-    bool cancelled = false;
-    bool finished = false;
-    while (!finished) {
-        if (req.cancelRequested && req.cancelRequested->load()) {
-            cancelled = true;
-            break;
-        }
-        const qint64 remaining = req.timeoutMs < 0
-            ? 50
-            : qint64(req.timeoutMs) - exportTimer.elapsed();
-        if (req.timeoutMs >= 0 && remaining <= 0)
-            break;
-        finished = p.waitForFinished(int(qMin<qint64>(50, remaining)));
-    }
-    if (!finished) {
+    if (!p.waitForFinished(req.timeoutMs)) {
         p.kill();
         p.waitForFinished(5000);
         QFile::remove(overlayPath);
-        if (cancelled || replaceInput) QFile::remove(actualOutput);
-        r.error = cancelled ? QStringLiteral("video export cancelled")
-                            : QStringLiteral("ffmpeg export timed out");
+        if (replaceInput) QFile::remove(actualOutput);
+        r.error = QStringLiteral("ffmpeg export timed out");
         return r;
     }
     QFile::remove(overlayPath);
