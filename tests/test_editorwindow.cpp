@@ -767,6 +767,9 @@ private slots:
         auto *play = window.findChild<QToolButton *>("PlaybackPlay");
         auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
         QTRY_VERIFY(player->isSeekable());
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        window.copyVideoFrame();
+        QVERIFY(QApplication::clipboard()->image().pixelColor(48, 32).red() > 200);
         qint64 frameOrigin = video->videoSink()->videoFrame().startTime() < 0 ? -1
             : video->videoSink()->videoFrame().startTime() / 1000;
         connect(video->videoSink(), &QVideoSink::videoFrameChanged, &window, [&](const QVideoFrame &frame) {

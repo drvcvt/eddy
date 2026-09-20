@@ -140,6 +140,7 @@ private:
     bool m_seekSettling = false;
     bool m_resumeAfterSeek = false;
     bool m_hasVideoFrame = false;
+    bool m_hasSentVideoSeek = false;
     bool m_copyFramePending = false;
     QLabel *m_tooltip = nullptr;
     QTimer *m_tooltipTimer = nullptr;

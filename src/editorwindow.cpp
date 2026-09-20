@@ -1039,7 +1039,7 @@ void EditorWindow::ensureVideoPlayer() {
             // reordering delay), while QMediaPlayer positions start at zero.
             // Anchor only the first frame presented at source position zero;
             // never infer an origin from a pending seek or an arbitrary frame.
-            if (!m_hasVideoFrame && !m_seekSettling && m_player->position() == 0
+            if (!m_hasVideoFrame && !m_hasSentVideoSeek && m_player->position() == 0
                 && frame.startTime() >= 0)
                 m_frameTimeOrigin = frame.startTime() / 1000;
             m_hasVideoFrame = true;
@@ -1123,6 +1123,7 @@ void EditorWindow::ensureVideoPlayer() {
         }
     });
     m_player->setSource(QUrl::fromLocalFile(m_media.path));
+    m_player->pause(); // Decode the initial still and establish its time origin before editing.
 }
 
 RedactItem *EditorWindow::selectedRedact() const {
@@ -1395,6 +1396,7 @@ void EditorWindow::flushVideoSeek() {
     }
     // Some backends return the frame ending exactly at the requested time.
     // Seek just inside the requested millisecond so a boundary selects its frame.
+    m_hasSentVideoSeek = true;
     m_player->setPosition(qMin(m_seekTarget + 1, m_media.video.durationMs - 1));
 }
 
