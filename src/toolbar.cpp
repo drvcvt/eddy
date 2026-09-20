@@ -21,8 +21,8 @@ static QToolButton *mkBtn(bool checkable, bool square) {
     b->setAutoRaise(true);
     b->setFocusPolicy(Qt::NoFocus);      // keep keyboard focus on the window for hotkeys
     b->setCursor(Qt::PointingHandCursor);
-    if (square) b->setFixedSize(26, 22);
-    else b->setFixedHeight(22);
+    if (square) b->setFixedSize(theme::kBarButton);
+    else b->setFixedHeight(theme::kBarButton.height());
     return b;
 }
 
@@ -49,14 +49,14 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     m_undoBtn = mkBtn(false, true); m_undoBtn->setObjectName("Undo");
     m_undoBtn->setIcon(theme::tintedIcon(":/icons/undo.svg", iconRest, iconHover));
-    m_undoBtn->setIconSize(QSize(18, 18));
+    m_undoBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_undoBtn->setToolTip("Undo \xC2\xB7 Ctrl+Z"); m_undoBtn->setEnabled(false);
     connect(m_undoBtn, &QToolButton::clicked, this, [this]{ emit undoRequested(); });
     lay->addWidget(m_undoBtn);
 
     m_redoBtn = mkBtn(false, true); m_redoBtn->setObjectName("Redo");
     m_redoBtn->setIcon(theme::tintedIcon(":/icons/redo.svg", iconRest, iconHover));
-    m_redoBtn->setIconSize(QSize(18, 18));
+    m_redoBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_redoBtn->setToolTip("Redo \xC2\xB7 Ctrl+Shift+Z"); m_redoBtn->setEnabled(false);
     connect(m_redoBtn, &QToolButton::clicked, this, [this]{ emit redoRequested(); });
     lay->addWidget(m_redoBtn);
@@ -74,10 +74,9 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     };
     for (const T &t : tools) {
         auto *b = mkBtn(true, true);
-        b->setFixedSize(24, 26);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(t.id),
                                      iconRest, iconOn));
-        b->setIconSize(QSize(18, 18));
+        b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         b->setObjectName(QString::fromLatin1(t.id));
         b->setToolTip(*t.key ? QString("%1 \xC2\xB7 %2").arg(t.name, t.key)
                              : QString::fromLatin1(t.name));
@@ -99,7 +98,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         b->setObjectName(x.id);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(x.icon),
                                      iconRest, iconHover));
-        b->setIconSize(QSize(18, 18));
+        b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         b->setToolTip(QString::fromUtf8(x.tip));
         b->setAccessibleName(b->toolTip());
         if (x.w == 4.0) b->setChecked(true);             // default M
@@ -142,7 +141,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     auto *save = mkBtn(false, false); save->setObjectName("Save");
     save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
                                     iconRest, iconHover));
-    save->setIconSize(QSize(18, 18));
+    save->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     save->setText(QStringLiteral("Save"));
     save->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     save->setToolTip("Save \xC2\xB7 Enter");
@@ -152,7 +151,9 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     auto *copy = mkBtn(false, false); copy->setObjectName("Copy");
     copy->setIcon(theme::tintedIcon(QStringLiteral(":/icons/copy.svg"),
                                     iconRest, iconHover));
-    copy->setIconSize(QSize(18, 18));
+    copy->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+    copy->setText(QStringLiteral("Copy"));
+    copy->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
@@ -160,7 +161,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     auto *shelf = mkBtn(false, false); shelf->setObjectName("SendToShelf");
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
                                      iconRest, iconHover));
-    shelf->setIconSize(QSize(18, 18));
+    shelf->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     shelf->setToolTip("Send to Boltsnap shelf");
     shelf->setText(QStringLiteral("To shelf"));
     shelf->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -169,7 +170,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     m_themeBtn = mkBtn(false, true);
     m_themeBtn->setObjectName(QStringLiteral("Theme"));
-    m_themeBtn->setIconSize(QSize(18, 18));
+    m_themeBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     connect(m_themeBtn, &QToolButton::clicked, this, &Toolbar::themeToggleRequested);
     lay->addWidget(m_themeBtn);
 

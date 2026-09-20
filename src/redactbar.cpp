@@ -1,4 +1,5 @@
 #include "redactbar.h"
+#include "theme.h"
 #include <QHBoxLayout>
 #include <QToolButton>
 #include <QButtonGroup>
@@ -27,7 +28,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
         b->setFocusPolicy(Qt::NoFocus);     // keep window hotkeys working
         b->setCursor(Qt::PointingHandCursor);
         b->setText(QString::fromUtf8(m.label));
-        b->setFixedHeight(26);
+        b->setFixedHeight(theme::kFloatButton.height());
         group->addButton(b);
         m_btns.insert(int(m.mode), b);
         connect(b, &QToolButton::clicked, this, [this, mode = m.mode] { emit modeChosen(mode); });

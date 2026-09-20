@@ -34,8 +34,8 @@ matching Vis. **Fit** and the live zoom percentage (click for 100%) sit at the
 bottom left; **Drag out** stays centered at the bottom. The footer uses MonoLisa
 with a monospace fallback. The window title includes
 the filename and dimensions.
-The labeled **To shelf** action uses a card-plus icon; Save and Drag out have
-distinct disk and grip icons. Dark and light themes are available from the toolbar.
+The labeled **Save**, **Copy** and **To shelf** actions use distinct disk,
+stack and card-plus icons; Drag out has its own grip icon. Dark and light themes are available from the toolbar.
 
 Video uses a full-width filmstrip above one compact transport row. Drag the muted
 end grips to trim, click the strip to seek, or use **In / Out** (`I` / `O`) to set
@@ -50,6 +50,7 @@ times, playback and volume sit below the strip. **Drag out** remains at the bott
 | **S / M / L** | Line-width chooser: 2 px / 4 px / 8 px stroke |
 | Colour swatch | Opens a **colour popover** with the current hex value, marked presets, **More colours…** and **Pick from image** |
 | Dark / Light | Switches theme immediately and remembers the choice |
+| Copy | Copies the edited image to the clipboard (same as `Ctrl+C`) |
 | Shelf button | Sends the current edited image to the Boltsnap shelf as a new card |
 
 With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact, Spotlight) shows **8 drag handles** to resize it. Selecting an Arrow shows **2 endpoint handles**. Text shows one width handle for wrapping; Pen is move-only.
