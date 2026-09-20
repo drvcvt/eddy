@@ -44,6 +44,7 @@
 #include <QApplication>
 #include <QHelpEvent>
 #include <QLineEdit>
+#include <QMenu>
 #include <QUndoStack>
 #include <cstring>
 #ifndef Q_OS_WIN
@@ -784,6 +785,29 @@ private slots:
         undo->redo();
         QCOMPARE(timeline->trimIn(), 1234);
         QCOMPARE(inTime->text(), QStringLiteral("0:01.234"));
+    }
+    void loopAndSpeedArePreviewOnlyAndFrameStepsDoNotDrift() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-editorwindow-test.mp4");
+        doc.video = {QSize(64, 48), 60000, 30000.0 / 1001};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        auto *loop = window.findChild<QToolButton *>("PlaybackLoop");
+        auto *rate = window.findChild<QToolButton *>("PlaybackSpeed");
+        auto *timeline = window.findChild<VideoTimeline *>();
+        auto *undo = window.findChild<QUndoStack *>();
+        QVERIFY(loop && rate && timeline && undo);
+        loop->click();
+        QVERIFY(loop->isChecked());
+        for (auto *action : rate->menu()->actions())
+            if (action->data().toDouble() == 1.5) action->trigger();
+        QCOMPARE(window.findChild<QMediaPlayer *>()->playbackRate(), 1.5);
+        for (int i = 0; i < 300; ++i) QTest::keyClick(&window, Qt::Key_L);
+        QCOMPARE(timeline->position(), 10010);
+        QTest::keyClick(&window, Qt::Key_J);
+        QCOMPARE(timeline->position(), 9977);
+        QCOMPARE(undo->count(), 0);
+        QVERIFY(!window.findChild<QTimer *>("VideoExportTimer")->isActive());
     }
     void trimTimeEditingCommitsOnceAndEscapeDoesNotClose() {
         MediaDocument doc; doc.kind = MediaKind::Video;
