@@ -42,6 +42,7 @@
 #include <QVideoSink>
 #include <QSettings>
 #include <QApplication>
+#include <QHelpEvent>
 #include <QUndoStack>
 #include <cstring>
 #ifndef Q_OS_WIN
@@ -97,6 +98,67 @@ static bool sceneHasVideoItem(const EditorWindow &w) {
 class TestEditorWindow : public QObject {
     Q_OBJECT
 private slots:
+    void compactTooltipStaysInsideEditorAndDismisses() {
+        QImage image(100, 80, QImage::Format_RGB32); image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, {});
+        window.show();
+        auto *fit = window.findChild<QToolButton *>("ZoomFit");
+        QVERIFY(fit);
+        QHelpEvent help(QEvent::ToolTip, fit->rect().center(),
+                        fit->mapToGlobal(fit->rect().center()));
+        QApplication::sendEvent(fit, &help);
+        auto *hint = window.findChild<QLabel *>("CompactTooltip");
+        QVERIFY(hint && hint->isVisible());
+        QCOMPARE(hint->text(), fit->toolTip());
+        QVERIFY(window.rect().contains(hint->geometry()));
+        QVERIFY(hint->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(fit, &leave);
+        QVERIFY(!hint->isVisible());
+    }
+    void spaceTogglesVideoButNeverAfterPanningOrTyping() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("space.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=4:r=25", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(64, 48), 4000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        auto *canvas = window.findChild<Canvas *>();
+        QTRY_VERIFY(player->isSeekable());
+        QTest::keyClick(canvas, Qt::Key_Space);
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
+        QTest::keyClick(canvas, Qt::Key_Space);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTest::keyPress(canvas, Qt::Key_Space);
+        QKeyEvent repeat(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier, " ", true);
+        QApplication::sendEvent(canvas, &repeat);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(30, 30));
+        QTest::mouseMove(canvas->viewport(), QPoint(45, 40));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(45, 40));
+        QTest::keyRelease(canvas, Qt::Key_Space);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTest::keyPress(canvas, Qt::Key_Space);
+        QEvent deactivate(QEvent::WindowDeactivate);
+        QApplication::sendEvent(&window, &deactivate);
+        QTest::keyRelease(canvas, Qt::Key_Space);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QVERIFY(!canvas->spacePanActive());
+        auto *tools = window.findChild<ToolController *>();
+        tools->setTool(ToolType::Text);
+        auto *text = static_cast<TextItem *>(tools->placeText(QPointF(5, 5)));
+        text->setFocus();
+        QTest::keyClicks(canvas, "a b");
+        QCOMPARE(text->toPlainText(), QStringLiteral("a b"));
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+    }
     void usesPlatformWindowChrome() {
         QImage bg(100, 80, QImage::Format_ARGB32_Premultiplied);
         bg.fill(Qt::white);
@@ -741,9 +803,9 @@ private slots:
         w.sendToShelf();
         QVERIFY(toast->text().contains(QStringLiteral("Preparing")));
         QTRY_COMPARE_WITH_TIMEOUT(toast->text(), QStringLiteral("Video export failed"), 5000);
-        const auto exportTimers = w.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly);
-        QCOMPARE(exportTimers.size(), 1);
-        QVERIFY(!exportTimers.first()->isActive());
+        const auto *exportTimer = w.findChild<QTimer *>(QStringLiteral("VideoExportTimer"));
+        QVERIFY(exportTimer);
+        QVERIFY(!exportTimer->isActive());
     }
     void videoDocumentDefersPlayerCreationUntilShow() {
         MediaDocument doc;

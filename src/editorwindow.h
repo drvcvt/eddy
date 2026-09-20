@@ -7,6 +7,7 @@
 #include "exporter.h"
 #include <QSet>
 #include <QHash>
+#include <QPointer>
 #include <functional>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
@@ -36,6 +37,7 @@ public slots:
     void copy();   // to clipboard
     void sendToShelf();
 protected:
+    bool eventFilter(QObject *object, QEvent *event) override;
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
@@ -81,6 +83,7 @@ private:
                           bool fallbackOnFailure = false);
     void saveVideo();
     void ensureVideoPlayer();
+    void togglePlayback();
     void scheduleVideoLoad();
     void scheduleContactSheetLoad();
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
@@ -102,6 +105,11 @@ private:
     QLabel *m_timeLabel = nullptr;
     QLabel *m_trimInLabel = nullptr;
     QLabel *m_trimOutLabel = nullptr;
+    QLabel *m_tooltip = nullptr;
+    QTimer *m_tooltipTimer = nullptr;
+    QPointer<QWidget> m_tooltipOwner;
+    bool m_spaceArmed = false;
+    bool m_spaceConsumed = false;
     qint64 m_trimInMs = 0;
     qint64 m_trimOutMs = 0;
     bool m_videoLoadQueued = false;

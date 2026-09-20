@@ -79,6 +79,26 @@ private slots:
         QCOMPARE(canvas.verticalScrollBar()->value(), vy + 30);
         QVERIFY(!canvas.spacePanActive());
     }
+    void middleDragPansFittedMedia() {
+        QGraphicsScene scene(0, 0, 100, 80);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(100, 80, QImage::Format_RGB32));
+        Canvas canvas(&scene, &tools);
+        canvas.resize(400, 300);
+        canvas.show();
+        canvas.fitMedia();
+        const QPointF before = canvas.mapToScene(QPoint(200, 150));
+        QTest::mousePress(canvas.viewport(), Qt::MiddleButton, Qt::NoModifier, QPoint(200, 150));
+        QTest::mouseMove(canvas.viewport(), QPoint(240, 180));
+        QTest::mouseRelease(canvas.viewport(), Qt::MiddleButton, Qt::NoModifier, QPoint(240, 180));
+        const QPointF after = canvas.mapToScene(QPoint(200, 150));
+        QVERIFY(after.x() < before.x() - 5);
+        QVERIFY(after.y() < before.y() - 5);
+        QCOMPARE(scene.sceneRect(), QRectF(0, 0, 100, 80));
+        canvas.fitMedia();
+        QVERIFY(QLineF(canvas.mapToScene(canvas.viewport()->rect().center()),
+                       scene.sceneRect().center()).length() < 1);
+    }
     void zoomCommandsClampResetAndFit() {
         QGraphicsScene scene(0,0,1000,500);
         QUndoStack undo;
