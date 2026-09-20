@@ -1,14 +1,17 @@
 #include "videotimeline.h"
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 
 namespace eddy {
 
 VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("VideoTimeline"));
-    setMinimumHeight(42);
+    setFixedHeight(38);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setCursor(Qt::PointingHandCursor);
+    setMouseTracking(true);
+    setAccessibleName(QStringLiteral("Video timeline"));
     setToolTip(QStringLiteral("Drag the ends to trim · click to seek"));
 }
 
@@ -50,8 +53,7 @@ void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
 }
 
 QRectF VideoTimeline::trackRect() const {
-    const qreal trackHeight = m_contactSheet.isNull() ? 8 : qMax(8, height() - 8);
-    return QRectF(9, (height() - trackHeight) / 2.0, qMax(1, width() - 18), trackHeight);
+    return QRectF(6, 5, qMax(1, width() - 12), height() - 10);
 }
 
 qreal VideoTimeline::xForTime(qint64 timeMs) const {
@@ -74,27 +76,53 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     const qreal inX = xForTime(m_in);
     const qreal outX = xForTime(m_out);
 
-    painter.setPen(Qt::NoPen);
-    if (!m_contactSheet.isNull()) {
-        painter.drawImage(track, m_contactSheet);
-    }
-    QColor outside = palette().color(QPalette::PlaceholderText);
-    outside.setAlpha(m_contactSheet.isNull() ? 80 : 150);
-    painter.setBrush(outside);
-    painter.drawRoundedRect(track, 4, 4);
-    QColor selected = palette().color(QPalette::WindowText);
-    selected.setAlpha(m_contactSheet.isNull() ? 105 : 35);
-    painter.setBrush(selected);
-    painter.drawRoundedRect(QRectF(inX, track.top(), qMax<qreal>(1, outX - inX), track.height()), 4, 4);
-
+    const QColor background = palette().color(QPalette::Window);
     const QColor foreground = palette().color(QPalette::WindowText);
-    painter.setBrush(foreground);
-    painter.drawRoundedRect(QRectF(inX - 4, 3, 8, height() - 6), 4, 4);
-    painter.drawRoundedRect(QRectF(outX - 4, 3, 8, height() - 6), 4, 4);
+    auto ink = [&](qreal amount) {
+        return QColor::fromRgbF(background.redF() * (1 - amount) + foreground.redF() * amount,
+                                background.greenF() * (1 - amount) + foreground.greenF() * amount,
+                                background.blueF() * (1 - amount) + foreground.blueF() * amount);
+    };
+    painter.setPen(Qt::NoPen);
+    QPainterPath clip;
+    clip.addRoundedRect(track, 6, 6);
+    painter.save();
+    painter.setClipPath(clip);
+    painter.fillRect(track, ink(0.12));
+    if (!m_contactSheet.isNull()) {
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        // Crop each frame to its slot rather than stretching the contact sheet.
+        const qreal sourceWidth = qreal(m_contactSheet.width()) / m_contactSheetFrames;
+        const qreal slotWidth = track.width() / m_contactSheetFrames;
+        const qreal scale = qMax(slotWidth / sourceWidth, track.height() / m_contactSheet.height());
+        const QSizeF crop(slotWidth / scale, track.height() / scale);
+        for (int i = 0; i < m_contactSheetFrames; ++i) {
+            const QRectF source(i * sourceWidth + (sourceWidth - crop.width()) / 2,
+                                (m_contactSheet.height() - crop.height()) / 2, crop.width(), crop.height());
+            painter.drawImage(QRectF(track.left() + i * slotWidth, track.top(), slotWidth, track.height()),
+                              m_contactSheet, source);
+        }
+    }
+    QColor shade = background;
+    shade.setAlpha(205);
+    painter.fillRect(QRectF(track.left(), track.top(), inX - track.left(), track.height()), shade);
+    painter.fillRect(QRectF(outX, track.top(), track.right() - outX, track.height()), shade);
+    painter.restore();
+
+    auto handle = [&](qreal x, Drag kind) {
+        const bool active = m_drag == kind || m_hover == kind;
+        painter.setBrush(ink(active ? 0.36 : 0.23));
+        painter.drawRoundedRect(QRectF(x - 5, track.top() - 1, 10, track.height() + 2), 4, 4);
+        painter.setBrush(ink(active ? 0.92 : 0.65));
+        painter.drawRoundedRect(QRectF(x - 1, track.center().y() - 5, 2, 10), 1, 1);
+    };
+    handle(inX, Drag::In);
+    handle(outX, Drag::Out);
 
     const qreal playX = xForTime(m_position);
-    painter.setBrush(foreground);
-    painter.drawRoundedRect(QRectF(playX - 1, 1, 2, height() - 2), 1, 1);
+    painter.setBrush(ink(0.86));
+    painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, track.height() + 3), 1, 1);
+    painter.drawRoundedRect(QRectF(playX - 3, 1, 6, 5), 2, 2);
 }
 
 void VideoTimeline::mousePressEvent(QMouseEvent *event) {
@@ -111,7 +139,19 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
 }
 
 void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
-    if (m_drag == Drag::None) return;
+    if (m_drag == Drag::None) {
+        const qreal x = event->position().x();
+        const qreal inDistance = qAbs(x - xForTime(m_in));
+        const qreal outDistance = qAbs(x - xForTime(m_out));
+        const Drag hover = m_duration > 0 && qMin(inDistance, outDistance) <= 11
+            ? (inDistance <= outDistance ? Drag::In : Drag::Out) : Drag::None;
+        if (hover != m_hover) {
+            m_hover = hover;
+            setCursor(hover == Drag::None ? Qt::PointingHandCursor : Qt::SizeHorCursor);
+            update();
+        }
+        return;
+    }
     const qint64 time = timeForX(event->position().x());
     if (m_drag == Drag::In) {
         m_in = qBound<qint64>(0, time, m_out - qMin(m_minimumRange, m_duration));
@@ -134,7 +174,14 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     const bool trimmed = m_drag == Drag::In || m_drag == Drag::Out;
     m_drag = Drag::None;
     if (trimmed) emit trimCommitted(m_in, m_out);
+    update();
     event->accept();
+}
+
+void VideoTimeline::leaveEvent(QEvent *event) {
+    m_hover = Drag::None;
+    update();
+    QWidget::leaveEvent(event);
 }
 
 }
