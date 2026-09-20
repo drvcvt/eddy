@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Eddy
+Comment=Annotate images and videos
+Exec=eddy %f
+Icon=eddy
+Terminal=false
+NoDisplay=true
+Categories=Graphics;2DGraphics;
+MimeType=image/png;image/jpeg;image/bmp;image/gif;image/webp;image/tiff;video/mp4;video/webm;video/x-matroska;video/quicktime;video/x-msvideo;
+StartupWMClass=eddy

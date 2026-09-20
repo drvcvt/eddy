@@ -90,6 +90,10 @@ else()
 endif()
 
 install(TARGETS eddy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(UNIX AND NOT APPLE)
+    install(FILES resources/eddy.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES resources/eddy.svg DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+endif()
 if(WIN32)
     qt_generate_deploy_app_script(
         TARGET eddy
