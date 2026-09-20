@@ -72,18 +72,19 @@ QString styleSheet(bool dark) {
     return qss;
 }
 
-QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active) {
+QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active, int size) {
     auto render = [&](const QColor &c) {
         QSvgRenderer r(svgPath);
         if (!r.isValid()) {
             qWarning("tintedIcon: invalid SVG '%s'", qPrintable(svgPath));
             return QPixmap();
         }
-        const int s = 44;                       // 2x logical 22px, HiDPI-crisp
+        const int s = size * 2;                 // 2x logical, HiDPI-crisp
+        const qreal inset = size / 11.0;        // room for the round caps at the edges
         QPixmap pm(s, s);
         pm.fill(Qt::transparent);
         QPainter p(&pm);
-        r.render(&p, QRectF(2, 2, s - 4, s - 4));
+        r.render(&p, QRectF(inset, inset, s - 2 * inset, s - 2 * inset));
         p.setCompositionMode(QPainter::CompositionMode_SourceIn);
         p.fillRect(pm.rect(), c);
         p.end();

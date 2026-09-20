@@ -26,6 +26,22 @@ private slots:
         QVERIFY(!on.isNull());
         QVERIFY(off.toImage() != on.toImage());   // rest vs active colour differ
     }
+    void tintedIconRendersAtTheRequestedSize() {
+        // Rendering at a fixed size and displaying at another resamples every
+        // stroke, which is what made the 18px chrome look soft.
+        for (int size : {theme::kIconSize, 24}) {
+            const QIcon icon = theme::tintedIcon(":/icons/rect.svg",
+                                                 QColor(theme::kIconRest),
+                                                 QColor(theme::kIconActive), size);
+            // availableSizes() reports what was actually rasterised, so a
+            // stale fixed render size shows up here even though pixmap() would
+            // happily rescale it.
+            QCOMPARE(icon.availableSizes(), QList<QSize>{QSize(size * 2, size * 2)});
+            const QPixmap pm = icon.pixmap(QSize(size, size), 2.0);
+            QCOMPARE(pm.devicePixelRatio(), 2.0);
+            QCOMPARE(pm.size(), QSize(size * 2, size * 2));
+        }
+    }
     void lightPaletteUsesApprovedTokens() {
         const QPalette p = theme::palette(false);
         QCOMPARE(p.color(QPalette::Window), QColor("#FAFAFA"));
