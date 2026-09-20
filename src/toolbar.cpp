@@ -138,22 +138,18 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     lay->addSpacing(6);
 
     // Actions brighten on hover; the active tool keeps its own selection state.
-    auto *save = mkBtn(false, false); save->setObjectName("Save");
+    auto *save = mkBtn(false, true); save->setObjectName("Save");
     save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
                                     iconRest, iconHover));
     save->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    save->setText(QStringLiteral("Save"));
-    save->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     save->setToolTip("Save \xC2\xB7 Enter");
     connect(save, &QToolButton::clicked, this, [this]{ emit saveRequested(); });
     lay->addWidget(save);
 
-    auto *copy = mkBtn(false, false); copy->setObjectName("Copy");
+    auto *copy = mkBtn(false, true); copy->setObjectName("Copy");
     copy->setIcon(theme::tintedIcon(QStringLiteral(":/icons/copy.svg"),
                                     iconRest, iconHover));
     copy->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    copy->setText(QStringLiteral("Copy"));
-    copy->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);

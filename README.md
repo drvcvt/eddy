@@ -34,8 +34,9 @@ matching Vis. **Fit** and the live zoom percentage (click for 100%) sit at the
 bottom left; **Drag out** stays centered at the bottom. The footer uses MonoLisa
 with a monospace fallback. The window title includes
 the filename and dimensions.
-The labeled **Save**, **Copy** and **To shelf** actions use distinct disk,
-stack and card-plus icons; Drag out has its own grip icon. Dark and light themes are available from the toolbar.
+Save and Copy are icon-only with tooltips; the labeled **To shelf** action
+keeps its card-plus icon, and Drag out has its own grip icon. Checked controls
+fill a 22 px squircle. Dark and light themes are available from the toolbar.
 
 Video uses a full-width filmstrip above one compact transport row. Drag the muted
 end grips to trim, click the strip to seek, or use **In / Out** (`I` / `O`) to set
