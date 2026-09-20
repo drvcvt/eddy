@@ -44,6 +44,9 @@ VideoPreviewProvider::~VideoPreviewProvider() {
         m_process->disconnect(this);
         m_process->setParent(nullptr);
         connect(m_process, &QProcess::finished, m_process, &QObject::deleteLater);
+        connect(m_process, &QProcess::errorOccurred, m_process, [process = m_process](QProcess::ProcessError error) {
+            if (error == QProcess::FailedToStart) process->deleteLater();
+        });
         m_process->kill();
     }
 }

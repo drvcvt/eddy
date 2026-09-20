@@ -24,6 +24,7 @@ public:
     qint64 visibleStart() const { return m_viewStart; }
     qint64 visibleEnd() const { return m_viewEnd; }
     QVector<qint64> thumbnailTimes() const;
+    QImage thumbnailNear(qint64 time, qint64 *sampleTime) const;
     bool interacting() const { return m_drag != Drag::None; }
     bool trimming() const { return m_drag == Drag::In || m_drag == Drag::Out; }
 

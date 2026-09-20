@@ -6,6 +6,17 @@ using namespace eddy;
 class TestVideoTimeline : public QObject {
     Q_OBJECT
 private slots:
+    void offscreenHandlesCannotBeGrabbedAndZeroDurationIsSafe() {
+        VideoTimeline timeline;
+        timeline.resize(300, 52); timeline.setDuration(0); timeline.fitClip();
+        QCOMPARE(timeline.visibleStart(), 0); QCOMPARE(timeline.visibleEnd(), 0);
+        timeline.setDuration(10000); timeline.zoomAt(10000.0 / 9000, 100); timeline.show();
+        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));
+        QVERIFY(!timeline.trimming());
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(70, 22));
+        QCOMPARE(timeline.trimIn(), 0); QCOMPARE(commits.count(), 0);
+    }
     void releaseUsesFinalPointerAndCancelRestoresRange() {
         VideoTimeline timeline;
         timeline.resize(300, 38);

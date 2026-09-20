@@ -100,6 +100,7 @@ QWidget#PlaybackBar QLabel {
     font-weight: 400;
 }
 QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
+QLabel#VideoExportStatus { color: @sub; font-size: 11px; padding-right: 8px; }
 QWidget#PlaybackBar QLineEdit {
     background: transparent;
     color: @sub;

@@ -64,6 +64,9 @@
 #include <QtMath>
 #include <QSignalBlocker>
 #include <QScopeGuard>
+#include <QWidgetAction>
+#include <QGraphicsOpacityEffect>
+#include <QPainter>
 #include <limits>
 #include <utility>
 #ifdef Q_OS_WIN
@@ -85,6 +88,44 @@ SaveRoute saveRoute(const CliOptions &cli, const Config &cfg) {
 }
 
 namespace {
+
+class PlaybackBar : public QWidget {
+public:
+    using QWidget::QWidget;
+    QVBoxLayout *stack = nullptr;
+    QHBoxLayout *transport = nullptr;
+    QWidget *trim = nullptr;
+    QWidget *volume = nullptr;
+    QSize minimumSizeHint() const override { return {0, QWidget::minimumSizeHint().height()}; }
+    void adapt() {
+        if (!trim || m_adapting) return;
+        m_adapting = true;
+        int needed = trim->minimumSizeHint().width() + 24;
+        for (int i = 0; i < transport->count(); ++i) {
+            auto *item = transport->itemAt(i);
+            if (item->widget() == trim) continue;
+            needed += (item->widget() == volume ? volume->sizeHint().width() : item->minimumSize().width())
+                + transport->spacing();
+        }
+        const bool wide = width() >= needed;
+        if (wide != m_wide) {
+            m_wide = wide;
+            if (wide) { stack->removeWidget(trim); transport->insertWidget(3, trim); }
+            else { transport->removeWidget(trim); stack->addWidget(trim); }
+            volume->setVisible(wide);
+            updateGeometry();
+        }
+        m_adapting = false;
+    }
+protected:
+    bool event(QEvent *event) override {
+        const bool result = QWidget::event(event);
+        if (event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest) adapt();
+        return result;
+    }
+private:
+    bool m_wide = true, m_adapting = false;
+};
 
 #ifdef Q_OS_WIN
 void applyWindowsTitleBarTheme(QWidget *window, bool dark) {
@@ -297,6 +338,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
     if (isVideo()) {
         m_toolbar->enableVideoFrameCopy();
+        addAction(m_toolbar->findChild<QAction *>(QStringLiteral("CopyVideoFrame")));
         connect(m_toolbar, &Toolbar::copyFrameRequested, this, &EditorWindow::copyVideoFrame);
     }
     connect(m_toolbar, &Toolbar::sendToShelfRequested, this, &EditorWindow::sendToShelf);
@@ -444,6 +486,14 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     zoomControls->addWidget(zoom);
     // Align independently within the full row, not the space left after zoom.
     fl->addWidget(m_dragPill, 0, 0, Qt::AlignCenter);
+    if (isVideo()) {
+        m_exportStatus = new QLabel(viewControls);
+        m_exportStatus->setObjectName(QStringLiteral("VideoExportStatus"));
+        m_exportStatus->setFixedWidth(110);
+        m_exportStatus->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        m_exportStatus->setToolTip(tr("Background preparation for Copy, Save and Drag out"));
+        fl->addWidget(m_exportStatus, 0, 0, Qt::AlignRight);
+    }
     viewControls->setAttribute(Qt::WA_StyledBackground, true);
     lay->addWidget(viewControls, isVideo() ? 3 : 2, 0, 1, 2);
     m_canvas->setAnimationsEnabled(cfg.animations);
@@ -460,7 +510,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     const int chromeW = m_toolbar->toolRail()->sizeHint().width();
     const int chromeH = m_toolbar->sizeHint().height() + viewControls->sizeHint().height()
         + (isVideo() ? findChild<QWidget *>(QStringLiteral("PlaybackBar"))->sizeHint().height() : 0);
-    const int minW = qMax(760, lay->minimumSize().width());
+    const int minW = qMax(isVideo() ? 520 : 760, lay->minimumSize().width());
     setMinimumSize(minW, chromeH + m_toolbar->toolRail()->sizeHint().height());
     resize(qMin(qMax(native.width() + chromeW, minW), maxW), qMin(native.height() + chromeH, maxH));
 }
@@ -514,7 +564,7 @@ void EditorWindow::closeEvent(QCloseEvent *e) {
 }
 
 QWidget *EditorWindow::createPlaybackBar() {
-    auto *bar = new QWidget(this);
+    auto *bar = new PlaybackBar(this);
     bar->setObjectName("PlaybackBar");
     bar->setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QVBoxLayout(bar);
@@ -522,7 +572,10 @@ QWidget *EditorWindow::createPlaybackBar() {
     lay->setSpacing(2);
     auto *playback = new QHBoxLayout;
     playback->setSpacing(6);
-    auto *trim = new QHBoxLayout;
+    auto *trimControls = new QWidget(bar);
+    trimControls->setObjectName(QStringLiteral("TrimControls"));
+    auto *trim = new QHBoxLayout(trimControls);
+    trim->setContentsMargins(0, 0, 0, 0);
     trim->setSpacing(4);
 
     m_playButton = new QToolButton(bar);
@@ -538,6 +591,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
+    m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(
+        formatPreciseTime(m_media.video.durationMs) + QStringLiteral(" / ") + formatTime(m_media.video.durationMs)));
 
     m_muteButton = new QToolButton(bar);
     m_muteButton->setObjectName("PlaybackMute");
@@ -557,6 +612,24 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_volumeSlider->setFixedWidth(60);
     m_volumeSlider->setToolTip(QStringLiteral("Volume"));
     m_volumeSlider->setAccessibleName(QStringLiteral("Volume"));
+    auto *audioMenu = new QMenu(m_muteButton);
+    auto *audioWidget = new QWidget(audioMenu);
+    auto *audioLayout = new QHBoxLayout(audioWidget);
+    audioLayout->setContentsMargins(8, 6, 8, 6);
+    auto *popupVolume = new QSlider(Qt::Horizontal, audioWidget);
+    popupVolume->setRange(0, 100);
+    popupVolume->setValue(100);
+    popupVolume->setFixedWidth(100);
+    popupVolume->setAccessibleName(tr("Volume"));
+    audioLayout->addWidget(popupVolume);
+    auto *audioAction = new QWidgetAction(audioMenu);
+    audioAction->setDefaultWidget(audioWidget);
+    audioMenu->addAction(audioAction);
+    m_muteButton->setMenu(audioMenu);
+    m_muteButton->setPopupMode(QToolButton::DelayedPopup);
+    m_muteButton->setFocusPolicy(Qt::StrongFocus);
+    connect(popupVolume, &QSlider::valueChanged, m_volumeSlider, &QSlider::setValue);
+    connect(m_volumeSlider, &QSlider::valueChanged, popupVolume, &QSlider::setValue);
 
     playback->addWidget(m_playButton);
     playback->addWidget(m_timeLabel);
@@ -611,7 +684,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addWidget(m_trimOutLabel);
     trim->addWidget(reset);
     trim->addWidget(m_trimDurationLabel);
-    playback->addLayout(trim);
+    playback->addWidget(trimControls);
     playback->addStretch(1);
     m_loopButton = new QToolButton(bar);
     m_loopButton->setObjectName(QStringLiteral("PlaybackLoop"));
@@ -666,6 +739,13 @@ QWidget *EditorWindow::createPlaybackBar() {
     previewLayout->addWidget(m_previewImage);
     previewLayout->addWidget(m_previewTime);
     m_videoPreview->hide();
+    auto *previewOpacity = new QGraphicsOpacityEffect(m_videoPreview);
+    previewOpacity->setOpacity(1);
+    m_videoPreview->setGraphicsEffect(previewOpacity);
+    m_previewFade = new QPropertyAnimation(previewOpacity, "opacity", m_videoPreview);
+    m_previewFade->setDuration(100);
+    m_previewFade->setStartValue(0.0);
+    m_previewFade->setEndValue(1.0);
     m_previewTimer = new QTimer(this);
     m_previewTimer->setSingleShot(true);
     m_previewTimer->setInterval(150);
@@ -679,7 +759,17 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_stripTimer->start();
     });
     connect(m_timeline, &VideoTimeline::hoverRequested, this, [this](qint64 time, QPoint point) {
-        if (time != m_hoverTime) m_previewImage->clear();
+        if (time != m_hoverTime) {
+            qint64 sampled = -1;
+            const QImage nearby = m_timeline->thumbnailNear(time, &sampled);
+            if (!nearby.isNull()) {
+                setVideoPreviewImage(nearby);
+                m_previewSampleTime = sampled;
+            } else {
+                m_previewImage->setText(QStringLiteral("…"));
+                m_previewSampleTime = -1;
+            }
+        }
         m_hoverTime = time;
         m_hoverPoint = point;
         if (m_videoPreview->isVisible() || m_timeline->trimming()) showVideoPreview();
@@ -691,11 +781,12 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_previewProvider, &VideoPreviewProvider::hoverReady, this,
             [this](qint64 time, const QImage &image) {
         if (time != m_hoverTime || !m_videoPreview->isVisible()) return;
-        QPixmap pixmap = QPixmap::fromImage(image);
-        pixmap = pixmap.scaled(m_previewImage->size() * devicePixelRatioF(),
-                               Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        pixmap.setDevicePixelRatio(devicePixelRatioF());
-        m_previewImage->setPixmap(pixmap);
+        setVideoPreviewImage(image);
+        m_previewSampleTime = time;
+        m_previewTime->setText(formatPreciseTime(time));
+    });
+    connect(m_previewProvider, &VideoPreviewProvider::hoverFailed, this, [this](qint64 time) {
+        if (time == m_hoverTime && m_previewSampleTime < 0) m_previewImage->setText(tr("Preview unavailable"));
     });
 
     connect(m_playButton, &QToolButton::clicked, this, &EditorWindow::togglePlayback);
@@ -733,6 +824,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_resumeAfterSeek = false;
         m_seekSettling = false;
         m_loopSeeking = false;
+        m_seekTarget = -1;
         if (m_copyFramePending) {
             m_copyFramePending = false;
             if (m_toast) m_toast->showMessage(tr("Frame unavailable; try again after seeking"));
@@ -749,7 +841,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_timeline, &VideoTimeline::seekRequested, this, &EditorWindow::requestVideoSeek);
     connect(m_timeline, &VideoTimeline::interactionFinished, this, [this](bool cancelled) {
         m_timelineActive = false;
-        if (cancelled) m_resumeAfterSeek = false;
+        if (cancelled) m_resumeAfterSeek = m_copyFramePending = false;
         flushVideoSeek();
         if (hasVideoEdits() && m_cachedVideoRevision != m_videoRevision) scheduleVideoExportCache();
     });
@@ -769,6 +861,8 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_timeline->setTrimRange(0, m_timeline->duration());
         applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
     });
+    bar->stack = lay; bar->transport = playback; bar->trim = trimControls; bar->volume = m_volumeSlider;
+    bar->adapt();
     return bar;
 }
 
@@ -787,6 +881,8 @@ void EditorWindow::scheduleVideoLoad() {
 void EditorWindow::togglePlayback() {
     ensureVideoPlayer();
     if (!m_player) return;
+    if (m_timelineActive) return;
+    if (m_seekSettling) { m_resumeAfterSeek = !m_resumeAfterSeek; return; }
     if (m_player->playbackState() == QMediaPlayer::PlayingState) {
         m_player->pause();
     } else {
@@ -845,6 +941,10 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
         return true;
     }
     if (event->type() == QEvent::MouseButtonPress) m_spaceConsumed = true;
+    if (event->type() == QEvent::FocusOut) {
+        m_spaceArmed = false;
+        m_canvas->cancelPan();
+    }
     if (event->type() == QEvent::WindowDeactivate && widget == this) {
         m_spaceArmed = false;
         m_canvas->cancelPan();
@@ -866,6 +966,7 @@ void EditorWindow::scheduleContactSheetLoad() {
 void EditorWindow::hideVideoPreview() {
     if (!m_videoPreview) return;
     m_hoverTime = -1;
+    m_previewSampleTime = -1;
     m_previewTimer->stop();
     m_videoPreview->hide();
     m_previewProvider->cancelHover();
@@ -873,7 +974,10 @@ void EditorWindow::hideVideoPreview() {
 
 void EditorWindow::showVideoPreview() {
     if (m_hoverTime < 0 || !isVisible()) return;
-    m_previewTime->setText(formatPreciseTime(m_hoverTime));
+    const bool appearing = m_videoPreview->isHidden();
+    m_previewTime->setText(formatPreciseTime(m_hoverTime)
+        + (m_previewSampleTime >= 0 && m_previewSampleTime != m_hoverTime
+            ? QStringLiteral(" · ~%1").arg(formatPreciseTime(m_previewSampleTime)) : QString()));
     m_videoPreview->adjustSize();
     QPoint pos = m_timeline->mapTo(this, m_hoverPoint);
     pos.setX(qBound(4, pos.x() - m_videoPreview->width() / 2,
@@ -882,7 +986,15 @@ void EditorWindow::showVideoPreview() {
     m_videoPreview->move(pos);
     m_videoPreview->show();
     m_videoPreview->raise();
+    if (appearing && m_cfg.animations) m_previewFade->start();
     m_previewProvider->requestHover(m_hoverTime, QSize(256, 144) * devicePixelRatioF());
+}
+
+void EditorWindow::setVideoPreviewImage(const QImage &image) {
+    QPixmap pixmap = QPixmap::fromImage(image).scaled(m_previewImage->size() * devicePixelRatioF(),
+        Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    pixmap.setDevicePixelRatio(devicePixelRatioF());
+    m_previewImage->setPixmap(pixmap);
 }
 
 void EditorWindow::ensureVideoPlayer() {
@@ -902,13 +1014,33 @@ void EditorWindow::ensureVideoPlayer() {
                 [this](const QVideoFrame &frame) {
             QImage image = frame.toImage();
             if (image.isNull()) return;
-            if (image.size() != m_media.nativeSize())
-                image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio,
-                                     Qt::SmoothTransformation);
+            // toImage already applies the surface transformation. Add the
+            // frame's presentation transform, then match the video's fitted rect.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+            const int rotation = int(frame.rotation());
+#else
+            const int rotation = int(frame.rotationAngle());
+#endif
+            if (rotation) image = image.transformed(QTransform().rotate(rotation));
+            if (frame.mirrored()) image = image.transformed(QTransform().scale(-1, 1));
+            if (image.size() != m_media.nativeSize()) {
+                QImage presented(m_media.nativeSize(), QImage::Format_ARGB32_Premultiplied);
+                presented.fill(Qt::black);
+                const QSize fitted = image.size().scaled(presented.size(), Qt::KeepAspectRatio);
+                QPainter painter(&presented);
+                painter.setRenderHint(QPainter::SmoothPixmapTransform);
+                painter.drawImage(QRect(QPoint((presented.width() - fitted.width()) / 2,
+                                              (presented.height() - fitted.height()) / 2), fitted), image);
+                painter.end();
+                image = presented;
+            }
             m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
             m_hasVideoFrame = true;
             m_presentedStart = frame.startTime() < 0 ? -1 : frame.startTime() / 1000;
             m_presentedEnd = frame.endTime() < 0 ? -1 : frame.endTime() / 1000;
+            if (!m_timelineActive && !m_seekSettling && m_presentedStart >= 0
+                && m_player->playbackState() == QMediaPlayer::PlayingState)
+                m_timeline->setPosition(m_presentedStart);
             m_tools->setBackground(m_bg);
             m_ocr->setBackground(m_bg);
             for (QGraphicsItem *item : m_scene->items())
@@ -959,7 +1091,8 @@ void EditorWindow::ensureVideoPlayer() {
     });
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos){
         if (m_timelineActive || m_seekSettling) return;
-        if (m_timeline) m_timeline->setPosition(pos);
+        if (m_timeline && (m_presentedStart < 0 || m_player->playbackState() != QMediaPlayer::PlayingState))
+            m_timeline->setPosition(pos);
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(pos) + QStringLiteral(" / ") + formatTime(m_player->duration()));
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
@@ -976,6 +1109,7 @@ void EditorWindow::ensureVideoPlayer() {
         m_seekTimer->stop();
         m_seekSettleTimer->stop();
         m_seekSettling = m_loopSeeking = m_resumeAfterSeek = false;
+        m_seekTarget = -1;
         if (m_copyFramePending) {
             m_copyFramePending = false;
             if (m_toast) m_toast->showMessage(tr("Frame unavailable"));
@@ -1196,8 +1330,15 @@ void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
     m_trimInMs = m_timeline->trimIn();
     m_trimOutMs = m_timeline->trimOut();
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
-    if (m_player && (m_player->position() < m_trimInMs || m_player->position() > m_trimOutMs))
-        m_player->setPosition(m_trimInMs);
+    if (m_player && !m_timelineActive) {
+        m_player->pause();
+        m_resumeAfterSeek = false;
+        if (m_player->position() < m_trimInMs || m_player->position() >= m_trimOutMs) {
+            requestVideoSeek(m_trimInMs);
+            m_timeline->setPosition(m_trimInMs);
+            flushVideoSeek();
+        }
+    }
 }
 
 void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
@@ -1229,6 +1370,7 @@ void EditorWindow::requestVideoSeek(qint64 position) {
     ensureVideoPlayer();
     m_seekTarget = qBound<qint64>(0, position, qMax<qint64>(0, m_media.video.durationMs - 1));
     m_seekSettling = true;
+    m_seekSettleTimer->start();
     if (m_timeLabel) m_timeLabel->setText(formatPreciseTime(m_seekTarget)
         + QStringLiteral(" / ") + formatTime(m_media.video.durationMs));
     if (!m_seekTimer->isActive()) m_seekTimer->start();
@@ -1239,12 +1381,14 @@ void EditorWindow::flushVideoSeek() {
     if (!m_player || m_seekTarget < 0 || !m_player->isSeekable()) return;
     m_seekSettling = true;
     m_seekSettleTimer->start();
-    if (m_player->position() == m_seekTarget && m_presentedStart >= 0
+    if (qAbs(m_player->position() - m_seekTarget) <= 1 && m_presentedStart >= 0
         && m_seekTarget >= m_presentedStart && m_seekTarget < m_presentedEnd) {
         finishVideoSeek();
         return;
     }
-    m_player->setPosition(m_seekTarget);
+    // Some backends return the frame ending exactly at the requested time.
+    // Seek just inside the requested millisecond so a boundary selects its frame.
+    m_player->setPosition(qMin(m_seekTarget + 1, m_media.video.durationMs - 1));
 }
 
 void EditorWindow::finishVideoSeek() {
@@ -1278,6 +1422,7 @@ void EditorWindow::onVideoContentChanged() {
     if (!isVideo()) return;
     ++m_videoRevision;
     const bool edited = hasVideoEdits();
+    if (m_exportStatus) m_exportStatus->setText(edited ? tr("Preparing…") : QString());
     if (m_dragPill) m_dragPill->setEnabled(!edited);
     if (edited) {
         scheduleVideoExportCache();
@@ -1307,7 +1452,7 @@ QString EditorWindow::createVideoTempPath() const {
 }
 
 void EditorWindow::startVideoExportCache() {
-    if (!isVideo() || !hasVideoEdits()) return;
+    if (!isVideo() || !hasVideoEdits() || m_timelineActive) return;
     if (m_videoExportInProgress) {
         m_videoExportPending = true;
         return;
@@ -1315,6 +1460,7 @@ void EditorWindow::startVideoExportCache() {
 
     const QString path = createVideoTempPath();
     if (path.isEmpty()) {
+        if (m_exportStatus) m_exportStatus->setText(tr("Export failed"));
         if (m_videoStatusRequested) failPendingVideoActions();
         return;
     }
@@ -1328,6 +1474,7 @@ void EditorWindow::startVideoExportCache() {
         if (auto *redact = dynamic_cast<RedactItem *>(item))
             request.blurRects += redact->blurRectsInScene();
     m_videoExportInProgress = true;
+    if (m_exportStatus) m_exportStatus->setText(tr("Preparing…"));
 
     QPointer<EditorWindow> receiver(this);
     auto *thread = QThread::create([receiver, revision, path, request] {
@@ -1355,10 +1502,13 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         m_cachedVideoPath = path;
         m_cachedVideoRevision = revision;
         if (m_dragPill) m_dragPill->setEnabled(true);
+        if (m_exportStatus) m_exportStatus->setText(tr("Ready"));
     } else {
         QFile::remove(path);
-        if (!result.ok && revision == m_videoRevision)
+        if (!result.ok && revision == m_videoRevision) {
+            if (m_exportStatus) m_exportStatus->setText(tr("Export failed"));
             std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
+        }
     }
 
     if (revision == m_videoRevision && m_videoStatusRequested) {
