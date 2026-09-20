@@ -21,6 +21,7 @@
 #include <QVideoSink>
 #include <QVideoFrame>
 #include <QToolButton>
+#include <QHelpEvent>
 #include <memory>
 
 int main(int argc, char **argv) {
@@ -118,6 +119,12 @@ int main(int argc, char **argv) {
         window->findChild<QGraphicsScene *>()->addItem(text);
         text->setSelected(true);
         app.processEvents();
+    }
+    if (mode == QStringLiteral("tooltip")) {
+        auto *fit = window->findChild<QToolButton *>(QStringLiteral("ZoomFit"));
+        QHelpEvent event(QEvent::ToolTip, fit->rect().center(),
+                         fit->mapToGlobal(fit->rect().center()));
+        QApplication::sendEvent(fit, &event);
     }
     QPixmap pm = window->grab();
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");

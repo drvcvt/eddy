@@ -53,6 +53,24 @@ void Canvas::setSpacePan(bool on) {
     updateCursor();
 }
 
+void Canvas::cancelPan() {
+    m_spacePan = m_dragging = false;
+    m_panButton = Qt::NoButton;
+    updateCursor();
+}
+
+void Canvas::updateNavigationBounds() {
+    // The document keeps its native bounds; only the camera needs room to pan
+    // when a fitted or small image has no natural scrollbar range.
+    const QPointF center = mapToScene(viewport()->rect().center());
+    const qreal scale = qMax(0.001, transform().m11());
+    const qreal dx = viewport()->width() / scale;
+    const qreal dy = viewport()->height() / scale;
+    setSceneRect(scene()->sceneRect().adjusted(-dx, -dy, dx, dy)
+                     .united(mapToScene(viewport()->rect()).boundingRect()));
+    centerOn(center);
+}
+
 void Canvas::zoomBy(double factor) {
     const double next = qBound(0.05, m_targetZoom * factor, 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
@@ -61,6 +79,7 @@ void Canvas::zoomBy(double factor) {
         const double inc = m_targetZoom / m_zoom;
         m_zoom = m_targetZoom;
         scale(inc, inc);
+        updateNavigationBounds();
         emit viewChanged();
         return;
     }
@@ -73,6 +92,7 @@ void Canvas::zoomBy(double factor) {
             const double inc = target / m_zoom;
             m_zoom = target;
             scale(inc, inc);
+            updateNavigationBounds();
             emit viewChanged();
         });
     }
@@ -86,14 +106,17 @@ void Canvas::resetZoom() {
     if (m_zoomAnim) m_zoomAnim->stop();
     resetTransform();
     m_zoom = m_targetZoom = 1.0;
+    updateNavigationBounds();
     emit viewChanged();
 }
 
 void Canvas::fitMedia() {
     if (m_zoomAnim) m_zoomAnim->stop();
     resetTransform();
-    fitInView(sceneRect(), Qt::KeepAspectRatio);
+    fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
     m_zoom = m_targetZoom = transform().m11();
+    updateNavigationBounds();
+    centerOn(scene()->sceneRect().center());
     emit viewChanged();
 }
 
@@ -274,6 +297,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
 void Canvas::resizeEvent(QResizeEvent *e) {
     if (m_eyedropper) cancelEyedropper();        // snapshot + loupe placement go stale on resize
     QGraphicsView::resizeEvent(e);
+    updateNavigationBounds();
     emit viewChanged();
 }
 

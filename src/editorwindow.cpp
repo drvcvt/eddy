@@ -56,6 +56,7 @@
 #include <QPointer>
 #include <QScreen>
 #include <QSettings>
+#include <QHelpEvent>
 #include <limits>
 #include <utility>
 #ifdef Q_OS_WIN
@@ -306,6 +307,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_toolbar->setSwatchColor(cfg.strokeColor);   // disc starts in the real stroke colour
     if (isVideo()) {
         m_videoExportTimer = new QTimer(this);
+        m_videoExportTimer->setObjectName(QStringLiteral("VideoExportTimer"));
         m_videoExportTimer->setSingleShot(true);
         connect(m_videoExportTimer, &QTimer::timeout, this, &EditorWindow::startVideoExportCache);
         connect(m_undo, &QUndoStack::indexChanged, this, [this](int){ onVideoContentChanged(); });
@@ -319,6 +321,15 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_spotlightBar = new SpotlightBar(m_canvas->viewport());
     m_spotlightBar->hide();
     m_toast = new Toast(this);
+    m_tooltip = new QLabel(this);
+    m_tooltip->setObjectName(QStringLiteral("CompactTooltip"));
+    m_tooltip->setTextFormat(Qt::PlainText);
+    m_tooltip->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_tooltip->hide();
+    m_tooltipTimer = new QTimer(this);
+    m_tooltipTimer->setSingleShot(true);
+    connect(m_tooltipTimer, &QTimer::timeout, m_tooltip, &QWidget::hide);
+    qApp->installEventFilter(this);
 
     connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshRedactBar);
     connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshTextBar);
@@ -512,7 +523,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setCursor(Qt::PointingHandCursor);
     m_playButton->setFixedSize(theme::kBarButton);
     m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_playButton->setToolTip(QStringLiteral("Play / Pause"));
+    m_playButton->setToolTip(QStringLiteral("Play / Pause · Space / K"));
     m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
@@ -584,17 +595,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     lay->addWidget(m_timeline);
     lay->addLayout(playback);
 
-    connect(m_playButton, &QToolButton::clicked, this, [this]{
-        ensureVideoPlayer();
-        if (!m_player) return;
-        if (m_player->playbackState() == QMediaPlayer::PlayingState) {
-            m_player->pause();
-        } else {
-            if (m_player->position() < m_trimInMs || m_player->position() >= m_trimOutMs)
-                m_player->setPosition(m_trimInMs);
-            m_player->play();
-        }
-    });
+    connect(m_playButton, &QToolButton::clicked, this, &EditorWindow::togglePlayback);
     connect(m_muteButton, &QToolButton::clicked, this, [this]{
         ensureVideoPlayer();
         if (!m_audioOutput) return;
@@ -652,6 +653,50 @@ void EditorWindow::scheduleVideoLoad() {
         m_videoLoadQueued = false;
         ensureVideoPlayer();
     });
+}
+
+void EditorWindow::togglePlayback() {
+    ensureVideoPlayer();
+    if (!m_player) return;
+    if (m_player->playbackState() == QMediaPlayer::PlayingState) {
+        m_player->pause();
+    } else {
+        if (m_player->position() < m_trimInMs || m_player->position() >= m_trimOutMs)
+            m_player->setPosition(m_trimInMs);
+        m_player->play();
+    }
+}
+
+bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
+    auto *widget = qobject_cast<QWidget *>(object);
+    if (!widget || (widget != this && !isAncestorOf(widget)))
+        return QWidget::eventFilter(object, event);
+    if (event->type() == QEvent::ToolTip && !widget->toolTip().isEmpty()) {
+        const auto *help = static_cast<QHelpEvent *>(event);
+        m_tooltip->setText(widget->toolTip());
+        m_tooltip->adjustSize();
+        QPoint pos = widget->mapTo(this, help->pos()) + QPoint(10, 18);
+        if (pos.y() + m_tooltip->height() > height() - 4)
+            pos.setY(widget->mapTo(this, help->pos()).y() - m_tooltip->height() - 8);
+        pos.setX(qBound(4, pos.x(), qMax(4, width() - m_tooltip->width() - 4)));
+        pos.setY(qBound(4, pos.y(), qMax(4, height() - m_tooltip->height() - 4)));
+        m_tooltip->move(pos);
+        m_tooltipOwner = widget;
+        m_tooltip->show();
+        m_tooltip->raise();
+        m_tooltipTimer->start(5000);
+        return true;
+    }
+    if (event->type() == QEvent::MouseButtonPress) m_spaceConsumed = true;
+    if (event->type() == QEvent::WindowDeactivate && widget == this) {
+        m_spaceArmed = false;
+        m_canvas->cancelPan();
+    }
+    if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::KeyPress
+        || event->type() == QEvent::WindowDeactivate
+        || (event->type() == QEvent::Leave && widget == m_tooltipOwner))
+        m_tooltip->hide();
+    return QWidget::eventFilter(object, event);
 }
 
 void EditorWindow::scheduleContactSheetLoad() {
@@ -1511,7 +1556,11 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             QWidget::keyPressEvent(e);
             break;
         case Qt::Key_Space:
-            m_canvas->setSpacePan(true);
+            if (!e->isAutoRepeat() && e->modifiers() == Qt::NoModifier) {
+                m_spaceArmed = true;
+                m_spaceConsumed = false;
+                m_canvas->setSpacePan(true);
+            }
             e->accept();
             return;
         case Qt::Key_Left:
@@ -1567,6 +1616,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             break;
         }
         case Qt::Key_Escape:
+            m_spaceArmed = false;
             if (m_tools->cancelActive()) break;
             if (m_canvas->spacePanActive()) { m_canvas->setSpacePan(false); break; }
             close();
@@ -1577,7 +1627,11 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
 
 void EditorWindow::keyReleaseEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Space) {
+        if (e->isAutoRepeat()) { e->accept(); return; }
         m_canvas->setSpacePan(false);
+        const bool play = isVideo() && m_spaceArmed && !m_spaceConsumed;
+        m_spaceArmed = false;
+        if (play) togglePlayback();
         e->accept();
         return;
     }
