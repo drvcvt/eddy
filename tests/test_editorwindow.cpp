@@ -336,13 +336,13 @@ private slots:
     }
     void textContextControlsAreSelfExplanatory() {
         TextBar bar;
-        // The size chooser spells out S/M/L; every other control is an icon.
+        // Discrete values are spelled out (S/M/L, B); the rest are grid icons.
         const QStringList letters = {
-            QStringLiteral("TextSize14"), QStringLiteral("TextSize20"), QStringLiteral("TextSize28")};
+            QStringLiteral("TextSize14"), QStringLiteral("TextSize20"),
+            QStringLiteral("TextSize28"), QStringLiteral("TextBold")};
         const QStringList icons = {
-            QStringLiteral("TextBold"), QStringLiteral("TextAlignLeft"),
-            QStringLiteral("TextAlignCenter"), QStringLiteral("TextAlignRight"),
-            QStringLiteral("TextFill")};
+            QStringLiteral("TextAlignLeft"), QStringLiteral("TextAlignCenter"),
+            QStringLiteral("TextAlignRight"), QStringLiteral("TextFill")};
         for (const QString &name : letters + icons) {
             auto *button = bar.findChild<QToolButton *>(name);
             QVERIFY2(button, qPrintable(name));

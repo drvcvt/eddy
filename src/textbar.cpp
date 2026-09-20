@@ -35,11 +35,10 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         sizes->addButton(m_sizes[i]); layout->addWidget(m_sizes[i]);
         connect(m_sizes[i], &QToolButton::clicked, this, [this, size=points[i]]{ emit sizeChosen(size); });
     }
-    m_bold = textButton(this, QString());
+    m_bold = textButton(this, QStringLiteral("B"));
     m_bold->setObjectName(QStringLiteral("TextBold"));
     m_bold->setToolTip(QStringLiteral("Bold text"));
     m_bold->setAccessibleName(m_bold->toolTip());
-    m_bold->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
     connect(m_bold, &QToolButton::toggled, this, &TextBar::boldChosen);
     layout->addWidget(m_bold);
 
@@ -73,8 +72,6 @@ void TextBar::refreshTheme() {
     // the only cue that a style is on.
     const QColor rest = palette.color(QPalette::PlaceholderText);
     const QColor active = palette.color(QPalette::WindowText);
-    m_bold->setIcon(theme::tintedIcon(QStringLiteral(":/icons/text-bold.svg"), rest, active,
-                                      theme::kFloatIcon));
     const char *icons[] = {"left", "center", "right"};
     for (int i = 0; i < 3; ++i)
         m_align[i]->setIcon(theme::tintedIcon(
