@@ -219,10 +219,14 @@ private slots:
         QVERIFY2(::listen(server, 1) == 0, std::strerror(errno));
 
         const QByteArray rejection = responseFrame(false, QStringLiteral("temporary shelf is full"));
-        std::thread responder([server, rejection] {
+        const auto requestSize = buildBoltsnapVideoAddFrame(videoPath, QStringLiteral("eddy-test"), true).size();
+        std::thread responder([server, rejection, requestSize] {
             const int client = ::accept(server, nullptr, nullptr);
             if (client >= 0) {
-                ::send(client, rejection.constData(), size_t(rejection.size()), MSG_NOSIGNAL);
+                // A real daemon consumes the request before replying and closing.
+                QByteArray request(requestSize, Qt::Uninitialized);
+                if (::recv(client, request.data(), size_t(request.size()), MSG_WAITALL) == request.size())
+                    ::send(client, rejection.constData(), size_t(rejection.size()), MSG_NOSIGNAL);
                 ::close(client);
             }
         });
@@ -258,10 +262,13 @@ private slots:
         QVERIFY2(::listen(server, 1) == 0, std::strerror(errno));
 
         const QByteArray response = responseFrame(true, {}, ownedPath);
-        std::thread responder([server, response] {
+        const auto requestSize = buildBoltsnapVideoAddFrame(videoPath, QStringLiteral("eddy-test"), true).size();
+        std::thread responder([server, response, requestSize] {
             const int client = ::accept(server, nullptr, nullptr);
             if (client >= 0) {
-                ::send(client, response.constData(), size_t(response.size()), MSG_NOSIGNAL);
+                QByteArray request(requestSize, Qt::Uninitialized);
+                if (::recv(client, request.data(), size_t(request.size()), MSG_WAITALL) == request.size())
+                    ::send(client, response.constData(), size_t(response.size()), MSG_NOSIGNAL);
                 ::close(client);
             }
         });

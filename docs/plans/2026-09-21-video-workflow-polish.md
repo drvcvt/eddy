@@ -474,6 +474,10 @@ Verification performed:
   These are decode/render checks, not a measured latency or dropped-frame claim.
 - Existing delivery/export tests cover final trim output, retained annotations,
   audio, independent saves, clipboard lifetime and asynchronous shelf handoff.
+- CI also exposed a pre-existing race in two shelf-response fixtures: the fake
+  server closed before consuming the client's request. The fixtures now receive
+  the complete request before responding, matching the daemon protocol. No shelf
+  implementation behavior was changed.
 
 Validation limits: no human Windows/Wayland interaction session, subjective audio
 pitch check, real screen-recording corpus, or exhaustive fake-process timeout/
