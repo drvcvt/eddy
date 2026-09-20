@@ -6,6 +6,7 @@
 #include "boltsnapipc.h"
 #include "videoexporter.h"
 #include "videotimeline.h"
+#include "videopreviewprovider.h"
 #include "selectionhandles.h"
 #include "undocommands.h"
 #include "items/textitem.h"
@@ -608,6 +609,54 @@ QWidget *EditorWindow::createPlaybackBar() {
     lay->addWidget(m_timeline);
     lay->addLayout(playback);
 
+    m_previewProvider = new VideoPreviewProvider(m_media.path, this);
+    m_videoPreview = new QWidget(this);
+    m_videoPreview->setObjectName(QStringLiteral("VideoPreview"));
+    m_videoPreview->setAttribute(Qt::WA_StyledBackground);
+    m_videoPreview->setAttribute(Qt::WA_TransparentForMouseEvents);
+    auto *previewLayout = new QVBoxLayout(m_videoPreview);
+    previewLayout->setContentsMargins(4, 4, 4, 3);
+    previewLayout->setSpacing(2);
+    m_previewImage = new QLabel(m_videoPreview);
+    m_previewImage->setFixedSize(192, 108);
+    m_previewImage->setAlignment(Qt::AlignCenter);
+    m_previewTime = new QLabel(m_videoPreview);
+    m_previewTime->setAlignment(Qt::AlignCenter);
+    previewLayout->addWidget(m_previewImage);
+    previewLayout->addWidget(m_previewTime);
+    m_videoPreview->hide();
+    m_previewTimer = new QTimer(this);
+    m_previewTimer->setSingleShot(true);
+    m_previewTimer->setInterval(150);
+    connect(m_previewTimer, &QTimer::timeout, this, &EditorWindow::showVideoPreview);
+    m_stripTimer = new QTimer(this);
+    m_stripTimer->setSingleShot(true);
+    m_stripTimer->setInterval(100);
+    connect(m_stripTimer, &QTimer::timeout, this, &EditorWindow::scheduleContactSheetLoad);
+    connect(m_timeline, &VideoTimeline::viewRangeChanged, this, [this] {
+        hideVideoPreview();
+        m_stripTimer->start();
+    });
+    connect(m_timeline, &VideoTimeline::hoverRequested, this, [this](qint64 time, QPoint point) {
+        if (time != m_hoverTime) m_previewImage->clear();
+        m_hoverTime = time;
+        m_hoverPoint = point;
+        if (m_videoPreview->isVisible() || m_timeline->trimming()) showVideoPreview();
+        else if (!m_previewTimer->isActive()) m_previewTimer->start();
+    });
+    connect(m_timeline, &VideoTimeline::hoverLeft, this, &EditorWindow::hideVideoPreview);
+    connect(m_previewProvider, &VideoPreviewProvider::thumbnailReady,
+            m_timeline, &VideoTimeline::setThumbnail);
+    connect(m_previewProvider, &VideoPreviewProvider::hoverReady, this,
+            [this](qint64 time, const QImage &image) {
+        if (time != m_hoverTime || !m_videoPreview->isVisible()) return;
+        QPixmap pixmap = QPixmap::fromImage(image);
+        pixmap = pixmap.scaled(m_previewImage->size() * devicePixelRatioF(),
+                               Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        pixmap.setDevicePixelRatio(devicePixelRatioF());
+        m_previewImage->setPixmap(pixmap);
+    });
+
     connect(m_playButton, &QToolButton::clicked, this, &EditorWindow::togglePlayback);
     connect(m_muteButton, &QToolButton::clicked, this, [this]{
         ensureVideoPlayer();
@@ -720,6 +769,7 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
         }
     }
     if (event->type() == QEvent::ToolTip && !widget->toolTip().isEmpty()) {
+        if (widget == m_timeline) return true; // The timeline has its own image/time hint.
         const auto *help = static_cast<QHelpEvent *>(event);
         m_tooltip->setText(widget->toolTip());
         m_tooltip->adjustSize();
@@ -740,6 +790,7 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
         m_spaceArmed = false;
         m_canvas->cancelPan();
         if (m_timeline) m_timeline->cancelInteraction();
+        hideVideoPreview();
     }
     if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::KeyPress
         || event->type() == QEvent::WindowDeactivate
@@ -749,22 +800,30 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
 }
 
 void EditorWindow::scheduleContactSheetLoad() {
-    if (!isVideo() || m_contactSheetQueued || !m_timeline || m_timeline->hasContactSheet()) return;
-    m_contactSheetQueued = true;
-    const QString path = m_media.path;
-    const qint64 duration = m_media.video.durationMs;
-    QPointer<EditorWindow> receiver(this);
-    auto *thread = QThread::create([receiver, path, duration] {
-        const ContactSheetResult result = generateVideoContactSheet(path, duration);
-        QMetaObject::invokeMethod(qApp, [receiver, result] {
-            if (!receiver) return;
-            receiver->m_contactSheetQueued = false;
-            if (result.ok && receiver->m_timeline)
-                receiver->m_timeline->setContactSheet(result.image, 8);
-        }, Qt::QueuedConnection);
-    });
-    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
-    thread->start();
+    if (!m_previewProvider || !isVisible()) return;
+    m_previewProvider->requestStrip(m_timeline->thumbnailTimes(), QSize(128, 72) * devicePixelRatioF());
+}
+
+void EditorWindow::hideVideoPreview() {
+    if (!m_videoPreview) return;
+    m_hoverTime = -1;
+    m_previewTimer->stop();
+    m_videoPreview->hide();
+    m_previewProvider->cancelHover();
+}
+
+void EditorWindow::showVideoPreview() {
+    if (m_hoverTime < 0 || !isVisible()) return;
+    m_previewTime->setText(formatPreciseTime(m_hoverTime));
+    m_videoPreview->adjustSize();
+    QPoint pos = m_timeline->mapTo(this, m_hoverPoint);
+    pos.setX(qBound(4, pos.x() - m_videoPreview->width() / 2,
+                    qMax(4, width() - m_videoPreview->width() - 4)));
+    pos.setY(qMax(4, m_timeline->mapTo(this, QPoint()).y() - m_videoPreview->height() - 5));
+    m_videoPreview->move(pos);
+    m_videoPreview->show();
+    m_videoPreview->raise();
+    m_previewProvider->requestHover(m_hoverTime, QSize(256, 144) * devicePixelRatioF());
 }
 
 void EditorWindow::ensureVideoPlayer() {

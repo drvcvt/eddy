@@ -20,6 +20,7 @@ class TextBar; class TextItem;
 class SpotlightBar; class SpotlightItem;
 class DragPill;
 class VideoTimeline;
+class VideoPreviewProvider;
 enum class RedactMode;
 
 enum class SaveRoute { ExplicitOutput, BoltsnapCard, ConfigDirectory, Shelf };
@@ -90,6 +91,8 @@ private:
     void togglePlayback();
     void scheduleVideoLoad();
     void scheduleContactSheetLoad();
+    void hideVideoPreview();
+    void showVideoPreview();
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();
     void doRedo();
@@ -105,6 +108,14 @@ private:
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
     VideoTimeline *m_timeline = nullptr;
+    VideoPreviewProvider *m_previewProvider = nullptr;
+    QWidget *m_videoPreview = nullptr;
+    QLabel *m_previewImage = nullptr;
+    QLabel *m_previewTime = nullptr;
+    QTimer *m_previewTimer = nullptr;
+    QTimer *m_stripTimer = nullptr;
+    qint64 m_hoverTime = -1;
+    QPoint m_hoverPoint;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
     QLineEdit *m_trimInLabel = nullptr;
@@ -125,7 +136,6 @@ private:
     qint64 m_trimInMs = 0;
     qint64 m_trimOutMs = 0;
     bool m_videoLoadQueued = false;
-    bool m_contactSheetQueued = false;
     QTimer *m_videoExportTimer = nullptr;
     QString m_cachedVideoPath;
     QSet<QString> m_clipboardVideoPaths;
