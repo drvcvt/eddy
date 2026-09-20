@@ -3,7 +3,25 @@
 
 namespace eddy {
 
-QString versionString() { return QStringLiteral("eddy 0.1.0"); }
+QString versionString() { return QStringLiteral("eddy " EDDY_VERSION); }
+
+QString helpText() {
+    return QStringLiteral(
+        "usage: eddy [options] <image|video|->\n"
+        "\n"
+        "  -f, --file <path|->    input media ('-' reads an image from stdin)\n"
+        "  -o, --output <path|->  write the saved image to a file or stdout\n"
+        "      --save-dir <dir>   save into this directory with a timestamped name\n"
+        "      --copy/--no-copy   force or suppress copying the result to the clipboard\n"
+        "      --tool <name>      start with this tool selected\n"
+        "      --config <path>    use this config file\n"
+        "      --early-exit       exit after the first save\n"
+        "      --no-anim          disable window and tool animations\n"
+        "      --gpu              use the OpenGL canvas viewport\n"
+        "      --boltsnap-card-id <id>  replace this Boltsnap card on save\n"
+        "  -h, --help             show this help\n"
+        "  -v, --version          show the version\n");
+}
 
 ParseResult parseArgs(const QStringList &args) {
     ParseResult r;
@@ -23,9 +41,9 @@ ParseResult parseArgs(const QStringList &args) {
             return args[++i];
         };
         if (a == "-h" || a == "--help") {
-            r.exitNow = true; r.exitCode = 0; return r;
+            r.exitNow = true; r.showHelp = true; r.exitCode = 0; return r;
         } else if (a == "-v" || a == "--version") {
-            r.exitNow = true; r.exitCode = 0; return r;
+            r.exitNow = true; r.showVersion = true; r.exitCode = 0; return r;
         } else if (a == "-f" || a == "--file") {
             setInput(next(a)); if (!r.ok) return r;
         } else if (a == "-o" || a == "--output") {

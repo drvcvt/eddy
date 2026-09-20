@@ -158,14 +158,14 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setCursor(Qt::OpenHandCursor);
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(12, 6, 14, 6);
-    lay->setSpacing(8);
+    lay->setContentsMargins(6, 3, 8, 3);
+    lay->setSpacing(6);
     auto *icon = new QLabel(this);
     icon->setObjectName("DragPillIcon");
     icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"),
                                       QApplication::palette().color(QPalette::WindowText),
                                       QApplication::palette().color(QPalette::WindowText))
-                        .pixmap(QSize(16, 16)));   // ↗ box-arrow, boltsnap-style
+                        .pixmap(QSize(18, 18)));   // Rounded grip, distinct from the Arrow annotation tool.
     lay->addWidget(icon);
     auto *label = new QLabel(QStringLiteral("Drag out"), this);
     label->setObjectName("DragPillText");
@@ -181,7 +181,7 @@ void DragPill::refreshTheme() {
     if (!icon) return;
     const QColor color = QApplication::palette().color(QPalette::WindowText);
     icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"), color, color)
-                        .pixmap(QSize(16, 16)));
+                        .pixmap(QSize(18, 18)));
 }
 
 void DragPill::setImageProvider(std::function<QImage()> provider) { m_provider = std::move(provider); }

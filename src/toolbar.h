@@ -8,13 +8,13 @@ class Toolbar : public QWidget {
     Q_OBJECT
 public:
     explicit Toolbar(QWidget *parent=nullptr);
+    QWidget *toolRail() const { return m_toolRail; }
 public slots:
     void syncTool(ToolType t);            // reflect external (keyboard) tool change
     void setUndoEnabled(bool on);
     void setRedoEnabled(bool on);
     void setSwatchColor(const QColor &c); // tint the colour-swatch dot to the current stroke colour
     void setDark(bool dark);
-    void setCompact(bool compact);
 signals:
     void toolChosen(ToolType t);
     void colorChosen(const QColor &c);
@@ -27,6 +27,7 @@ signals:
     void eyedropperRequested();   // user chose the pipette in the colour popover
     void themeToggleRequested();
 private:
+    QWidget *m_toolRail = nullptr;
     QHash<int, QToolButton*> m_btns;      // keyed by int(ToolType)
     QToolButton *m_undoBtn = nullptr;
     QToolButton *m_redoBtn = nullptr;

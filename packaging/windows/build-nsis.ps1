@@ -4,7 +4,8 @@ param(
     [string]$QtDirectory = "",
     [Parameter(Mandatory = $true)]
     [string]$TesseractDirectory,
-    [string]$Version = "0.1.0",
+    [Parameter(Mandatory = $true)]
+    [string]$Version,
     [string]$OutputDirectory = "dist\nsis"
 )
 

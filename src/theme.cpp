@@ -1,5 +1,6 @@
 #include "theme.h"
 #include <QDebug>
+#include <QApplication>
 #include <QPainter>
 #include <QPixmap>
 #include <QSvgRenderer>
@@ -19,12 +20,12 @@ QPalette darkPalette() {
 
 QPalette palette(bool dark) {
     QPalette p;
-    const QColor bg(dark ? "#121212" : "#FAFAFA");
-    const QColor base(dark ? "#1A1A1A" : "#F1F1F1");
-    const QColor text(dark ? "#ECECEC" : "#1A1A1A");
-    const QColor disabled(dark ? "#5C5C5C" : "#A0A0A0");
-    const QColor highlight(dark ? "#ECECEC" : "#1A1A1A");
-    const QColor highlightedText(dark ? "#1A1A1A" : "#FAFAFA");
+    const QColor bg(dark ? "#181818" : "#FAFAFA");
+    const QColor base(dark ? "#202020" : "#F1F1F1");
+    const QColor text(dark ? "#EEEEEE" : "#1A1A1A");
+    const QColor disabled(dark ? "#5C5C5C" : "#A6A6A6");
+    const QColor highlight(dark ? "#414141" : "#1A1A1A");
+    const QColor highlightedText(dark ? "#EEEEEE" : "#FAFAFA");
     p.setColor(QPalette::Window, bg);
     p.setColor(QPalette::WindowText, text);
     p.setColor(QPalette::Base, base);
@@ -36,7 +37,8 @@ QPalette palette(bool dark) {
     p.setColor(QPalette::ToolTipText, text);
     p.setColor(QPalette::Highlight, highlight);
     p.setColor(QPalette::HighlightedText, highlightedText);
-    p.setColor(QPalette::PlaceholderText, disabled);
+    p.setColor(QPalette::PlaceholderText, QColor(dark ? "#999999" : "#6E6E6E"));
+    p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
     p.setColor(QPalette::Disabled, QPalette::Text, disabled);
     p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
     return p;
@@ -52,33 +54,38 @@ QString styleSheet(bool dark) {
     QFile file(QStringLiteral(":/eddy.qss"));
     if (!file.open(QIODevice::ReadOnly)) return {};
     QString qss = QString::fromUtf8(file.readAll());
+    // The dark bar is translucent, so its state fills are pre-blended: stacking
+    // two translucent layers smears the rounded corners into mush.
     const QList<QPair<QString, QString>> tokens = dark
         ? QList<QPair<QString, QString>>{
-            {"@chip-on-fg", "#121212"}, {"@chip-on", "#ECECEC"},
-            {"@raise3", "#2B2B2B"}, {"@raise2", "#222222"},
-            {"@raise1", "#1A1A1A"}, {"@faint", "#5C5C5C"},
-            {"@sub", "#969696"}, {"@fg", "#ECECEC"}, {"@bg", "#121212"}}
+            {"@bar-active", "#2E2E2E"}, {"@bar-hover", "#212121"},
+            {"@bar", "rgba(0, 0, 0, 153)"}, {"@chip-on-fg", "#EEEEEE"}, {"@chip-on", "#414141"},
+            {"@raise3", "#414141"}, {"@raise2", "#353535"},
+            {"@raise1", "#202020"}, {"@faint", "#5C5C5C"},
+            {"@sub", "#999999"}, {"@fg", "#EEEEEE"}, {"@bg", "#181818"}}
         : QList<QPair<QString, QString>>{
-            {"@chip-on-fg", "#FAFAFA"}, {"@chip-on", "#1A1A1A"},
-            {"@raise3", "#DEDEDE"}, {"@raise2", "#E8E8E8"},
-            {"@raise1", "#F1F1F1"}, {"@faint", "#A0A0A0"},
-            {"@sub", "#666666"}, {"@fg", "#1A1A1A"}, {"@bg", "#FAFAFA"}};
+            {"@bar-active", "rgba(0, 0, 0, 24)"}, {"@bar-hover", "rgba(0, 0, 0, 14)"},
+            {"@bar", "#F1F1F1"}, {"@chip-on-fg", "#FAFAFA"}, {"@chip-on", "#1A1A1A"},
+            {"@raise3", "#E0E0E0"}, {"@raise2", "#E9E9E9"},
+            {"@raise1", "#F1F1F1"}, {"@faint", "#A6A6A6"},
+            {"@sub", "#6E6E6E"}, {"@fg", "#1A1A1A"}, {"@bg", "#FAFAFA"}};
     for (const auto &[token, color] : tokens) qss.replace(token, color);
     return qss;
 }
 
-QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active) {
+QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active, int size) {
     auto render = [&](const QColor &c) {
         QSvgRenderer r(svgPath);
         if (!r.isValid()) {
             qWarning("tintedIcon: invalid SVG '%s'", qPrintable(svgPath));
             return QPixmap();
         }
-        const int s = 44;                       // 2x logical 22px, HiDPI-crisp
+        const int s = size * 2;                 // 2x logical, HiDPI-crisp
+        const qreal inset = size / 11.0;        // room for the round caps at the edges
         QPixmap pm(s, s);
         pm.fill(Qt::transparent);
         QPainter p(&pm);
-        r.render(&p, QRectF(2, 2, s - 4, s - 4));
+        r.render(&p, QRectF(inset, inset, s - 2 * inset, s - 2 * inset));
         p.setCompositionMode(QPainter::CompositionMode_SourceIn);
         p.fillRect(pm.rect(), c);
         p.end();
@@ -91,7 +98,11 @@ QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &activ
     QIcon icon;
     icon.addPixmap(restPm,   QIcon::Normal,   QIcon::Off);
     icon.addPixmap(activePm, QIcon::Normal,   QIcon::On);
-    icon.addPixmap(activePm, QIcon::Active,   QIcon::Off);
+    icon.addPixmap(render(QApplication::palette().color(QPalette::WindowText)),
+                   QIcon::Active, QIcon::Off);
+    icon.addPixmap(activePm, QIcon::Active, QIcon::On);
+    icon.addPixmap(render(QApplication::palette().color(QPalette::Disabled, QPalette::ButtonText)),
+                   QIcon::Disabled, QIcon::Off);
     icon.addPixmap(activePm, QIcon::Selected, QIcon::On);
     return icon;
 }

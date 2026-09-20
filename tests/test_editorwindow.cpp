@@ -149,6 +149,57 @@ private slots:
             QVERIFY2(button->isVisible(), name);
         }
     }
+    void bottomZoomControlsFollowTheCanvas() {
+        QImage image(1400, 900, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, {});
+        window.resize(1000, 600);
+        window.show();
+        QCoreApplication::processEvents();
+        auto *canvas = window.findChild<Canvas *>();
+        auto *fit = window.findChild<QToolButton *>("ZoomFit");
+        auto *actual = window.findChild<QToolButton *>("ZoomActual");
+        QVERIFY(canvas && fit && actual);
+        actual->click();
+        QCOMPARE(canvas->zoom(), 1.0);
+        QCOMPARE(actual->text(), QStringLiteral("100%"));
+        fit->click();
+        QVERIFY(canvas->zoom() < 1.0);
+        QCOMPARE(actual->text(), QStringLiteral("%1%").arg(qRound(canvas->zoom() * 100)));
+        QVERIFY(window.windowTitle().contains(QStringLiteral("1400 × 900")));
+    }
+    void compactChromeKeepsControlsOutsideTheCanvas() {
+        QImage image(1280, 720, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, {});
+        window.show();
+        QCoreApplication::processEvents();
+        auto *canvas = window.findChild<Canvas *>();
+        QVERIFY(canvas);
+        const QRect canvasRect(canvas->mapTo(&window, QPoint()), canvas->size());
+        QVERIFY(window.width() - canvasRect.width() <= 60);
+        QVERIFY(window.height() - canvasRect.height() <= 64);
+        auto *drag = window.findChild<DragPill *>();
+        QVERIFY(drag);
+        const QRect dragRect(drag->mapTo(&window, QPoint()), drag->size());
+        QVERIFY(dragRect.top() > canvasRect.bottom());
+        QVERIFY(window.rect().contains(dragRect));
+        QVERIFY2(qAbs(window.rect().center().x() - dragRect.center().x()) <= 1,
+            qPrintable(QStringLiteral("window center %1, drag center %2")
+                .arg(window.rect().center().x()).arg(dragRect.center().x())));
+        QList<QRect> controlRects;
+        for (auto *button : window.findChildren<QToolButton *>()) {
+            if (!button->isVisible()) continue;
+            const QRect rect(button->mapTo(&window, QPoint()), button->size());
+            QVERIFY2(window.rect().contains(rect), qPrintable(button->objectName()));
+            QVERIFY2(!canvasRect.intersects(rect), qPrintable(button->objectName()));
+            for (const QRect &previous : controlRects)
+                QVERIFY2(!rect.intersects(previous), qPrintable(button->objectName()));
+            controlRects.append(rect);
+        }
+    }
     void imageBackgroundUsesSmoothScaling() {
         QImage image(320, 180, QImage::Format_ARGB32_Premultiplied); image.fill(Qt::white);
         Config cfg;
@@ -285,18 +336,20 @@ private slots:
     }
     void textContextControlsAreSelfExplanatory() {
         TextBar bar;
+        // Every control is a grid icon, letterforms included: no text, no
+        // second rendering path to drift out of step with the rest.
         const QStringList names = {
-            QStringLiteral("TextSize14"), QStringLiteral("TextSize20"), QStringLiteral("TextSize28"),
-            QStringLiteral("TextBold"), QStringLiteral("TextAlignLeft"),
-            QStringLiteral("TextAlignCenter"), QStringLiteral("TextAlignRight"),
-            QStringLiteral("TextFill")};
+            QStringLiteral("TextSize14"), QStringLiteral("TextSize20"),
+            QStringLiteral("TextSize28"), QStringLiteral("TextBold"),
+            QStringLiteral("TextAlignLeft"), QStringLiteral("TextAlignCenter"),
+            QStringLiteral("TextAlignRight"), QStringLiteral("TextFill")};
         for (const QString &name : names) {
             auto *button = bar.findChild<QToolButton *>(name);
             QVERIFY2(button, qPrintable(name));
             QVERIFY2(!button->toolTip().isEmpty(), qPrintable(name));
+            QCOMPARE(button->accessibleName(), button->toolTip());
             QVERIFY2(button->text().isEmpty(), qPrintable(name));
             QVERIFY2(!button->icon().isNull(), qPrintable(name));
-            QCOMPARE(button->accessibleName(), button->toolTip());
         }
     }
     void spotlightContextChangesAreUndoable() {
@@ -375,7 +428,7 @@ private slots:
         QVERIFY(button);
 
         button->click();
-        QCOMPARE(QApplication::palette().color(QPalette::Window), QColor("#121212"));
+        QCOMPARE(QApplication::palette().color(QPalette::Window), QColor("#181818"));
         QSettings settings(cli.configPath, QSettings::IniFormat);
         QCOMPARE(settings.value(QStringLiteral("eddy/theme")).toString(), QStringLiteral("dark"));
         button->click();
@@ -401,6 +454,12 @@ private slots:
         QCOMPARE(tools->editingText(), nullptr);
         QCOMPARE(undo->count(), 1);
         QVERIFY(committed->scene() == scene);
+        QVERIFY(!committed->hasFocus());
+        QVERIFY(scene->selectedItems().isEmpty());
+        QVERIFY(w.findChild<TextBar *>()->isHidden());
+        QCOMPARE(scene->focusItem(), nullptr);
+        QCOMPARE(committed->textInteractionFlags(), Qt::NoTextInteraction);
+        QCOMPARE(committed->toPlainText(), QStringLiteral("Two\nlines"));
 
         auto *cancelled = dynamic_cast<TextItem *>(tools->placeText({60,60}));
         QVERIFY(cancelled);
@@ -1050,6 +1109,48 @@ private slots:
         QVERIFY2(QFileInfo::exists(video), "handoff removed the original video");
     }
 #endif
+    void failedVideoSaveToShelfUsesOnlyTheWindowsClipboardFallback() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString video = dir.filePath(QStringLiteral("input.mp4"));
+        QFile source(video);
+        QVERIFY(source.open(QIODevice::WriteOnly));
+        QCOMPARE(source.write("video"), qint64(5));
+        source.close();
+
+        const QByteArray oldSocket = qgetenv("EDDY_BOLTSNAP_SOCKET");
+        qputenv("EDDY_BOLTSNAP_SOCKET",
+                QFile::encodeName(dir.filePath(QStringLiteral("missing-boltsnap"))));
+        QGuiApplication::clipboard()->setText(QStringLiteral("sentinel"));
+
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = video;
+        doc.video.size = QSize(64, 48);
+        doc.video.durationMs = 1000;
+        Config cfg;
+        cfg.animations = false;
+        cfg.copyOnSave = false;
+        EditorWindow window(doc, cfg, {});
+        auto *toast = window.findChild<Toast *>();
+
+        window.save();
+        QTRY_COMPARE_WITH_TIMEOUT(toast->text(),
+                                  QStringLiteral("Boltsnap shelf unavailable"), 3000);
+#ifdef Q_OS_WIN
+        QVERIFY(QGuiApplication::clipboard()->mimeData()->hasUrls());
+        QCOMPARE(QFileInfo(QGuiApplication::clipboard()->mimeData()->urls().first().toLocalFile())
+                     .canonicalFilePath(),
+                 QFileInfo(video).canonicalFilePath());
+#else
+        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("sentinel"));
+#endif
+
+        if (oldSocket.isNull())
+            qunsetenv("EDDY_BOLTSNAP_SOCKET");
+        else
+            qputenv("EDDY_BOLTSNAP_SOCKET", oldSocket);
+    }
     void videoDragWaitsForCurrentExport() {
         if (!have(QStringLiteral("ffmpeg")))
             QSKIP("ffmpeg not available");

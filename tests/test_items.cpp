@@ -30,6 +30,31 @@ static QImage renderScene(QGraphicsScene &scene, QSize size) {
 class TestItems : public QObject {
     Q_OBJECT
 private slots:
+    void diagonalArrowsHaveSoftEdgesWithoutDarkenedOverlap() {
+        for (qreal zoom : {0.75, 1.0, 1.5}) {
+            QGraphicsScene scene(0, 0, 200, 150);
+            auto *arrow = new ArrowItem({20, 100}, {170, 40});
+            arrow->setStrokeWidth(4);
+            arrow->setStrokeColor(QColor(255, 50, 40, 128));
+            scene.addItem(arrow);
+            QImage image(QSize(qRound(200 * zoom), qRound(150 * zoom)), QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::transparent);
+            QPainter painter(&image);
+            scene.render(&painter, QRectF(QPointF(), image.size()), scene.sceneRect());
+            painter.end();
+            int softPixels = 0, solidPixels = 0;
+            for (int y = 0; y < image.height(); ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    const int alpha = image.pixelColor(x, y).alpha();
+                    QVERIFY2(alpha <= 128, "Shaft/head overlap must not darken translucent arrows");
+                    if (alpha > 0 && alpha < 128) ++softPixels;
+                    if (alpha == 128) ++solidPixels;
+                }
+            }
+            QVERIFY(softPixels > 100);
+            QVERIFY(solidPixels > 100);
+        }
+    }
     void annotationClonesRetainGeometryAndStyle() {
         ArrowItem arrow({1,2}, {30,40});
         arrow.setStrokeColor(QColor("#123456"));

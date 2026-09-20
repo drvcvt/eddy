@@ -32,6 +32,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void leaveEvent(QEvent *event) override;
 
 private:
     enum class Drag { None, In, Out, Seek };
@@ -45,6 +46,7 @@ private:
     qint64 m_out = 0;
     qint64 m_minimumRange = 1;
     Drag m_drag = Drag::None;
+    Drag m_hover = Drag::None;
     QImage m_contactSheet;
     int m_contactSheetFrames = 0;
 };

@@ -6,6 +6,7 @@
 namespace eddy {
 
 QString versionString();
+QString helpText();
 
 // Where the input image comes from.
 struct InputSpec {
@@ -37,7 +38,9 @@ struct CliOptions {
 // Result of parsing. ok==false means print `error` to stderr and exit 2.
 struct ParseResult {
     bool ok = true;
-    bool exitNow = false;          // --help/--version already handled
+    bool exitNow = false;          // --help/--version: print and exit
+    bool showHelp = false;
+    bool showVersion = false;
     int exitCode = 0;
     QString error;
     CliOptions options;
