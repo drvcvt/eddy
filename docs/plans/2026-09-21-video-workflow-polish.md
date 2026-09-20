@@ -414,6 +414,9 @@ Completion sequence:
 All four accepted feature groups and both screenshot follow-ups are implemented.
 Work was committed in the planned order A through F, followed by responsive
 layout, feedback, integrated fixes and documentation. No dependencies were added.
+The Linux CI setup now installs GStreamer's existing MP4/H.264 runtime plugins:
+Ubuntu's Qt 6.4 uses that backend, and the new real-playback tests exposed missing
+decoders in the runner. This adds no application library or feature dependency.
 
 | Slice | Delivered |
 | --- | --- |
