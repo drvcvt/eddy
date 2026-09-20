@@ -444,6 +444,8 @@ Implementation decisions:
   frame at source position zero before reconciliation with player positions.
   No offset is inferred from a seek result. The real-media test compares source
   frame intervals relative to this initial timestamp and verifies copied pixels.
+- Loading requests a paused initial frame, so the first still can be inspected
+  and copied before Play, and the source clock is established before editing.
 - Full-file playback may finish in Qt's Stopped state; trimmed playback pauses.
   Both retain the final included frame, and both end paths support looping.
 - Frame copying applies presentation rotation/mirroring and keeps letterboxing
