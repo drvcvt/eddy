@@ -336,21 +336,20 @@ private slots:
     }
     void textContextControlsAreSelfExplanatory() {
         TextBar bar;
-        // Discrete values are spelled out (S/M/L, B); the rest are grid icons.
-        const QStringList letters = {
+        // Every control is a grid icon, letterforms included: no text, no
+        // second rendering path to drift out of step with the rest.
+        const QStringList names = {
             QStringLiteral("TextSize14"), QStringLiteral("TextSize20"),
-            QStringLiteral("TextSize28"), QStringLiteral("TextBold")};
-        const QStringList icons = {
+            QStringLiteral("TextSize28"), QStringLiteral("TextBold"),
             QStringLiteral("TextAlignLeft"), QStringLiteral("TextAlignCenter"),
             QStringLiteral("TextAlignRight"), QStringLiteral("TextFill")};
-        for (const QString &name : letters + icons) {
+        for (const QString &name : names) {
             auto *button = bar.findChild<QToolButton *>(name);
             QVERIFY2(button, qPrintable(name));
             QVERIFY2(!button->toolTip().isEmpty(), qPrintable(name));
             QCOMPARE(button->accessibleName(), button->toolTip());
-            const bool labelled = letters.contains(name);
-            QVERIFY2(button->text().isEmpty() != labelled, qPrintable(name));
-            QVERIFY2(button->icon().isNull() == labelled, qPrintable(name));
+            QVERIFY2(button->text().isEmpty(), qPrintable(name));
+            QVERIFY2(!button->icon().isNull(), qPrintable(name));
         }
     }
     void spotlightContextChangesAreUndoable() {

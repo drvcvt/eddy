@@ -37,8 +37,10 @@ the filename and dimensions.
 Save and Copy are icon-only with tooltips; the labeled **To shelf** action
 keeps its card-plus icon, and Drag out has its own grip icon. Checked controls
 fill a 22 px squircle. The floating bars over the canvas run one step larger,
-with 24 px controls and 20 px glyphs, and name discrete values as letters
-(S / M / L, B) rather than drawing them.
+with 24 px controls and 20 px glyphs. The text bar spells its size and bold
+controls as S / M / L and B, drawn as monoline letterforms on the icon grid
+rather than set in a typeface, so they carry the stroke weight of their
+neighbours.
 
 Every icon sits on one keyline grid: ink centred in the 24 unit viewBox,
 reaching a 20 unit live area, at a 2.8 stroke. `tools/normalize_icons.py`
