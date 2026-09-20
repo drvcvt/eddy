@@ -1,4 +1,5 @@
 #include "spotlightbar.h"
+#include "theme.h"
 #include <QHBoxLayout>
 #include <QToolButton>
 #include <QButtonGroup>
@@ -11,7 +12,7 @@ static QToolButton *button(QWidget *parent, const char *label) {
     result->setCheckable(true);
     result->setAutoRaise(true);
     result->setFocusPolicy(Qt::NoFocus);
-    result->setFixedHeight(26);
+    result->setFixedHeight(theme::kFloatButton.height());
     return result;
 }
 
@@ -19,7 +20,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("SpotlightBar"));
     setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(6, 4, 6, 4);
+    layout->setContentsMargins(4, 3, 4, 3);
     layout->setSpacing(2);
 
     auto *shapeGroup = new QButtonGroup(this);

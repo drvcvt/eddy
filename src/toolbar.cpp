@@ -2,6 +2,7 @@
 #include "colorpopover.h"
 #include "theme.h"
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QToolButton>
 #include <QButtonGroup>
 #include <QPainter>
@@ -9,6 +10,8 @@
 #include <QIcon>
 #include <QPen>
 #include <QApplication>
+#include <QColorDialog>
+#include <QTimer>
 
 namespace eddy {
 
@@ -18,8 +21,8 @@ static QToolButton *mkBtn(bool checkable, bool square) {
     b->setAutoRaise(true);
     b->setFocusPolicy(Qt::NoFocus);      // keep keyboard focus on the window for hotkeys
     b->setCursor(Qt::PointingHandCursor);
-    if (square) b->setFixedSize(34, 34);
-    else b->setFixedHeight(30);
+    if (square) b->setFixedSize(theme::kBarButton);
+    else b->setFixedHeight(theme::kBarButton.height());
     return b;
 }
 
@@ -28,25 +31,37 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
 
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(10, 6, 10, 6);
-    lay->setSpacing(4);
+    lay->setContentsMargins(6, 3, 6, 3);
+    lay->setSpacing(2);
+    m_toolRail = new QWidget(this);
+    m_toolRail->setObjectName(QStringLiteral("ToolRail"));
+    m_toolRail->setAttribute(Qt::WA_StyledBackground, true);
+    m_toolRail->hide(); // The editor places this beside the canvas.
+    auto *rail = new QVBoxLayout(m_toolRail);
+    rail->setContentsMargins(4, 4, 4, 4);
+    rail->setSpacing(2);
+    m_toolRail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *group = new QButtonGroup(this); group->setExclusive(true);
     const QPalette palette = QApplication::palette();
     const QColor iconRest = palette.color(QPalette::PlaceholderText);
-    const QColor iconOn = palette.color(QPalette::HighlightedText);
+    const QColor iconOn = palette.color(QPalette::WindowText);
     const QColor iconHover = palette.color(QPalette::WindowText);
 
     m_undoBtn = mkBtn(false, true); m_undoBtn->setObjectName("Undo");
-    m_undoBtn->setText(QString::fromUtf8("\xE2\x86\xB6"));   // ↶
+    m_undoBtn->setIcon(theme::tintedIcon(":/icons/undo.svg", iconRest, iconHover));
+    m_undoBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_undoBtn->setToolTip("Undo \xC2\xB7 Ctrl+Z"); m_undoBtn->setEnabled(false);
     connect(m_undoBtn, &QToolButton::clicked, this, [this]{ emit undoRequested(); });
     lay->addWidget(m_undoBtn);
 
     m_redoBtn = mkBtn(false, true); m_redoBtn->setObjectName("Redo");
-    m_redoBtn->setText(QString::fromUtf8("\xE2\x86\xB7"));   // ↷
+    m_redoBtn->setIcon(theme::tintedIcon(":/icons/redo.svg", iconRest, iconHover));
+    m_redoBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_redoBtn->setToolTip("Redo \xC2\xB7 Ctrl+Shift+Z"); m_redoBtn->setEnabled(false);
     connect(m_redoBtn, &QToolButton::clicked, this, [this]{ emit redoRequested(); });
     lay->addWidget(m_redoBtn);
+
+    lay->addSpacing(6);
 
     struct T { ToolType type; const char *id; const char *name; const char *key; };
     const QVector<T> tools = {
@@ -61,14 +76,14 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         auto *b = mkBtn(true, true);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(t.id),
                                      iconRest, iconOn));
-        b->setIconSize(QSize(20, 20));
+        b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         b->setObjectName(QString::fromLatin1(t.id));
         b->setToolTip(*t.key ? QString("%1 \xC2\xB7 %2").arg(t.name, t.key)
                              : QString::fromLatin1(t.name));
         group->addButton(b);
         m_btns.insert(int(t.type), b);
         connect(b, &QToolButton::clicked, this, [this, tt=t.type]{ emit toolChosen(tt); });
-        lay->addWidget(b);
+        rail->addWidget(b);
     }
 
     auto *wgroup = new QButtonGroup(this); wgroup->setExclusive(true);
@@ -83,7 +98,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         b->setObjectName(x.id);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(x.icon),
                                      iconRest, iconHover));
-        b->setIconSize(QSize(20, 20));
+        b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         b->setToolTip(QString::fromUtf8(x.tip));
         b->setAccessibleName(b->toolTip());
         if (x.w == 4.0) b->setChecked(true);             // default M
@@ -92,41 +107,49 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         lay->addWidget(b);
     }
 
-    lay->addStretch(1);
-
     auto *color = mkBtn(false, true);
     color->setObjectName("Swatch");
     color->setToolTip("Stroke colour");
     m_swatch = color;
     setSwatchColor(QColor(theme::kStroke));        // painted disc; overridden by the real stroke colour
     connect(color, &QToolButton::clicked, this, [this, color]{
-        auto *pop = new ColorPopover(this);
+        auto *pop = new ColorPopover(this, m_swatchColor);
         pop->setAttribute(Qt::WA_DeleteOnClose);   // don't accumulate popovers on repeated opens
         connect(pop, &ColorPopover::picked, this, [this](const QColor &c){
             setSwatchColor(c);                     // tint the disc to the chosen colour
             emit colorChosen(c);
         });
         connect(pop, &ColorPopover::eyedropperRequested, this, &Toolbar::eyedropperRequested);
+        connect(pop, &ColorPopover::customRequested, this, [this](const QColor &current) {
+            // Let the popup close before the native colour dialog takes focus.
+            QTimer::singleShot(0, this, [this, current] {
+                const QColor c = QColorDialog::getColor(current, this);
+                if (!c.isValid()) return;
+                setSwatchColor(c);
+                emit colorChosen(c);
+            });
+        });
         pop->adjustSize();
         pop->move(color->mapToGlobal(QPoint(0, color->height() + 4)));
         pop->show();
     });
     lay->addWidget(color);
+    lay->addStretch(1);
+    lay->addSpacing(6);
 
-    // Save/Copy are not checkable (no sliding pill), so hover brightens to white
-    // rather than kIconActive (which is dark, meant for the light pill behind tools).
-    auto *save = mkBtn(false, false); save->setObjectName("Save");
+    // Actions brighten on hover; the active tool keeps its own selection state.
+    auto *save = mkBtn(false, true); save->setObjectName("Save");
     save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
                                     iconRest, iconHover));
-    save->setIconSize(QSize(20, 20));
+    save->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     save->setToolTip("Save \xC2\xB7 Enter");
     connect(save, &QToolButton::clicked, this, [this]{ emit saveRequested(); });
     lay->addWidget(save);
 
-    auto *copy = mkBtn(false, false); copy->setObjectName("Copy");
+    auto *copy = mkBtn(false, true); copy->setObjectName("Copy");
     copy->setIcon(theme::tintedIcon(QStringLiteral(":/icons/copy.svg"),
                                     iconRest, iconHover));
-    copy->setIconSize(QSize(20, 20));
+    copy->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
@@ -134,16 +157,21 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     auto *shelf = mkBtn(false, false); shelf->setObjectName("SendToShelf");
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
                                      iconRest, iconHover));
-    shelf->setIconSize(QSize(20, 20));
+    shelf->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     shelf->setToolTip("Send to Boltsnap shelf");
+    shelf->setText(QStringLiteral("To shelf"));
+    shelf->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     connect(shelf, &QToolButton::clicked, this, [this]{ emit sendToShelfRequested(); });
     lay->addWidget(shelf);
 
     m_themeBtn = mkBtn(false, true);
     m_themeBtn->setObjectName(QStringLiteral("Theme"));
-    m_themeBtn->setIconSize(QSize(20, 20));
+    m_themeBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     connect(m_themeBtn, &QToolButton::clicked, this, &Toolbar::themeToggleRequested);
     lay->addWidget(m_themeBtn);
+
+    for (auto *button : findChildren<QToolButton *>())
+        if (button->accessibleName().isEmpty()) button->setAccessibleName(button->toolTip());
 
     syncTool(ToolType::Arrow);   // sensible default highlight (snaps on first show)
     setDark(QApplication::palette().color(QPalette::Window).lightness() < 128);
@@ -158,19 +186,12 @@ void Toolbar::syncTool(ToolType t) {
 void Toolbar::setUndoEnabled(bool on) { if (m_undoBtn) m_undoBtn->setEnabled(on); }
 void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on); }
 
-void Toolbar::setCompact(bool compact) {
-    for (const char *name : {"Undo", "Redo", "WidthS", "WidthM", "WidthL", "Save", "Copy"})
-        if (auto *button = findChild<QToolButton *>(QString::fromLatin1(name)))
-            button->setVisible(!compact);
-    updateGeometry();
-}
-
 // Paint a crisp colour disc as the swatch icon: a filled circle in the current
 // stroke colour with a subtle dark ring for contrast on the dark toolbar.
 void Toolbar::setSwatchColor(const QColor &c) {
     if (!m_swatch) return;
     m_swatchColor = c;
-    constexpr int d = 18;
+    constexpr int d = 14;
     const qreal dpr = m_swatch->devicePixelRatioF();   // crisp on HiDPI, like tintedIcon
     QPixmap pm(qRound(d * dpr), qRound(d * dpr));
     pm.setDevicePixelRatio(dpr);
@@ -190,12 +211,13 @@ void Toolbar::setSwatchColor(const QColor &c) {
 void Toolbar::setDark(bool dark) {
     const QPalette palette = QApplication::palette();
     const QColor rest = palette.color(QPalette::PlaceholderText);
-    const QColor active = palette.color(QPalette::HighlightedText);
+    const QColor active = palette.color(QPalette::WindowText);
     const QColor hover = palette.color(QPalette::WindowText);
     for (QToolButton *button : m_btns)
         button->setIcon(theme::tintedIcon(
             QStringLiteral(":/icons/%1.svg").arg(button->objectName()), rest, active));
     const struct { const char *name; const char *icon; } actions[] = {
+        {"Undo", "undo"}, {"Redo", "redo"},
         {"Save", "save"}, {"Copy", "copy"}, {"SendToShelf", "shelf"},
         {"WidthS", "width-thin"}, {"WidthM", "width-medium"}, {"WidthL", "width-thick"}};
     for (const auto &action : actions)

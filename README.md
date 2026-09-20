@@ -1,8 +1,12 @@
 # eddy
 
-A fast, minimal image and video annotation editor for Linux and Windows (Qt 6).
+A fast, minimal image and video annotation editor for Linux (Qt 6).
 
-Takes an image or video from a file (images also support stdin), lets you annotate it, then outputs the result to the clipboard, a file, stdout, or the Boltsnap shelf. Linux keeps the frameless floating workflow; Windows uses native window controls and file dialogs.
+Linux is the supported platform. Windows builds are experimental and
+community-maintained: CI verifies that they compile and pass automated tests,
+but there is no human regression testing or official Windows release support.
+
+Takes an image or video from a file (images also support stdin), lets you annotate it, then outputs the result to the clipboard, a file, stdout, or the Boltsnap shelf. Linux keeps the frameless floating workflow; the experimental Windows build uses native window controls and file dialogs.
 
 ---
 
@@ -22,7 +26,31 @@ Takes an image or video from a file (images also support stdin), lets you annota
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
 
-The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no letter labels.
+The interface uses Vis-style grayscale surfaces, Noto Sans typography, rounded
+controls, and grouped monochrome tool icons with tooltips (tool name + hotkey).
+Tools sit to the left of the canvas without a surrounding panel. The flat top bar
+holds undo/redo, stroke controls and output actions, with compact 6px state fills
+matching Vis. **Fit** and the live zoom percentage (click for 100%) sit at the
+bottom left; **Drag out** stays centered at the bottom. The footer uses MonoLisa
+with a monospace fallback. The window title includes
+the filename and dimensions.
+Save and Copy are icon-only with tooltips; the labeled **To shelf** action
+keeps its card-plus icon, and Drag out has its own grip icon. Checked controls
+fill a 22 px squircle. The floating bars over the canvas run one step larger,
+with 24 px controls and 20 px glyphs. The text bar spells its size and bold
+controls as S / M / L and B, drawn as monoline letterforms on the icon grid
+rather than set in a typeface, so they carry the stroke weight of their
+neighbours.
+
+Every icon sits on one keyline grid: ink centred in the 24 unit viewBox,
+reaching a 20 unit live area, at a 2.8 stroke. `tools/normalize_icons.py`
+re-fits an icon to the grid and a test in `test_theme` enforces it. Dark and light themes are available from
+the toolbar.
+
+Video uses a full-width filmstrip above one compact transport row. Drag the muted
+end grips to trim, click the strip to seek, or use **In / Out** (`I` / `O`) to set
+the range at the playhead. Excluded frames fade into the background; precise trim
+times, playback and volume sit below the strip. **Drag out** remains at the bottom.
 
 **Toolbar controls:**
 
@@ -30,11 +58,10 @@ The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no lette
 |---------|-------------|
 | ↶ / ↷ | Undo / Redo buttons (same as `Ctrl+Z` / `Ctrl+Shift+Z`) |
 | **S / M / L** | Line-width chooser: 2 px / 4 px / 8 px stroke |
-| Colour swatch | Opens a **colour popover** with preset swatches and a *Custom…* entry that opens the full colour dialog |
+| Colour swatch | Opens a **colour popover** with the current hex value, marked presets, **More colours…** and **Pick from image** |
 | Dark / Light | Switches theme immediately and remembers the choice |
+| Copy | Copies the edited image to the clipboard (same as `Ctrl+C`) |
 | Shelf button | Sends the current edited image to the Boltsnap shelf as a new card |
-
-If the window is made very short, the toolbar **auto-hides** and reappears when the cursor moves to the top edge, keeping the image at full height.
 
 With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact, Spotlight) shows **8 drag handles** to resize it. Selecting an Arrow shows **2 endpoint handles**. Text shows one width handle for wrapping; Pen is move-only.
 
@@ -42,8 +69,9 @@ With the **Text tool**, drag existing text to move it, double-click it to edit, 
 
 ### Redaction and OCR
 
-Windows installers include the OCR runtime and German language data. Linux builds
-use `tesseract` from `PATH` and require the language selected by `ocr_lang`.
+Linux uses `tesseract` from `PATH` and requires the language selected by
+`ocr_lang`. The community Windows installer scripts can bundle the OCR runtime
+and German language data; CI preview artifacts do not.
 
 On video, Blur is applied frame-by-frame during export. OCR detects text in the
 currently displayed frame and keeps those redaction rectangles fixed for the clip;
@@ -64,7 +92,7 @@ it does not track moving text.
 | Arrow keys / `Shift`+Arrow keys | Move the selection by 1 px / 10 px |
 | `Ctrl+D` / `Alt`-drag | Duplicate the selection |
 | `Enter` while editing text | Insert a new line |
-| `Ctrl+Enter` while editing text | Commit the text edit |
+| `Ctrl+Enter` while editing text | Commit the text edit, clear its selection and return focus to the canvas |
 | `Esc` while editing text | Revert the edit; a new untouched text box is removed |
 | `Delete` / `Backspace` | Remove the selection (one undo step) |
 | `Enter` | Save (replace source card, use explicit/configured output, or return to shelf) |
@@ -139,18 +167,37 @@ boltsnap area --no-copy -o - | eddy -f -
 
 ## Install
 
-Windows releases provide standalone x86-64 MSI and NSIS installers with the
-required Qt and compiler runtimes. Download either format from the
-[latest Eddy release](https://github.com/drvcvt/eddy/releases/latest). The
-Boltsnap Windows installer also includes a compatible Eddy build.
-
 On Linux, build from source with the Qt packages supplied by your distribution.
+
+The CMake install also includes a desktop entry and icon. For a per-user install
+after building, with `~/.local/bin` on `PATH`:
+
+```sh
+cmake --install build-rel --prefix "$HOME/.local"
+update-desktop-database "$HOME/.local/share/applications"
+xdg-mime default eddy.desktop image/png video/mp4 video/webm video/x-matroska video/quicktime video/x-msvideo
+```
+
+This makes Eddy the desktop default for PNG images and common video formats,
+including clicks on Boltsnap shelf cards. Check it with
+`xdg-mime query default image/png` or `xdg-mime query default video/mp4`. Boltsnap opens
+these through `xdg-open` without a card ID, so the default Save action returns a
+new shelf card.
+
+There are no official Windows releases. CI publishes experimental, untested
+portable preview artifacts for contributors; Windows support is best-effort
+and community-maintained.
+
+Video editing and export need `ffmpeg`/`ffprobe` on `PATH` on every platform.
+Windows preview artifacts and installer scripts do not bundle them. Image
+annotation works without them.
 
 ---
 
 ## Build
 
-Requires Qt 6 Widgets, Multimedia, and SVG. Windows additionally uses Qt Network for Boltsnap named-pipe IPC.
+Requires Qt 6 Widgets, Multimedia, and SVG. The experimental Windows build
+additionally uses Qt Network for Boltsnap named-pipe IPC.
 
 ```sh
 # Debug (default)
@@ -165,13 +212,13 @@ cmake -S . -B build-rel -DCMAKE_BUILD_TYPE=Release
 cmake --build build-rel --parallel 3
 ```
 
-On Windows, configure with a Qt 6 MSVC kit and Visual Studio 2022. Launching
-`eddy.exe` without arguments opens the native media picker. Conventional MSI
-and NSIS installers can be produced after the Release build with:
+Community Windows builds use a Qt 6 MSVC kit and Visual Studio 2022. Launching
+`eddy.exe` without arguments opens the native media picker. MSI and NSIS
+installers can still be produced after the Release build with:
 
 ```powershell
-.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime
-.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime
+.\packaging\windows\build-msi.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime -Version 1.0.3
+.\packaging\windows\build-nsis.ps1 -BuildDirectory build-win -QtDirectory C:\Qt\6.8.3\msvc2022_64 -TesseractDirectory C:\path\to\ocr-runtime -Version 1.0.3
 ```
 
 Both installers install Eddy per machine, add a Start-menu shortcut, and register

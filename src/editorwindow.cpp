@@ -29,6 +29,7 @@
 #include <QUndoStack>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGridLayout>
 #include <QKeyEvent>
 #include <QClipboard>
 #include <QMimeData>
@@ -267,12 +268,17 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_dark = QApplication::palette().color(QPalette::Window).lightness() < 128;
     if (isVideo()) m_trimOutMs = m_media.video.durationMs;
 
-    auto *lay = new QVBoxLayout(this);
-    lay->setContentsMargins(0, 0, 0, 0); lay->setSpacing(0);
-    lay->addWidget(m_toolbar);
-    lay->addWidget(m_canvas, 1);
+    auto *lay = new QGridLayout(this);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(0);
+    lay->addWidget(m_toolbar, 0, 0, 1, 2);
+    lay->addWidget(m_toolbar->toolRail(), 1, 0, Qt::AlignTop);
+    m_toolbar->toolRail()->show();
+    lay->addWidget(m_canvas, 1, 1);
+    lay->setRowStretch(1, 1);
+    lay->setColumnStretch(1, 1);
     if (isVideo())
-        lay->addWidget(createPlaybackBar());
+        lay->addWidget(createPlaybackBar(), 2, 0, 1, 2);
 
     connect(m_toolbar, &Toolbar::toolChosen, m_tools, &ToolController::setTool);
     connect(m_toolbar, &Toolbar::colorChosen, this, [this](const QColor &color){
@@ -378,14 +384,46 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     } else {
         m_dragPill->setImageProvider([this]{ return exportComposite(); });
     }
-    auto *footer = new QWidget(this);
-    footer->setObjectName("Footer");
-    auto *fl = new QHBoxLayout(footer);
-    fl->setContentsMargins(0, 6, 0, 6);
-    fl->addStretch(1);
-    fl->addWidget(m_dragPill);
-    fl->addStretch(1);
-    lay->addWidget(footer);
+    const QString name = m_media.path.isEmpty()
+        ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
+    setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
+        .arg(name).arg(native.width()).arg(native.height()));
+    auto *viewControls = new QWidget(this);
+    viewControls->setObjectName(QStringLiteral("ViewControls"));
+    auto *fl = new QGridLayout(viewControls);
+    fl->setContentsMargins(6, 3, 6, 3);
+    fl->setSpacing(2);
+    auto *zoomControls = new QHBoxLayout;
+    zoomControls->setSpacing(2);
+    fl->addLayout(zoomControls, 0, 0, Qt::AlignLeft);
+    auto *fit = new QToolButton(viewControls);
+    fit->setObjectName(QStringLiteral("ZoomFit"));
+    fit->setText(QStringLiteral("Fit"));
+    fit->setToolTip(QStringLiteral("Fit to window · 0"));
+    fit->setAccessibleName(QStringLiteral("Fit to window"));
+    fit->setFocusPolicy(Qt::NoFocus);
+    fit->setCursor(Qt::PointingHandCursor);
+    fit->setFixedHeight(theme::kBarButton.height());
+    connect(fit, &QToolButton::clicked, m_canvas, &Canvas::fitMedia);
+    zoomControls->addWidget(fit);
+    auto *zoom = new QToolButton(viewControls);
+    zoom->setObjectName(QStringLiteral("ZoomActual"));
+    zoom->setToolTip(QStringLiteral("Actual size · 1"));
+    zoom->setAccessibleName(QStringLiteral("Actual size"));
+    zoom->setFocusPolicy(Qt::NoFocus);
+    zoom->setCursor(Qt::PointingHandCursor);
+    zoom->setFixedSize(52, theme::kBarButton.height());
+    connect(zoom, &QToolButton::clicked, m_canvas, &Canvas::resetZoom);
+    const auto updateZoom = [this, zoom] {
+        zoom->setText(QStringLiteral("%1%").arg(qRound(m_canvas->zoom() * 100)));
+    };
+    connect(m_canvas, &Canvas::viewChanged, zoom, updateZoom);
+    updateZoom();
+    zoomControls->addWidget(zoom);
+    // Align independently within the full row, not the space left after zoom.
+    fl->addWidget(m_dragPill, 0, 0, Qt::AlignCenter);
+    viewControls->setAttribute(Qt::WA_StyledBackground, true);
+    lay->addWidget(viewControls, isVideo() ? 3 : 2, 0, 1, 2);
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);
     // Sync the toolbar to the configured default explicitly: the earlier
@@ -397,11 +435,12 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
 
     // Size the canvas to the image at 100%; only oversized media starts fitted.
     const int maxW = 1700, maxH = 1000;
-    const int barH = m_toolbar->sizeHint().height();
-    const int chromeH = lay->sizeHint().height() - m_canvas->sizeHint().height();
-    const int minW = qMax(760, m_toolbar->sizeHint().width());
-    setMinimumSize(minW, barH + 120);
-    resize(qMin(qMax(native.width(), minW), maxW), qMin(native.height() + chromeH, maxH));
+    const int chromeW = m_toolbar->toolRail()->sizeHint().width();
+    const int chromeH = m_toolbar->sizeHint().height() + viewControls->sizeHint().height()
+        + (isVideo() ? findChild<QWidget *>(QStringLiteral("PlaybackBar"))->sizeHint().height() : 0);
+    const int minW = qMax(760, lay->minimumSize().width());
+    setMinimumSize(minW, chromeH + m_toolbar->toolRail()->sizeHint().height());
+    resize(qMin(qMax(native.width() + chromeW, minW), maxW), qMin(native.height() + chromeH, maxH));
 }
 
 void EditorWindow::showEvent(QShowEvent *e) {
@@ -422,11 +461,6 @@ void EditorWindow::showEvent(QShowEvent *e) {
     a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
     a->setEasingCurve(QEasingCurve::OutCubic);
     a->start(QAbstractAnimation::DeleteWhenStopped);
-}
-
-void EditorWindow::resizeEvent(QResizeEvent *e) {
-    QWidget::resizeEvent(e);
-    updateCompactMode();
 }
 
 void EditorWindow::closeEvent(QCloseEvent *e) {
@@ -457,43 +491,17 @@ void EditorWindow::closeEvent(QCloseEvent *e) {
     QWidget::closeEvent(e);
 }
 
-void EditorWindow::updateCompactMode() {
-    m_toolbar->setCompact(width() < 760);
-    const int barH = m_toolbar->sizeHint().height();
-    const bool compact = height() < barH + 90;       // too short for strip + image
-    if (compact == m_compact) return;
-    m_compact = compact;
-    auto *lay = static_cast<QVBoxLayout*>(layout());
-    if (compact) {
-        // Detach the bar from the layout (removeWidget — setParent alone leaves it
-        // managed) and float it as a top auto-hide overlay.
-        lay->removeWidget(m_toolbar);
-        m_toolbar->setParent(this);                   // keep it a child for geometry/raise
-        m_toolbar->raise();
-        m_toolbar->setGeometry(0, 0, width(), barH);
-        m_toolbar->hide();                            // canvas gets full height; bar on hover
-        setMouseTracking(true);
-        m_canvas->setMouseTracking(true);
-    } else {
-        // Re-dock the bar at the top of the layout.
-        lay->insertWidget(0, m_toolbar);
-        m_toolbar->show();
-        setMouseTracking(false);
-        m_canvas->setMouseTracking(false);
-    }
-}
-
 QWidget *EditorWindow::createPlaybackBar() {
     auto *bar = new QWidget(this);
     bar->setObjectName("PlaybackBar");
     bar->setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QVBoxLayout(bar);
-    lay->setContentsMargins(10, 6, 10, 6);
-    lay->setSpacing(5);
+    lay->setContentsMargins(12, 4, 12, 2);
+    lay->setSpacing(2);
     auto *playback = new QHBoxLayout;
-    playback->setSpacing(8);
+    playback->setSpacing(6);
     auto *trim = new QHBoxLayout;
-    trim->setSpacing(8);
+    trim->setSpacing(4);
 
     m_playButton = new QToolButton(bar);
     const QColor iconColor = palette().color(QPalette::ButtonText);
@@ -502,7 +510,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setAutoRaise(true);
     m_playButton->setFocusPolicy(Qt::NoFocus);
     m_playButton->setCursor(Qt::PointingHandCursor);
-    m_playButton->setFixedSize(28, 28);
+    m_playButton->setFixedSize(theme::kBarButton);
+    m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_playButton->setToolTip(QStringLiteral("Play / Pause"));
     m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
@@ -514,7 +523,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setAutoRaise(true);
     m_muteButton->setFocusPolicy(Qt::NoFocus);
     m_muteButton->setCursor(Qt::PointingHandCursor);
-    m_muteButton->setFixedSize(28, 28);
+    m_muteButton->setFixedSize(theme::kBarButton);
+    m_muteButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_muteButton->setToolTip(QStringLiteral("Mute audio"));
     m_muteButton->setAccessibleName(m_muteButton->toolTip());
 
@@ -522,18 +532,13 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_volumeSlider->setObjectName("PlaybackVolume");
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(100);
-    m_volumeSlider->setFixedWidth(72);
+    m_volumeSlider->setFixedWidth(60);
     m_volumeSlider->setToolTip(QStringLiteral("Volume"));
     m_volumeSlider->setAccessibleName(QStringLiteral("Volume"));
 
     playback->addWidget(m_playButton);
     playback->addWidget(m_timeLabel);
     playback->addStretch(1);
-    playback->addWidget(m_muteButton);
-    playback->addWidget(m_volumeSlider);
-
-    auto *trimLabel = new QLabel(QStringLiteral("Trim"), bar);
-    trimLabel->setObjectName(QStringLiteral("TrimLabel"));
     m_timeline = new VideoTimeline(bar);
     m_timeline->setDuration(m_media.video.durationMs);
     m_timeline->setMinimumRange(m_media.video.fps > 0.0
@@ -550,28 +555,34 @@ QWidget *EditorWindow::createPlaybackBar() {
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
         button->setCursor(Qt::PointingHandCursor);
-        button->setFixedHeight(28);
+        button->setFixedHeight(theme::kBarButton.height());
         return button;
     };
-    auto *setIn = makeTrimButton(QStringLiteral("Set In"), QStringLiteral("TrimSetIn"));
-    auto *setOut = makeTrimButton(QStringLiteral("Set Out"), QStringLiteral("TrimSetOut"));
+    auto *setIn = makeTrimButton(QStringLiteral("In"), QStringLiteral("TrimSetIn"));
+    auto *setOut = makeTrimButton(QStringLiteral("Out"), QStringLiteral("TrimSetOut"));
     auto *reset = makeTrimButton({}, QStringLiteral("TrimReset"));
     reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
-    reset->setFixedWidth(28);
+    reset->setFixedWidth(theme::kBarButton.width());
+    reset->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     setIn->setToolTip(QStringLiteral("Set trim start · I"));
     setOut->setToolTip(QStringLiteral("Set trim end · O"));
+    setIn->setAccessibleName(setIn->toolTip());
+    setOut->setAccessibleName(setOut->toolTip());
     reset->setToolTip(QStringLiteral("Use the complete clip"));
     reset->setAccessibleName(reset->toolTip());
 
-    trim->addWidget(trimLabel);
-    trim->addWidget(m_trimInLabel);
-    trim->addWidget(m_timeline, 1);
-    trim->addWidget(m_trimOutLabel);
     trim->addWidget(setIn);
+    trim->addWidget(m_trimInLabel);
+    trim->addSpacing(8);
     trim->addWidget(setOut);
+    trim->addWidget(m_trimOutLabel);
     trim->addWidget(reset);
+    playback->addLayout(trim);
+    playback->addStretch(1);
+    playback->addWidget(m_muteButton);
+    playback->addWidget(m_volumeSlider);
+    lay->addWidget(m_timeline);
     lay->addLayout(playback);
-    lay->addLayout(trim);
 
     connect(m_playButton, &QToolButton::clicked, this, [this]{
         ensureVideoPlayer();
@@ -725,19 +736,6 @@ void EditorWindow::ensureVideoPlayer() {
         }
     });
     m_player->setSource(QUrl::fromLocalFile(m_media.path));
-}
-
-void EditorWindow::mouseMoveEvent(QMouseEvent *e) {
-    if (m_compact) {
-        const int barH = m_toolbar->sizeHint().height();
-        if (e->position().y() <= 12) {
-            m_toolbar->setGeometry(0, 0, width(), barH);
-            m_toolbar->raise(); m_toolbar->show();
-        } else if (e->position().y() > barH + 8) {
-            m_toolbar->hide();
-        }
-    }
-    QWidget::mouseMoveEvent(e);
 }
 
 RedactItem *EditorWindow::selectedRedact() const {
@@ -1019,7 +1017,7 @@ void EditorWindow::startVideoExportCache() {
     const int revision = m_videoRevision;
     VideoExportRequest request{
         m_media.path, path, renderAnnotationOverlay(),
-        m_trimInMs, hasTrim() ? m_trimOutMs : -1
+        m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000
     };
     for (QGraphicsItem *item : m_scene->items())
         if (auto *redact = dynamic_cast<RedactItem *>(item))
@@ -1203,6 +1201,7 @@ void EditorWindow::failPendingVideoActions() {
     m_videoStatusRequested = false;
     m_copyVideoPending = false;
     m_sendVideoToShelfPending = false;
+    m_videoShelfFallbackPending = false;
     m_replaceVideoCardPending = false;
     m_videoSavePendingPath.clear();
     m_videoSavePendingCopy = false;
@@ -1220,6 +1219,8 @@ void EditorWindow::completePendingVideoActions(const QString &path, bool takeOwn
     m_copyVideoPending = false;
     const bool shelfPending = m_sendVideoToShelfPending;
     m_sendVideoToShelfPending = false;
+    const bool shelfFallback = m_videoShelfFallbackPending;
+    m_videoShelfFallbackPending = false;
     const bool cardPending = m_replaceVideoCardPending;
     m_replaceVideoCardPending = false;
     const QString savePath = m_videoSavePendingPath;
@@ -1236,7 +1237,7 @@ void EditorWindow::completePendingVideoActions(const QString &path, bool takeOwn
         copyPending = false;
     }
     if (shelfPending) {
-        postVideoToShelf(path, takeOwnership, copyPending);
+        postVideoToShelf(path, takeOwnership, copyPending, shelfFallback);
         copyPending = false;
     }
     if (copyPending) copyVideoFile(path);
@@ -1250,6 +1251,9 @@ void EditorWindow::saveVideo() {
     if (route == SaveRoute::Shelf) {
         m_closeAfterVideoShelf = m_cfg.earlyExit;
         m_copyVideoPending = m_copyVideoPending || m_cfg.copyOnSave;
+#ifdef Q_OS_WIN
+        m_videoShelfFallbackPending = true;
+#endif
         sendToShelf();
         return;
     }
@@ -1328,7 +1332,8 @@ bool EditorWindow::postImageToShelf(const QImage &img, bool showSuccessToast) {
     return true;
 }
 
-void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter) {
+void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, bool copyAfter,
+                                    bool fallbackOnFailure) {
     const QString output = screen() ? screen()->name() : QString();
     const bool closeAfter = m_closeAfterVideoShelf;
     const QString pinnedPath = path == m_cachedVideoPath ? path : QString();
@@ -1338,12 +1343,12 @@ void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, boo
             return sendVideoToBoltsnapShelf(
                 path, QStringLiteral("eddy"), takeOwnership, output);
         },
-        [this, path, copyAfter, closeAfter](const DeliverResult &result) {
+        [this, path, copyAfter, fallbackOnFailure, closeAfter](const DeliverResult &result) {
             if (!result.ok) {
                 std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
                 if (m_toast)
                     m_toast->showMessage(QStringLiteral("Boltsnap shelf unavailable"));
-                if (copyAfter) copyVideoFile(path);
+                if (copyAfter || fallbackOnFailure) copyVideoFile(path);
                 return;
             }
             if (copyAfter) copyVideoFile(result.path);
@@ -1408,14 +1413,18 @@ void EditorWindow::sendToShelf() {
     if (isVideo()) {
         if (!hasVideoEdits()) {
             const bool copyAfter = m_copyVideoPending;
+            const bool fallbackOnFailure = m_videoShelfFallbackPending;
             m_copyVideoPending = false;
-            postVideoToShelf(m_media.path, false, copyAfter);
+            m_videoShelfFallbackPending = false;
+            postVideoToShelf(m_media.path, false, copyAfter, fallbackOnFailure);
             return;
         }
         if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath)) {
             const bool copyAfter = m_copyVideoPending;
+            const bool fallbackOnFailure = m_videoShelfFallbackPending;
             m_copyVideoPending = false;
-            postVideoToShelf(m_cachedVideoPath, true, copyAfter);
+            m_videoShelfFallbackPending = false;
+            postVideoToShelf(m_cachedVideoPath, true, copyAfter, fallbackOnFailure);
             return;
         }
         m_sendVideoToShelfPending = true;
@@ -1453,7 +1462,11 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         if (e->key() == Qt::Key_Escape) { m_tools->cancelTextEdit(); e->accept(); return; }
         if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
             && e->modifiers().testFlag(Qt::ControlModifier)) {
-            m_tools->commitTextEdit(); e->accept(); return;
+            m_tools->commitTextEdit();
+            m_scene->clearSelection();
+            m_scene->clearFocus();
+            m_canvas->setFocus(Qt::OtherFocusReason);
+            e->accept(); return;
         }
         QWidget::keyPressEvent(e);
         return;
