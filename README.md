@@ -36,7 +36,9 @@ with a monospace fallback. The window title includes
 the filename and dimensions.
 Save and Copy are icon-only with tooltips; the labeled **To shelf** action
 keeps its card-plus icon, and Drag out has its own grip icon. Checked controls
-fill a 22 px squircle. Dark and light themes are available from the toolbar.
+fill a 22 px squircle. The floating bars over the canvas run one step larger,
+with 24 px controls and 20 px glyphs. Dark and light themes are available from
+the toolbar.
 
 Video uses a full-width filmstrip above one compact transport row. Drag the muted
 end grips to trim, click the strip to seek, or use **In / Out** (`I` / `O`) to set

@@ -29,8 +29,11 @@ QString styleSheet(bool dark);
 // Two control sizes carry the whole app: dense chrome (top bar, tool rail,
 // playback row) and the floating bars that sit over the canvas.
 inline constexpr QSize kBarButton{22, 22};
-inline constexpr QSize kFloatButton{30, 26};
+inline constexpr QSize kFloatButton{24, 24};
 inline constexpr int kIconSize = 18;
+// The floating bars sit right on the canvas with nothing else competing, so
+// their glyphs run larger and nearly fill the button.
+inline constexpr int kFloatIcon = 20;
 
 // Render an SVG (resource path) to a monochrome QIcon: `rest` colour for the
 // Off/Normal state, `active` for the On state. Rendered at 2x `size`, so pass
