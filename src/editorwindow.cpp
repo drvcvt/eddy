@@ -62,6 +62,8 @@
 #include <QMenu>
 #include <QActionGroup>
 #include <QtMath>
+#include <QSignalBlocker>
+#include <QScopeGuard>
 #include <limits>
 #include <utility>
 #ifdef Q_OS_WIN
@@ -293,6 +295,10 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     });
     connect(m_toolbar, &Toolbar::saveRequested, this, &EditorWindow::save);
     connect(m_toolbar, &Toolbar::copyRequested, this, &EditorWindow::copy);
+    if (isVideo()) {
+        m_toolbar->enableVideoFrameCopy();
+        connect(m_toolbar, &Toolbar::copyFrameRequested, this, &EditorWindow::copyVideoFrame);
+    }
     connect(m_toolbar, &Toolbar::sendToShelfRequested, this, &EditorWindow::sendToShelf);
     connect(m_tools, &ToolController::toolChanged, m_toolbar, &Toolbar::syncTool);
     connect(m_toolbar, &Toolbar::widthChosen, m_tools, &ToolController::setWidth);
@@ -727,6 +733,10 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_resumeAfterSeek = false;
         m_seekSettling = false;
         m_loopSeeking = false;
+        if (m_copyFramePending) {
+            m_copyFramePending = false;
+            if (m_toast) m_toast->showMessage(tr("Frame unavailable; try again after seeking"));
+        }
     });
     connect(m_timeline, &VideoTimeline::interactionStarted, this, [this](bool trimming) {
         ensureVideoPlayer();
@@ -896,6 +906,7 @@ void EditorWindow::ensureVideoPlayer() {
                 image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio,
                                      Qt::SmoothTransformation);
             m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            m_hasVideoFrame = true;
             m_presentedStart = frame.startTime() < 0 ? -1 : frame.startTime() / 1000;
             m_presentedEnd = frame.endTime() < 0 ? -1 : frame.endTime() / 1000;
             m_tools->setBackground(m_bg);
@@ -960,6 +971,15 @@ void EditorWindow::ensureVideoPlayer() {
     });
     connect(m_player, &QMediaPlayer::seekableChanged, this, [this](bool seekable) {
         if (seekable && m_seekTarget >= 0) flushVideoSeek();
+    });
+    connect(m_player, &QMediaPlayer::errorOccurred, this, [this] {
+        m_seekTimer->stop();
+        m_seekSettleTimer->stop();
+        m_seekSettling = m_loopSeeking = m_resumeAfterSeek = false;
+        if (m_copyFramePending) {
+            m_copyFramePending = false;
+            if (m_toast) m_toast->showMessage(tr("Frame unavailable"));
+        }
     });
     m_player->setSource(QUrl::fromLocalFile(m_media.path));
 }
@@ -1232,6 +1252,10 @@ void EditorWindow::finishVideoSeek() {
     m_seekSettleTimer->stop();
     m_loopSeeking = false;
     if (!m_timelineActive) {
+        if (m_copyFramePending) {
+            m_copyFramePending = false;
+            copyVideoFrame();
+        }
         if (m_resumeAfterSeek && m_seekTarget >= m_trimInMs && m_seekTarget < m_trimOutMs)
             m_player->play();
         m_resumeAfterSeek = false;
@@ -1729,6 +1753,42 @@ void EditorWindow::copy() {
     QApplication::clipboard()->setImage(exportComposite());
 }
 
+void EditorWindow::copyVideoFrame() {
+    if (!isVideo()) return;
+    if (m_seekSettling || m_timelineActive || m_seekTimer->isActive()) {
+        m_copyFramePending = true;
+        return;
+    }
+    if (!m_hasVideoFrame || m_bg.isNull()) {
+        m_toast->showMessage(tr("Frame unavailable"));
+        return;
+    }
+    // Freeze the displayed source and render retained items, including blur.
+    // Block scene signals so temporary focus/selection changes cannot commit text.
+    const QSignalBlocker blocker(m_scene);
+    const auto selection = m_scene->selectedItems();
+    QGraphicsItem *focus = m_scene->focusItem();
+    const bool focused = m_scene->hasFocus();
+    const bool backgroundVisible = m_backgroundItem->isVisible();
+    QGraphicsPixmapItem frozen(QPixmap::fromImage(m_bg));
+    frozen.setZValue(-1000);
+    m_scene->addItem(&frozen);
+    const auto restore = qScopeGuard([&] {
+        m_backgroundItem->setVisible(backgroundVisible);
+        for (auto *item : selection) item->setSelected(true);
+        m_scene->setFocusItem(focus);
+        if (focused) m_scene->setFocus();
+        m_handles->setVisible(true);
+    });
+    m_backgroundItem->hide();
+    m_handles->setVisible(false);
+    m_scene->clearSelection();
+    m_scene->clearFocus();
+    const QImage image = renderToImage(*m_scene, m_media.nativeSize());
+    QApplication::clipboard()->setImage(image);
+    m_toast->showMessage(tr("Frame copied"));
+}
+
 void EditorWindow::keyPressEvent(QKeyEvent *e) {
     if (m_canvas->eyedropperActive()) {           // eyedropper swallows keys; Esc cancels
         if (e->key() == Qt::Key_Escape) m_canvas->cancelEyedropper();
@@ -1830,7 +1890,12 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_Z: if (e->modifiers() & Qt::ControlModifier) {
                             (e->modifiers() & Qt::ShiftModifier) ? doRedo() : doUndo();
                         } break;
-        case Qt::Key_C: if (e->modifiers() & Qt::ControlModifier) copy(); break;
+        case Qt::Key_C:
+            if (e->modifiers() & Qt::ControlModifier) {
+                if (isVideo() && e->modifiers().testFlag(Qt::ShiftModifier)) copyVideoFrame();
+                else copy();
+            }
+            break;
         case Qt::Key_D: if (e->modifiers() & Qt::ControlModifier)
                             m_tools->duplicateSelection(QPointF(8,8));
                         else QWidget::keyPressEvent(e);

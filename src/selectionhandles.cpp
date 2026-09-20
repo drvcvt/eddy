@@ -209,6 +209,10 @@ SelectionHandles::SelectionHandles(QGraphicsScene *scene, QUndoStack *undo, QObj
     connect(scene, &QGraphicsScene::changed, this, &SelectionHandles::reposition);
 }
 
+void SelectionHandles::setVisible(bool visible) {
+    for (auto *handle : m_handles) handle->setVisible(visible);
+}
+
 int SelectionHandles::handleCount() const { return m_handles.size(); }
 
 QPointF SelectionHandles::handleScenePos(int i) const {

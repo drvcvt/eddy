@@ -1,11 +1,27 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include <QToolButton>
+#include <QMenu>
 #include "toolbar.h"
 using namespace eddy;
 class TestToolbar : public QObject {
     Q_OBJECT
 private slots:
+    void frameCopyHasSeparateActionAndKeepsNormalCopy() {
+        Toolbar toolbar;
+        toolbar.enableVideoFrameCopy();
+        auto *copy = toolbar.findChild<QToolButton *>("Copy");
+        QSignalSpy video(&toolbar, &Toolbar::copyRequested);
+        QSignalSpy frame(&toolbar, &Toolbar::copyFrameRequested);
+        copy->click();
+        QCOMPARE(video.count(), 1);
+        QCOMPARE(frame.count(), 0);
+        auto *action = toolbar.findChild<QAction *>("CopyVideoFrame");
+        QVERIFY(action);
+        action->trigger();
+        QCOMPARE(frame.count(), 1);
+        QCOMPARE(video.count(), 1);
+    }
     void emitsToolChosen() {
         Toolbar tb;
         QSignalSpy spy(&tb, &Toolbar::toolChosen);

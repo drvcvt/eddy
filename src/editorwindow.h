@@ -36,6 +36,7 @@ public:
 public slots:
     void save();   // to file/save-dir per cli/config
     void copy();   // to clipboard
+    void copyVideoFrame();
     void sendToShelf();
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
@@ -132,6 +133,8 @@ private:
     bool m_timelineActive = false;
     bool m_seekSettling = false;
     bool m_resumeAfterSeek = false;
+    bool m_hasVideoFrame = false;
+    bool m_copyFramePending = false;
     QLabel *m_tooltip = nullptr;
     QTimer *m_tooltipTimer = nullptr;
     QPointer<QWidget> m_tooltipOwner;

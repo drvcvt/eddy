@@ -12,8 +12,27 @@
 #include <QApplication>
 #include <QColorDialog>
 #include <QTimer>
+#include <QMenu>
 
 namespace eddy {
+
+void Toolbar::enableVideoFrameCopy() {
+    auto *copy = findChild<QToolButton *>(QStringLiteral("Copy"));
+    if (!copy || copy->menu()) return;
+    auto *menu = new QMenu(copy);
+    auto *video = menu->addAction(tr("Copy video"));
+    video->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_C));
+    connect(video, &QAction::triggered, this, &Toolbar::copyRequested);
+    auto *frame = menu->addAction(tr("Copy frame"));
+    frame->setObjectName(QStringLiteral("CopyVideoFrame"));
+    frame->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C));
+    connect(frame, &QAction::triggered, this, &Toolbar::copyFrameRequested);
+    copy->setMenu(menu);
+    copy->setPopupMode(QToolButton::DelayedPopup);
+    copy->setFocusPolicy(Qt::StrongFocus);
+    copy->setToolTip(tr("Copy video · Ctrl+C\nCopy frame · Ctrl+Shift+C · hold for menu"));
+    copy->setAccessibleName(tr("Copy video; hold or press Alt+Down for frame copy"));
+}
 
 static QToolButton *mkBtn(bool checkable, bool square) {
     auto *b = new QToolButton;
