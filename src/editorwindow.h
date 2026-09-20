@@ -39,12 +39,9 @@ protected:
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
-    void resizeEvent(QResizeEvent *e) override;
-    void mouseMoveEvent(QMouseEvent *e) override;
     void closeEvent(QCloseEvent *e) override;
 private:
     bool isVideo() const { return m_media.kind == MediaKind::Video; }
-    void updateCompactMode();
     void refreshRedactBar();              // selection changed -> show/sync/position or hide
     void positionRedactBar();             // re-anchor over the selected redact
     void refreshTextBar();
@@ -92,7 +89,6 @@ private:
     void toggleTheme();
     MediaDocument m_media;
     QImage m_bg; Config m_cfg; CliOptions m_cli; bool m_shown = false;
-    bool m_compact = false;
     QGraphicsScene *m_scene; QUndoStack *m_undo;
     ToolController *m_tools; Canvas *m_canvas; Toolbar *m_toolbar;
     QGraphicsItem *m_backgroundItem = nullptr;

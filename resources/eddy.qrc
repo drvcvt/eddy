@@ -1,6 +1,8 @@
 <RCC>
   <qresource prefix="/">
     <file>eddy.qss</file>
+    <file>icons/undo.svg</file>
+    <file>icons/redo.svg</file>
     <file>icons/move.svg</file>
     <file>icons/arrow.svg</file>
     <file>icons/pen.svg</file>

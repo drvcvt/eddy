@@ -10,12 +10,12 @@ enum class ThemeMode { System, Dark, Light };
 
 namespace theme {
 
-// Approved mt-ui-style dark tokens. Annotation colours remain independent.
-inline constexpr const char *kAccent          = "#ECECEC";
-inline constexpr const char *kBar             = "#1A1A1A";
-inline constexpr const char *kCanvas          = "#121212";
-inline constexpr const char *kIconRest        = "#969696";
-inline constexpr const char *kIconActive      = "#121212";
+// Vis grayscale tokens. Annotation colours remain independent.
+inline constexpr const char *kAccent          = "#414141";
+inline constexpr const char *kBar             = "#202020";
+inline constexpr const char *kCanvas          = "#181818";
+inline constexpr const char *kIconRest        = "#999999";
+inline constexpr const char *kIconActive      = "#EEEEEE";
 inline constexpr const char *kStroke          = "#ff3b30";
 
 // A fully dark palette so native widgets (colour dialog, text caret/selection,

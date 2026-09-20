@@ -10,10 +10,10 @@ class TestTheme : public QObject {
 private slots:
     void paletteIsDark() {
         QPalette p = theme::darkPalette();
-        QCOMPARE(p.color(QPalette::Window), QColor("#121212"));
-        QCOMPARE(p.color(QPalette::Base), QColor("#1A1A1A"));
-        QCOMPARE(p.color(QPalette::WindowText), QColor("#ECECEC"));
-        QCOMPARE(p.color(QPalette::PlaceholderText), QColor("#5C5C5C"));
+        QCOMPARE(p.color(QPalette::Window), QColor("#181818"));
+        QCOMPARE(p.color(QPalette::Base), QColor("#202020"));
+        QCOMPARE(p.color(QPalette::WindowText), QColor("#EEEEEE"));
+        QCOMPARE(p.color(QPalette::PlaceholderText), QColor("#999999"));
         QCOMPARE(p.color(QPalette::Highlight), QColor(theme::kAccent));
     }
     void tintedIconRecolours() {
@@ -38,7 +38,7 @@ private slots:
         QPalette light;
         light.setColor(QPalette::Window, QColor("#fafafa"));
         QPalette dark;
-        dark.setColor(QPalette::Window, QColor("#121212"));
+        dark.setColor(QPalette::Window, QColor("#181818"));
         QVERIFY(!theme::resolveDark(ThemeMode::System, light));
         QVERIFY(theme::resolveDark(ThemeMode::System, dark));
         QVERIFY(theme::resolveDark(ThemeMode::Dark, light));
@@ -51,14 +51,13 @@ private slots:
         QVERIFY(!light.isEmpty());
         QVERIFY(!dark.contains(QStringLiteral("@bg")));
         QVERIFY(!light.contains(QStringLiteral("@bg")));
-        QVERIFY(dark.contains(QStringLiteral("#121212")));
+        QVERIFY(dark.contains(QStringLiteral("#181818")));
         QVERIFY(light.contains(QStringLiteral("#FAFAFA")));
         QVERIFY(dark.contains(QStringLiteral("QToolTip")));
         QVERIFY(light.contains(QStringLiteral("QToolTip")));
-        QVERIFY(dark.contains(QStringLiteral("QLabel#TrimInTime")));
-        QVERIFY(dark.contains(QStringLiteral("QLabel#TrimOutTime")));
+        QVERIFY(dark.contains(QStringLiteral("QWidget#PlaybackBar QLabel")));
         QVERIFY(!dark.contains(QStringLiteral("Z003")));
-        QVERIFY(dark.contains(QStringLiteral("font-family: \"Geist\"")));
+        QVERIFY(dark.contains(QStringLiteral("font-family: \"Noto Sans\"")));
     }
 };
 QTEST_MAIN(TestTheme)

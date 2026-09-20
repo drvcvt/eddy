@@ -26,7 +26,21 @@ Takes an image or video from a file (images also support stdin), lets you annota
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
 
-The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no letter labels.
+The interface uses Vis-style grayscale surfaces, Noto Sans typography, rounded
+controls, and grouped monochrome tool icons with tooltips (tool name + hotkey).
+Tools sit to the left of the canvas without a surrounding panel. The flat top bar
+holds undo/redo, stroke controls and output actions, with compact 6px state fills
+matching Vis. **Fit** and the live zoom percentage (click for 100%) sit at the
+bottom left; **Drag out** stays centered at the bottom. The footer uses MonoLisa
+with a monospace fallback. The window title includes
+the filename and dimensions.
+The labeled **To shelf** action uses a card-plus icon; Save and Drag out have
+distinct disk and grip icons. Dark and light themes are available from the toolbar.
+
+Video uses a full-width filmstrip above one compact transport row. Drag the muted
+end grips to trim, click the strip to seek, or use **In / Out** (`I` / `O`) to set
+the range at the playhead. Excluded frames fade into the background; precise trim
+times, playback and volume sit below the strip. **Drag out** remains at the bottom.
 
 **Toolbar controls:**
 
@@ -34,11 +48,9 @@ The toolbar shows **tool icons with tooltips** (tool name + hotkey) — no lette
 |---------|-------------|
 | ↶ / ↷ | Undo / Redo buttons (same as `Ctrl+Z` / `Ctrl+Shift+Z`) |
 | **S / M / L** | Line-width chooser: 2 px / 4 px / 8 px stroke |
-| Colour swatch | Opens a **colour popover** with preset swatches and a *Custom…* entry that opens the full colour dialog |
+| Colour swatch | Opens a **colour popover** with the current hex value, marked presets, **More colours…** and **Pick from image** |
 | Dark / Light | Switches theme immediately and remembers the choice |
 | Shelf button | Sends the current edited image to the Boltsnap shelf as a new card |
-
-If the window is made very short, the toolbar **auto-hides** and reappears when the cursor moves to the top edge, keeping the image at full height.
 
 With the **Move tool**, selecting a shape (Rectangle, Ellipse, Highlight, Redact, Spotlight) shows **8 drag handles** to resize it. Selecting an Arrow shows **2 endpoint handles**. Text shows one width handle for wrapping; Pen is move-only.
 
@@ -69,7 +81,7 @@ it does not track moving text.
 | Arrow keys / `Shift`+Arrow keys | Move the selection by 1 px / 10 px |
 | `Ctrl+D` / `Alt`-drag | Duplicate the selection |
 | `Enter` while editing text | Insert a new line |
-| `Ctrl+Enter` while editing text | Commit the text edit |
+| `Ctrl+Enter` while editing text | Commit the text edit, clear its selection and return focus to the canvas |
 | `Esc` while editing text | Revert the edit; a new untouched text box is removed |
 | `Delete` / `Backspace` | Remove the selection (one undo step) |
 | `Enter` | Save (replace source card, use explicit/configured output, or return to shelf) |
@@ -145,6 +157,21 @@ boltsnap area --no-copy -o - | eddy -f -
 ## Install
 
 On Linux, build from source with the Qt packages supplied by your distribution.
+
+The CMake install also includes a desktop entry and icon. For a per-user install
+after building, with `~/.local/bin` on `PATH`:
+
+```sh
+cmake --install build-rel --prefix "$HOME/.local"
+update-desktop-database "$HOME/.local/share/applications"
+xdg-mime default eddy.desktop image/png video/mp4 video/webm video/x-matroska video/quicktime video/x-msvideo
+```
+
+This makes Eddy the desktop default for PNG images and common video formats,
+including clicks on Boltsnap shelf cards. Check it with
+`xdg-mime query default image/png` or `xdg-mime query default video/mp4`. Boltsnap opens
+these through `xdg-open` without a card ID, so the default Save action returns a
+new shelf card.
 
 There are no official Windows releases. CI publishes experimental, untested
 portable preview artifacts for contributors; Windows support is best-effort

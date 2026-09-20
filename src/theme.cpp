@@ -1,5 +1,6 @@
 #include "theme.h"
 #include <QDebug>
+#include <QApplication>
 #include <QPainter>
 #include <QPixmap>
 #include <QSvgRenderer>
@@ -19,12 +20,12 @@ QPalette darkPalette() {
 
 QPalette palette(bool dark) {
     QPalette p;
-    const QColor bg(dark ? "#121212" : "#FAFAFA");
-    const QColor base(dark ? "#1A1A1A" : "#F1F1F1");
-    const QColor text(dark ? "#ECECEC" : "#1A1A1A");
-    const QColor disabled(dark ? "#5C5C5C" : "#A0A0A0");
-    const QColor highlight(dark ? "#ECECEC" : "#1A1A1A");
-    const QColor highlightedText(dark ? "#1A1A1A" : "#FAFAFA");
+    const QColor bg(dark ? "#181818" : "#FAFAFA");
+    const QColor base(dark ? "#202020" : "#F1F1F1");
+    const QColor text(dark ? "#EEEEEE" : "#1A1A1A");
+    const QColor disabled(dark ? "#5C5C5C" : "#A6A6A6");
+    const QColor highlight(dark ? "#414141" : "#1A1A1A");
+    const QColor highlightedText(dark ? "#EEEEEE" : "#FAFAFA");
     p.setColor(QPalette::Window, bg);
     p.setColor(QPalette::WindowText, text);
     p.setColor(QPalette::Base, base);
@@ -36,7 +37,8 @@ QPalette palette(bool dark) {
     p.setColor(QPalette::ToolTipText, text);
     p.setColor(QPalette::Highlight, highlight);
     p.setColor(QPalette::HighlightedText, highlightedText);
-    p.setColor(QPalette::PlaceholderText, disabled);
+    p.setColor(QPalette::PlaceholderText, QColor(dark ? "#999999" : "#6E6E6E"));
+    p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
     p.setColor(QPalette::Disabled, QPalette::Text, disabled);
     p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
     return p;
@@ -52,17 +54,20 @@ QString styleSheet(bool dark) {
     QFile file(QStringLiteral(":/eddy.qss"));
     if (!file.open(QIODevice::ReadOnly)) return {};
     QString qss = QString::fromUtf8(file.readAll());
+    // Vis bar states use translucent ink; popup surfaces keep opaque tokens.
     const QList<QPair<QString, QString>> tokens = dark
         ? QList<QPair<QString, QString>>{
-            {"@chip-on-fg", "#121212"}, {"@chip-on", "#ECECEC"},
-            {"@raise3", "#2B2B2B"}, {"@raise2", "#222222"},
-            {"@raise1", "#1A1A1A"}, {"@faint", "#5C5C5C"},
-            {"@sub", "#969696"}, {"@fg", "#ECECEC"}, {"@bg", "#121212"}}
+            {"@bar-active", "rgba(255, 255, 255, 38)"}, {"@bar-hover", "rgba(255, 255, 255, 24)"},
+            {"@bar", "rgba(0, 0, 0, 153)"}, {"@chip-on-fg", "#EEEEEE"}, {"@chip-on", "#414141"},
+            {"@raise3", "#414141"}, {"@raise2", "#353535"},
+            {"@raise1", "#202020"}, {"@faint", "#5C5C5C"},
+            {"@sub", "#999999"}, {"@fg", "#EEEEEE"}, {"@bg", "#181818"}}
         : QList<QPair<QString, QString>>{
-            {"@chip-on-fg", "#FAFAFA"}, {"@chip-on", "#1A1A1A"},
-            {"@raise3", "#DEDEDE"}, {"@raise2", "#E8E8E8"},
-            {"@raise1", "#F1F1F1"}, {"@faint", "#A0A0A0"},
-            {"@sub", "#666666"}, {"@fg", "#1A1A1A"}, {"@bg", "#FAFAFA"}};
+            {"@bar-active", "rgba(0, 0, 0, 24)"}, {"@bar-hover", "rgba(0, 0, 0, 14)"},
+            {"@bar", "#F1F1F1"}, {"@chip-on-fg", "#FAFAFA"}, {"@chip-on", "#1A1A1A"},
+            {"@raise3", "#E0E0E0"}, {"@raise2", "#E9E9E9"},
+            {"@raise1", "#F1F1F1"}, {"@faint", "#A6A6A6"},
+            {"@sub", "#6E6E6E"}, {"@fg", "#1A1A1A"}, {"@bg", "#FAFAFA"}};
     for (const auto &[token, color] : tokens) qss.replace(token, color);
     return qss;
 }
@@ -91,7 +96,11 @@ QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &activ
     QIcon icon;
     icon.addPixmap(restPm,   QIcon::Normal,   QIcon::Off);
     icon.addPixmap(activePm, QIcon::Normal,   QIcon::On);
-    icon.addPixmap(activePm, QIcon::Active,   QIcon::Off);
+    icon.addPixmap(render(QApplication::palette().color(QPalette::WindowText)),
+                   QIcon::Active, QIcon::Off);
+    icon.addPixmap(activePm, QIcon::Active, QIcon::On);
+    icon.addPixmap(render(QApplication::palette().color(QPalette::Disabled, QPalette::ButtonText)),
+                   QIcon::Disabled, QIcon::Off);
     icon.addPixmap(activePm, QIcon::Selected, QIcon::On);
     return icon;
 }
