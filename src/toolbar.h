@@ -9,6 +9,7 @@ class Toolbar : public QWidget {
 public:
     explicit Toolbar(QWidget *parent=nullptr);
     QWidget *toolRail() const { return m_toolRail; }
+    void enableVideoFrameCopy();
 public slots:
     void syncTool(ToolType t);            // reflect external (keyboard) tool change
     void setUndoEnabled(bool on);
@@ -20,6 +21,7 @@ signals:
     void colorChosen(const QColor &c);
     void saveRequested();
     void copyRequested();
+    void copyFrameRequested();
     void sendToShelfRequested();
     void widthChosen(double w);
     void undoRequested();

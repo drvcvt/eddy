@@ -4,8 +4,30 @@
 #include <QMimeDatabase>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QRegularExpression>
+#include <limits>
 
 namespace eddy {
+
+bool parseVideoTime(const QString &text, qint64 *milliseconds) {
+    static const QRegularExpression syntax(QStringLiteral("^[0-9]+(?::[0-9]{1,2}){0,2}(?:\\.[0-9]{1,3})?$"));
+    const QString value = text.trimmed();
+    if (!milliseconds || !syntax.match(value).hasMatch()) return false;
+    const auto decimal = value.split('.');
+    const auto parts = decimal[0].split(':');
+    qint64 seconds = 0;
+    constexpr qint64 limit = std::numeric_limits<qint64>::max() / 1000 - 1;
+    for (int i = 0; i < parts.size(); ++i) {
+        bool ok = false;
+        const qint64 part = parts[i].toLongLong(&ok);
+        if (!ok || (i > 0 && part >= 60) || part > limit || seconds > (limit - part) / 60)
+            return false;
+        seconds = seconds * 60 + part;
+    }
+    *milliseconds = seconds * 1000 + (decimal.size() == 2
+        ? decimal[1].leftJustified(3, QLatin1Char('0')).toInt() : 0);
+    return true;
+}
 
 QSize MediaDocument::nativeSize() const {
     return kind == MediaKind::Video ? video.size : image.size();
