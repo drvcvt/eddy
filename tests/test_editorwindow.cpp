@@ -776,7 +776,11 @@ private slots:
         window.copyVideoFrame();
         QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("waiting"));
         timeline->interactionFinished(false);
-        QTRY_VERIFY_WITH_TIMEOUT(!QApplication::clipboard()->image().isNull(), 3000);
+        QTRY_VERIFY2_WITH_TIMEOUT(!QApplication::clipboard()->image().isNull(), qPrintable(
+            QStringLiteral("seek position=%1 frame=%2..%3 state=%4 toast=%5")
+                .arg(player->position()).arg(video->videoSink()->videoFrame().startTime())
+                .arg(video->videoSink()->videoFrame().endTime()).arg(player->playbackState())
+                .arg(window.findChild<Toast *>()->text())), 3000);
         const QColor copied = QApplication::clipboard()->image().pixelColor(48, 32);
         QVERIFY2(copied.blue() > 200 && copied.red() < 40, "Copied the stale red frame after a seek");
         QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
