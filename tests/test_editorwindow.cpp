@@ -767,6 +767,11 @@ private slots:
         auto *play = window.findChild<QToolButton *>("PlaybackPlay");
         auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
         QTRY_VERIFY(player->isSeekable());
+        qint64 frameOrigin = video->videoSink()->videoFrame().startTime() < 0 ? -1
+            : video->videoSink()->videoFrame().startTime() / 1000;
+        connect(video->videoSink(), &QVideoSink::videoFrameChanged, &window, [&](const QVideoFrame &frame) {
+            if (frameOrigin < 0 && frame.startTime() >= 0) frameOrigin = frame.startTime() / 1000;
+        });
         play->click();
         QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
         timeline->interactionStarted(false);
@@ -777,10 +782,10 @@ private slots:
         QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("waiting"));
         timeline->interactionFinished(false);
         QTRY_VERIFY2_WITH_TIMEOUT(!QApplication::clipboard()->image().isNull(), qPrintable(
-            QStringLiteral("seek position=%1 frame=%2..%3 state=%4 toast=%5")
+            QStringLiteral("seek position=%1 frame=%2..%3 state=%4 toast=%5 origin=%6")
                 .arg(player->position()).arg(video->videoSink()->videoFrame().startTime())
                 .arg(video->videoSink()->videoFrame().endTime()).arg(player->playbackState())
-                .arg(window.findChild<Toast *>()->text())), 3000);
+                .arg(window.findChild<Toast *>()->text()).arg(frameOrigin)), 3000);
         const QColor copied = QApplication::clipboard()->image().pixelColor(48, 32);
         QVERIFY2(copied.blue() > 200 && copied.red() < 40, "Copied the stale red frame after a seek");
         QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
@@ -793,14 +798,14 @@ private slots:
         };
         setTime("TrimInTime", "0.400");
         setTime("TrimOutTime", "0.960");
-        QTRY_VERIFY(qAbs(video->videoSink()->videoFrame().startTime() / 1000 - 400) <= 40);
+        QTRY_VERIFY(qAbs(video->videoSink()->videoFrame().startTime() / 1000 - frameOrigin - 400) <= 40);
         auto *loop = window.findChild<QToolButton *>("PlaybackLoop");
         loop->click();
         auto *speed = window.findChild<QToolButton *>("PlaybackSpeed");
         for (auto *action : speed->menu()->actions())
             if (action->data().toDouble() == 2.0) action->trigger();
         int wraps = 0;
-        qint64 previous = 400;
+        qint64 previous = 400 + frameOrigin;
         connect(video->videoSink(), &QVideoSink::videoFrameChanged, &window, [&](const QVideoFrame &frame) {
             const qint64 time = frame.startTime() / 1000;
             if (frame.isValid() && time >= 0) {
@@ -813,7 +818,8 @@ private slots:
         QCOMPARE(player->playbackRate(), 2.0);
         loop->click();
         QTRY_COMPARE_WITH_TIMEOUT(player->playbackState(), QMediaPlayer::PausedState, 3000);
-        QTRY_COMPARE_WITH_TIMEOUT(video->videoSink()->videoFrame().startTime() / 1000, qint64(920), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(video->videoSink()->videoFrame().startTime() / 1000
+                                      - frameOrigin - 920) <= 1, 3000);
         QCOMPARE(window.findChild<QUndoStack *>()->count(), 2);
 
         window.findChild<QToolButton *>("TrimReset")->click();
@@ -823,7 +829,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(wraps >= 1, 5000); // Backend end-of-media also loops.
         loop->click();
         QTRY_VERIFY_WITH_TIMEOUT(player->playbackState() != QMediaPlayer::PlayingState, 5000);
-        QTRY_VERIFY_WITH_TIMEOUT(video->videoSink()->videoFrame().startTime() / 1000 >= 2960, 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(video->videoSink()->videoFrame().startTime() / 1000 - frameOrigin >= 2960, 3000);
     }
     void videoFrameCopyKeepsRedactionSpotlightAndTextFocus() {
         MediaDocument doc; doc.kind = MediaKind::Video;

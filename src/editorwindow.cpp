@@ -1035,9 +1035,16 @@ void EditorWindow::ensureVideoPlayer() {
                 image = presented;
             }
             m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            // GStreamer's buffer PTS may include a stream offset (e.g. H.264
+            // reordering delay), while QMediaPlayer positions start at zero.
+            // Anchor only the first frame presented at source position zero;
+            // never infer an origin from a pending seek or an arbitrary frame.
+            if (!m_hasVideoFrame && !m_seekSettling && m_player->position() == 0
+                && frame.startTime() >= 0)
+                m_frameTimeOrigin = frame.startTime() / 1000;
             m_hasVideoFrame = true;
-            m_presentedStart = frame.startTime() < 0 ? -1 : frame.startTime() / 1000;
-            m_presentedEnd = frame.endTime() < 0 ? -1 : frame.endTime() / 1000;
+            m_presentedStart = frame.startTime() < 0 ? -1 : frame.startTime() / 1000 - m_frameTimeOrigin;
+            m_presentedEnd = frame.endTime() < 0 ? -1 : frame.endTime() / 1000 - m_frameTimeOrigin;
             if (!m_timelineActive && !m_seekSettling && m_presentedStart >= 0
                 && m_player->playbackState() == QMediaPlayer::PlayingState)
                 m_timeline->setPosition(m_presentedStart);
