@@ -54,16 +54,19 @@ QWidget#ColorPopover {
 QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar {
     background-color: @raise1;
     border: none;
-    border-radius: 14px;
+    /* 30px tall now, so 14 would round these off into a stadium. */
+    border-radius: 12px;
 }
 QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar QToolButton {
     color: @sub;
     padding: 0 8px;
-    border-radius: 9px;
+    border-radius: 8px;
     font-family: "Noto Sans", sans-serif;
     font-size: 11px;
     font-weight: 500;
 }
+/* The text bar holds icons, not words: padding would clip the wider glyphs. */
+QWidget#TextBar QToolButton { padding: 0; }
 QWidget#RedactBar QToolButton:hover, QWidget#TextBar QToolButton:hover, QWidget#SpotlightBar QToolButton:hover { background-color: @raise2; color: @fg; }
 QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked { background-color: @raise3; color: @fg; }
 
