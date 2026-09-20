@@ -43,6 +43,7 @@
 #include <QSettings>
 #include <QApplication>
 #include <QHelpEvent>
+#include <QLineEdit>
 #include <QUndoStack>
 #include <cstring>
 #ifndef Q_OS_WIN
@@ -765,8 +766,8 @@ private slots:
         EditorWindow w(doc, cfg, cli);
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *undo = w.findChild<QUndoStack *>();
-        auto *inTime = w.findChild<QLabel *>(QStringLiteral("TrimInTime"));
-        auto *outTime = w.findChild<QLabel *>(QStringLiteral("TrimOutTime"));
+        auto *inTime = w.findChild<QLineEdit *>(QStringLiteral("TrimInTime"));
+        auto *outTime = w.findChild<QLineEdit *>(QStringLiteral("TrimOutTime"));
         QVERIFY(timeline && undo && inTime && outTime);
         QCOMPARE(inTime->text(), QStringLiteral("0:00.000"));
         QCOMPARE(outTime->text(), QStringLiteral("0:12.500"));
@@ -783,6 +784,33 @@ private slots:
         undo->redo();
         QCOMPARE(timeline->trimIn(), 1234);
         QCOMPARE(inTime->text(), QStringLiteral("0:01.234"));
+    }
+    void trimTimeEditingCommitsOnceAndEscapeDoesNotClose() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-editorwindow-test.mp4");
+        doc.video = {QSize(64, 48), 10000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        auto *field = window.findChild<QLineEdit *>("TrimInTime");
+        auto *timeline = window.findChild<VideoTimeline *>();
+        auto *undo = window.findChild<QUndoStack *>();
+        QVERIFY(field && timeline && undo);
+        field->selectAll(); QTest::keyClicks(field, "1.250");
+        QTest::keyClick(field, Qt::Key_Return);
+        QCOMPARE(timeline->trimIn(), 1250);
+        QCOMPARE(undo->count(), 1);
+        QCOMPARE(field->text(), QStringLiteral("0:01.250"));
+        field->selectAll(); QTest::keyClicks(field, "9:99");
+        QTest::keyClick(field, Qt::Key_Return);
+        QCOMPARE(timeline->trimIn(), 1250);
+        QCOMPARE(undo->count(), 1);
+        field->selectAll(); QTest::keyClicks(field, "2");
+        QTest::keyClick(field, Qt::Key_Escape);
+        QCOMPARE(field->text(), QStringLiteral("0:01.250"));
+        QCOMPARE(undo->count(), 1);
+        QCOMPARE(window.findChild<QLabel *>("TrimDuration")->text(), QStringLiteral("· 0:08.750"));
+        undo->undo();
+        QCOMPARE(timeline->trimIn(), 0);
     }
     void failedRequestedVideoExportIsVisible() {
         MediaDocument doc;

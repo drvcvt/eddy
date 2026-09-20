@@ -98,6 +98,17 @@ QWidget#PlaybackBar QLabel {
     font-weight: 400;
 }
 QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
+QWidget#PlaybackBar QLineEdit {
+    background: transparent;
+    color: @sub;
+    border: none;
+    border-radius: 5px;
+    padding: 0 4px;
+    font-family: "MonoLisa", monospace;
+    font-size: 11px;
+}
+QWidget#PlaybackBar QLineEdit:hover { background: @bar-hover; }
+QWidget#PlaybackBar QLineEdit:focus { background: @bar-active; color: @fg; }
 QWidget#PlaybackBar QSlider::groove:horizontal {
     height: 3px;
     background: @bar-active;

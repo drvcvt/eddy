@@ -46,6 +46,7 @@ struct ContactSheetResult {
 
 bool pathLooksLikeVideo(const QString &path);
 QString mediaMimeTypeForPath(const QString &path);
+bool parseVideoTime(const QString &text, qint64 *milliseconds);
 ProbeVideoResult probeVideoFile(const QString &path);
 LoadMediaResult loadMediaInput(const InputSpec &spec);
 ContactSheetResult generateVideoContactSheet(const QString &path, qint64 durationMs,
