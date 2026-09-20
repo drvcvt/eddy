@@ -85,6 +85,15 @@ void VideoTimeline::setThumbnail(qint64 timeMs, const QImage &image) {
     }
 }
 
+QImage VideoTimeline::thumbnailNear(qint64 time, qint64 *sampleTime) const {
+    auto nearest = m_thumbnails.cend();
+    for (auto it = m_thumbnails.cbegin(); it != m_thumbnails.cend(); ++it)
+        if (nearest == m_thumbnails.cend() || qAbs(it.key() - time) < qAbs(nearest.key() - time)) nearest = it;
+    if (nearest == m_thumbnails.cend()) return {};
+    if (sampleTime) *sampleTime = nearest.key();
+    return nearest.value();
+}
+
 void VideoTimeline::setContactSheet(const QImage &image, int frameCount) {
     m_contactSheet = image;
     m_contactSheetFrames = image.isNull() ? 0 : qMax(1, frameCount);
@@ -237,8 +246,8 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton || m_duration <= 0) return;
     setFocus(Qt::MouseFocusReason);
     const qreal x = event->position().x();
-    const qreal inDistance = qAbs(x - xForTime(m_in));
-    const qreal outDistance = qAbs(x - xForTime(m_out));
+    const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_in));
+    const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_out));
     if (qMin(inDistance, outDistance) <= 11)
         m_drag = inDistance <= outDistance ? Drag::In : Drag::Out;
     else
@@ -256,8 +265,8 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
 void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
     if (m_drag == Drag::None) {
         const qreal x = event->position().x();
-        const qreal inDistance = qAbs(x - xForTime(m_in));
-        const qreal outDistance = qAbs(x - xForTime(m_out));
+        const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_in));
+        const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_out));
         const Drag hover = m_duration > 0 && qMin(inDistance, outDistance) <= 11
             ? (inDistance <= outDistance ? Drag::In : Drag::Out) : Drag::None;
         if (hover != m_hover) {

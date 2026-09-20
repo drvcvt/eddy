@@ -5,7 +5,9 @@ Date: 2026-09-21. Baseline: `e39f646` on `agent/current-eddy-release`.
 The user wants the whole video workflow to feel more considered and has accepted
 orientation improvements, precise trimming, interaction polish, loop/rate controls,
 and copying an annotated frame. Space for play/pause is an explicit priority.
-This document plans the implementation; the features are not implemented yet.
+This plan was recorded before implementation. The execution record in section 6
+reports the delivered behavior and actual verification; the design and validation
+list below preserves the original intended coverage.
 The baseline built successfully and passed all 24 CTest targets on 2026-09-20.
 
 ## 1. Product contract
@@ -232,15 +234,15 @@ co-author trailers. No subagents are part of this plan.
 Files: `src/editorwindow.{h,cpp}`, `src/canvas.{h,cpp}`,
 `tests/test_editorwindow.cpp`, `tests/test_canvas.cpp`, `README.md`.
 
-- [ ] Introduce a shared playback-toggle method used by button, K and Space.
-- [ ] Implement tap-versus-pan arbitration and scoped focus/input handling.
-- [ ] Cover held/repeated Space, release after pan, Escape, focus loss, text entry,
+- Introduce a shared playback-toggle method used by button, K and Space.
+- Implement tap-versus-pan arbitration and scoped focus/input handling.
+- Cover held/repeated Space, release after pan, Escape, focus loss, text entry,
   image mode, focused controls, and toggling while the source is still loading.
-- [ ] Verify normal playback/pause with a real generated clip, not just a button spy.
-- [ ] Restore middle-button and Space-drag camera panning even at Fit or when the
+- Verify normal playback/pause with a real generated clip, not just a button spy.
+- Restore middle-button and Space-drag camera panning even at Fit or when the
   image is smaller than the viewport. Extend only the view's navigation bounds;
   keep the document scene bounds, fit target and export dimensions unchanged.
-- [ ] Replace oversized native tooltip surfaces with compact editor-owned hints:
+- Replace oversized native tooltip surfaces with compact editor-owned hints:
   3 px vertical / 6 px horizontal padding, rounded 7 px corners, existing fonts
   and theme tokens. Keep hints pointer-transparent and within the editor on
   Wayland. Verify both themes visually and test dismissal/focus behavior.
@@ -252,14 +254,14 @@ These last two items were explicitly added by the user with a tooltip screenshot
 Files: `src/videotimeline.*`, `src/editorwindow.*`, `src/undocommands.*` only if
 necessary, `tests/test_videotimeline.cpp`, `tests/test_editorwindow.cpp`.
 
-- [ ] Add begin/finish/cancel state, handle grab offsets, Shift fine movement,
+- Add begin/finish/cancel state, handle grab offsets, Shift fine movement,
   final release coordinates and the coalesced player-seek path.
-- [ ] Separate draft from committed trim and protect drag ownership from backend
+- Separate draft from committed trim and protect drag ownership from backend
   feedback. Suspend pending background export during a draft; keep valid cache.
-- [ ] Add In/Out editors and selected duration using the existing undo command.
-- [ ] Test Shift transitions, grip no-op clicks, handle crossing, cancellation,
+- Add In/Out editors and selected duration using the existing undo command.
+- Test Shift transitions, grip no-op clicks, handle crossing, cancellation,
   stale feedback, final seek, playback resume policy and one undo per gesture.
-- [ ] Test invalid/pasted/long time values, Return/Escape/focus-out, duration
+- Test invalid/pasted/long time values, Return/Escape/focus-out, duration
   reconciliation, and no export work for draft changes or navigation.
 
 ### C. Timeline zoom, ruler and view navigation
@@ -267,11 +269,11 @@ necessary, `tests/test_videotimeline.cpp`, `tests/test_editorwindow.cpp`.
 Files: `src/videotimeline.*`, `src/editorwindow.cpp`,
 `tests/test_videotimeline.cpp`, `tests/test_editorwindow.cpp`.
 
-- [ ] Introduce visible range and central coordinate conversion for every hit
+- Introduce visible range and central coordinate conversion for every hit
   test, paint operation and pointer-time calculation.
-- [ ] Add anchored zoom, wheel/trackpad pan, Fit, scoped keyboard actions, edge
+- Add anchored zoom, wheel/trackpad pan, Fit, scoped keyboard actions, edge
   auto-pan and offscreen trim cues. Recompute ruler ticks from visible scale.
-- [ ] Test zoom anchoring, short/long/zero durations, view clamping, offscreen
+- Test zoom anchoring, short/long/zero durations, view clamping, offscreen
   handles, range-independent undo, resize, and canvas/timeline shortcut isolation.
 
 ### D. Adaptive thumbnails and hover/trim previews
@@ -280,14 +282,14 @@ Files: new `src/videopreviewprovider.{h,cpp}`, `src/mediaio.*`,
 `src/videotimeline.*`, `src/editorwindow.*`, `CMakeLists.txt`,
 new `tests/test_videopreviewprovider.cpp`, `tests/test_mediaio.cpp`.
 
-- [ ] Implement the single-process scheduler, bounded cache and generation checks.
-- [ ] Wire visible sample requests and a Wayland-safe preview child overlay.
-- [ ] Retire the UI's old one-off eight-frame worker once parity is covered;
+- Implement the single-process scheduler, bounded cache and generation checks.
+- Wire visible sample requests and a Wayland-safe preview child overlay.
+- Retire the UI's old one-off eight-frame worker once parity is covered;
   keep or simplify the media helper according to remaining callers.
-- [ ] With synthetic numbered/color frames, verify time-to-sample mapping,
+- With synthetic numbered/color frames, verify time-to-sample mapping,
   changing zoom, DPR and resize. Test latest-request priority, timeout, malformed
   output, cache eviction and closing with a request in flight using a fake process.
-- [ ] Check long-GOP playback and preview contention on a real local clip before
+- Check long-GOP playback and preview contention on a real local clip before
   tuning the initial 33 ms / 150 ms / 32 MiB budgets.
 
 ### E. Loop, preview rate and improved frame steps
@@ -295,25 +297,25 @@ new `tests/test_videopreviewprovider.cpp`, `tests/test_mediaio.cpp`.
 Files: `src/editorwindow.*`, `src/mediaio.*` only for necessary time helpers,
 `resources/icons/`, `resources/eddy.qrc`, `tests/test_editorwindow.cpp`.
 
-- [ ] Add loop and speed controls, and centralize Out/end-of-media handling.
-- [ ] Pause before J/L and compute steps from the absolute nominal frame index.
-- [ ] Test loop on/off at trimmed and full ends, very short ranges, range changes
+- Add loop and speed controls, and centralize Out/end-of-media handling.
+- Pause before J/L and compute steps from the absolute nominal frame index.
+- Test loop on/off at trimmed and full ends, very short ranges, range changes
   while looping, seeking outside selection and preservation of rate after resume.
-- [ ] Check rate choices against actual backend state. Guard any optional
+- Check rate choices against actual backend state. Guard any optional
   pitch-compensation API for Qt versions: CI includes Qt 6.8.3, while those APIs
   start at 6.10. See [Qt playback properties](https://doc.qt.io/qt-6/qmediaplayer.html#pitchCompensation-prop).
-- [ ] Assert loop/rate changes do not dirty export or alter audio in saved output.
+- Assert loop/rate changes do not dirty export or alter audio in saved output.
 
 ### F. Copy the annotated current frame
 
 Files: `src/editorwindow.*`, `src/toolbar.*`, `src/exporter.*` if needed,
 `tests/test_editorwindow.cpp`, `tests/test_toolbar.cpp`.
 
-- [ ] Add the separate output action and shortcut, including keyboard menu access.
-- [ ] Implement frozen-frame scene rendering and safe waiting for a final seek.
-- [ ] Pixel-test native-size output with text, Blur, OCR redaction and Spotlight;
+- Add the separate output action and shortcut, including keyboard menu access.
+- Implement frozen-frame scene rendering and safe waiting for a final seek.
+- Pixel-test native-size output with text, Blur, OCR redaction and Spotlight;
   assert no selection decorations, placeholder frame or stale-seek image.
-- [ ] Verify rotated input and restoration of selection/focus/playback. Keep
+- Verify rotated input and restoration of selection/focus/playback. Keep
   clipboard contents on failure and normal video Copy/Drag-out/Shelf unchanged.
 
 ### G. Visual feedback and responsive layout
@@ -321,24 +323,24 @@ Files: `src/editorwindow.*`, `src/toolbar.*`, `src/exporter.*` if needed,
 Files: `resources/eddy.qss`, `src/theme.*`, `src/videotimeline.*`,
 `src/editorwindow.*`, `tools/eddy_preview.cpp`, relevant widget/theme tests.
 
-- [ ] Finish wide/narrow transport layout, stable time widths and focus states.
-- [ ] Add hover/preview transitions respecting the animation setting; measure
+- Finish wide/narrow transport layout, stable time widths and focus states.
+- Add hover/preview transitions respecting the animation setting; measure
   whether timestamp updates alone suffice before adding playhead interpolation.
-- [ ] Integrate quiet preparing/ready/error feedback using existing export state.
-- [ ] Extend preview scenarios for hover, zoomed/trimmed views, focused time
+- Integrate quiet preparing/ready/error feedback using existing export state.
+- Extend preview scenarios for hover, zoomed/trimmed views, focused time
   fields, loading, loop/speed and narrow layout in both themes.
-- [ ] Inspect actual renders at 100% and high DPI. Check control reachability and
+- Inspect actual renders at 100% and high DPI. Check control reachability and
   text clipping; screenshot tests alone do not establish playback smoothness.
 
 ### H. Integrated acceptance and documentation
 
-- [ ] Update README controls, shortcuts and the preview-only meaning of speed.
-- [ ] Build and run the complete existing and new test suite once all slices pass.
-- [ ] Exercise real playback, repeated scrub/trim/undo, input focus, loop, rate,
+- Update README controls, shortcuts and the preview-only meaning of speed.
+- Build and run the complete existing and new test suite once all slices pass.
+- Exercise real playback, repeated scrub/trim/undo, input focus, loop, rate,
   hover while playing, frame copy after seek, and Copy/Save/Drag-out/Shelf delivery.
-- [ ] Check a short CFR clip, 29.97/59.94 fps, VFR screen recording, long-GOP clip,
+- Check a short CFR clip, 29.97/59.94 fps, VFR screen recording, long-GOP clip,
   4K input, portrait rotation, audio/no-audio, and a long clip at narrow width.
-- [ ] Verify requested output still corresponds to the final committed range and
+- Verify requested output still corresponds to the final committed range and
   annotations, with synchronized audio and no source mutation on failures.
 
 Focused commands use the current Release tree, for example:
@@ -405,3 +407,69 @@ Completion sequence:
    locally and remotely after verifying ancestry. Do not delete tool checkpoints.
 5. Report final main commit, CI/test result, clean worktree and branch/PR inventory.
    Any newly appeared unrelated branch is audited separately, never auto-merged.
+
+
+## 6. Execution record (2026-09-21)
+
+All four accepted feature groups and both screenshot follow-ups are implemented.
+Work was committed in the planned order A through F, followed by responsive
+layout, feedback, integrated fixes and documentation. No dependencies were added.
+
+| Slice | Delivered |
+| --- | --- |
+| A | Shared Space/K/button toggle, repeat/pan/focus arbitration, camera navigation bounds at Fit, compact rounded child tooltips |
+| B | Gesture begin/finish/cancel, coalesced seeks with final flush and decoded-frame acknowledgement, Shift fine trim, editable validated times, one undo per trim |
+| C | Independent timeline viewport, anchored zoom, wheel/keyboard/context-menu navigation, ruler, edge pan, offscreen grip cues |
+| D | One asynchronous decoder, latest hover priority, bounded 32 MiB image cache, adaptive filmstrip, coarse-to-exact child preview |
+| E | Selection/full-clip loop, preview-only rates, absolute nominal frame steps without accumulated 29.97 fps rounding |
+| F | Copy-frame menu and shortcut, final-seek waiting, frozen annotated rendering with blur/OCR/Spotlight and restored text focus |
+| G | Wide/narrow transport, speaker volume menu, stable time widths, optional 100 ms preview fade, quiet export status |
+| H | README updated, complete local build and 25/25 CTest targets passed; required Linux/Windows CI gates the normal PR merge |
+
+Implementation decisions:
+
+- Real decoded-frame timestamps drive the playhead, replacing coarse position
+  feedback while playing. No synthetic interpolation was added. Grip emphasis
+  changes immediately; only preview appearance fades when animations are enabled.
+- Latest-request keys and visible timestamp membership reject obsolete preview
+  results; a separate generation counter is unnecessary for the immutable source.
+- On this Qt FFmpeg backend, seeking exactly to a frame boundary returned the
+  preceding frame. Seeking 1 ms inside the requested boundary fixed the observed
+  failure; acknowledgement still checks the actual presented frame interval.
+- Full-file playback may finish in Qt's Stopped state; trimmed playback pauses.
+  Both retain the final included frame, and both end paths support looping.
+- Frame copying applies presentation rotation/mirroring and keeps letterboxing
+  inside the existing document canvas. It does not redefine encoded dimensions,
+  the export coordinate system, or support for unusual pixel aspect ratios.
+- The existing contact-sheet helper remains for its independent callers/tests;
+  the editor no longer starts its detached, whole-clip contact-sheet worker.
+
+Verification performed:
+
+- Release configure/build and all 25 CTest targets passed on Linux with Qt 6.11.1
+  and FFmpeg 8.1.2. Targeted checks additionally cover Space versus text/pan,
+  invalid/cancelled time edits, final-release trim, offscreen grip hit tests,
+  cache reuse/latest hover, loop/rate undo isolation, and layout at 520 px with
+  ten-hour timestamps.
+- A real red/blue H.264 clip tests pause/scrub/resume, queued frame copy after
+  seeking across a GOP, 2x short-selection looping, stopping at exclusive Out,
+  full-file looping and the final decoded frame. Redaction pixel tests include
+  a checkerboard blur, OCR blackening, Spotlight and active text focus.
+- Actual editor renders were inspected in dark/light, wide/narrow, and 2x DPI,
+  including hover over a zoomed timeline. Compact tooltip renders were checked
+  in both themes. Preview process and image bounds were reviewed in code.
+- Generated playback smoke clips: 640x360 H.264/AAC at 30000/1001 fps with an
+  eight-second GOP; 3840x2160 at 60000/1001 fps; 10-to-30 fps VFR; and a MOV/MP4
+  display-matrix rotation of 90 degrees. The rotated frame copy was inspected.
+  These are decode/render checks, not a measured latency or dropped-frame claim.
+- Existing delivery/export tests cover final trim output, retained annotations,
+  audio, independent saves, clipboard lifetime and asynchronous shelf handoff.
+
+Validation limits: no human Windows/Wayland interaction session, subjective audio
+pitch check, real screen-recording corpus, or exhaustive fake-process timeout/
+cache-eviction fault matrix was performed. Failure paths retain time-only hover
+feedback or the existing clipboard; a two-second seek timeout prevents indefinite
+pending frame copy. VFR remains time-based, as specified in the product contract.
+
+Git cleanup follows section 5, using only the audited approved work. The PR and
+required CI results are the authoritative integration record.

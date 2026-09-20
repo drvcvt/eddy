@@ -13,6 +13,7 @@ class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; c
 class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel; class QLineEdit;
 class QTimer;
+class QPropertyAnimation;
 namespace eddy {
 class Canvas; class Toolbar; class ToolController; class SelectionHandles;
 class RedactBar; class Toast; class RedactOcrController; class RedactItem;
@@ -95,6 +96,7 @@ private:
     void scheduleContactSheetLoad();
     void hideVideoPreview();
     void showVideoPreview();
+    void setVideoPreviewImage(const QImage &image);
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();
     void doRedo();
@@ -119,10 +121,13 @@ private:
     QLabel *m_previewTime = nullptr;
     QTimer *m_previewTimer = nullptr;
     QTimer *m_stripTimer = nullptr;
+    QPropertyAnimation *m_previewFade = nullptr;
     qint64 m_hoverTime = -1;
+    qint64 m_previewSampleTime = -1;
     QPoint m_hoverPoint;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
+    QLabel *m_exportStatus = nullptr;
     QLineEdit *m_trimInLabel = nullptr;
     QLineEdit *m_trimOutLabel = nullptr;
     QLabel *m_trimDurationLabel = nullptr;
