@@ -89,6 +89,7 @@ private:
     void saveVideo();
     void ensureVideoPlayer();
     void togglePlayback();
+    void handlePlaybackEnd();
     void scheduleVideoLoad();
     void scheduleContactSheetLoad();
     void hideVideoPreview();
@@ -107,6 +108,9 @@ private:
     QGraphicsVideoItem *m_videoItem = nullptr;
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
+    QToolButton *m_loopButton = nullptr;
+    QToolButton *m_speedButton = nullptr;
+    bool m_loopSeeking = false;
     VideoTimeline *m_timeline = nullptr;
     VideoPreviewProvider *m_previewProvider = nullptr;
     QWidget *m_videoPreview = nullptr;

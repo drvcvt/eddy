@@ -88,9 +88,11 @@ QWidget#PlaybackBar QToolButton {
 QWidget#PlaybackBar QToolButton:hover,
 QWidget#PlaybackBar QToolButton:focus { background-color: @bar-hover; color: @fg; }
 QWidget#PlaybackBar QToolButton:pressed { background-color: @bar-active; }
+QWidget#PlaybackBar QToolButton:checked { background-color: @bar-active; color: @fg; }
 QWidget#PlaybackBar QToolButton#PlaybackPlay,
 QWidget#PlaybackBar QToolButton#PlaybackMute,
-QWidget#PlaybackBar QToolButton#TrimReset { padding: 0; }
+QWidget#PlaybackBar QToolButton#TrimReset,
+QWidget#PlaybackBar QToolButton#PlaybackLoop { padding: 0; }
 QWidget#PlaybackBar QLabel {
     color: @sub;
     font-family: "MonoLisa", "Geist Mono", monospace;

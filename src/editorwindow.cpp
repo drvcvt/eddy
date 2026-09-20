@@ -59,6 +59,9 @@
 #include <QSettings>
 #include <QHelpEvent>
 #include <QLineEdit>
+#include <QMenu>
+#include <QActionGroup>
+#include <QtMath>
 #include <limits>
 #include <utility>
 #ifdef Q_OS_WIN
@@ -604,6 +607,38 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addWidget(m_trimDurationLabel);
     playback->addLayout(trim);
     playback->addStretch(1);
+    m_loopButton = new QToolButton(bar);
+    m_loopButton->setObjectName(QStringLiteral("PlaybackLoop"));
+    m_loopButton->setCheckable(true);
+    m_loopButton->setAutoRaise(true);
+    m_loopButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/loop.svg"), iconColor, iconColor));
+    m_loopButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+    m_loopButton->setFixedSize(theme::kBarButton);
+    m_loopButton->setToolTip(tr("Loop the selected range"));
+    m_loopButton->setAccessibleName(m_loopButton->toolTip());
+    m_speedButton = new QToolButton(bar);
+    m_speedButton->setObjectName(QStringLiteral("PlaybackSpeed"));
+    m_speedButton->setText(QStringLiteral("1×"));
+    m_speedButton->setFixedSize(38, theme::kBarButton.height());
+    m_speedButton->setToolTip(tr("Preview speed"));
+    m_speedButton->setAccessibleName(m_speedButton->toolTip());
+    m_speedButton->setPopupMode(QToolButton::InstantPopup);
+    auto *rates = new QMenu(m_speedButton);
+    auto *rateGroup = new QActionGroup(rates);
+    for (qreal rate : {0.25, 0.5, 1.0, 1.5, 2.0}) {
+        auto *action = rates->addAction(QStringLiteral("%1×").arg(rate));
+        action->setCheckable(true);
+        action->setChecked(rate == 1.0);
+        action->setData(rate);
+        rateGroup->addAction(action);
+        connect(action, &QAction::triggered, this, [this, rate] {
+            ensureVideoPlayer();
+            if (m_player) m_player->setPlaybackRate(rate);
+        });
+    }
+    m_speedButton->setMenu(rates);
+    playback->addWidget(m_loopButton);
+    playback->addWidget(m_speedButton);
     playback->addWidget(m_muteButton);
     playback->addWidget(m_volumeSlider);
     lay->addWidget(m_timeline);
@@ -691,6 +726,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_seekSettleTimer, &QTimer::timeout, this, [this] {
         m_resumeAfterSeek = false;
         m_seekSettling = false;
+        m_loopSeeking = false;
     });
     connect(m_timeline, &VideoTimeline::interactionStarted, this, [this](bool trimming) {
         ensureVideoPlayer();
@@ -748,6 +784,19 @@ void EditorWindow::togglePlayback() {
             m_player->setPosition(m_trimInMs);
         m_player->play();
     }
+}
+
+void EditorWindow::handlePlaybackEnd() {
+    if (!m_player || m_loopSeeking || m_timelineActive || m_seekSettling) return;
+    m_player->pause();
+    m_loopSeeking = true;
+    m_resumeAfterSeek = m_loopButton->isChecked();
+    const qint64 lastFrame = m_media.video.fps > 0
+        ? qRound64((qCeil(m_trimOutMs * m_media.video.fps / 1000.0) - 1) * 1000.0 / m_media.video.fps)
+        : m_trimOutMs - 1;
+    requestVideoSeek(m_resumeAfterSeek ? m_trimInMs : qMax(m_trimInMs, lastFrame));
+    m_timeline->setPosition(m_seekTarget);
+    flushVideoSeek();
 }
 
 bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
@@ -874,6 +923,14 @@ void EditorWindow::ensureVideoPlayer() {
                 color, color));
         }
     });
+    connect(m_player, &QMediaPlayer::playbackRateChanged, this, [this](qreal rate) {
+        m_speedButton->setText(QStringLiteral("%1×").arg(rate));
+        for (auto *action : m_speedButton->menu()->actions())
+            action->setChecked(qFuzzyCompare(action->data().toDouble(), rate));
+    });
+    connect(m_player, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
+        if (status == QMediaPlayer::EndOfMedia) handlePlaybackEnd();
+    });
     connect(m_player, &QMediaPlayer::durationChanged, this, [this](qint64 duration){
         if (!m_timeline) return;
         const bool usedFullRange = m_trimInMs == 0 && m_trimOutMs == m_timeline->duration();
@@ -895,9 +952,11 @@ void EditorWindow::ensureVideoPlayer() {
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(pos) + QStringLiteral(" / ") + formatTime(m_player->duration()));
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
-            m_player->pause();
-            m_player->setPosition(m_trimOutMs);
+            handlePlaybackEnd();
         }
+        if (m_player->playbackState() == QMediaPlayer::PlayingState && m_hoverTime < 0
+            && (pos < m_timeline->visibleStart() || pos > m_timeline->visibleEnd()))
+            m_timeline->panBy(pos - m_timeline->visibleStart());
     });
     connect(m_player, &QMediaPlayer::seekableChanged, this, [this](bool seekable) {
         if (seekable && m_seekTarget >= 0) flushVideoSeek();
@@ -1027,6 +1086,8 @@ void EditorWindow::toggleTheme() {
             color, color));
         if (auto *reset = findChild<QToolButton *>(QStringLiteral("TrimReset")))
             reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), color, color));
+        if (m_loopButton)
+            m_loopButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/loop.svg"), color, color));
     }
     m_textBar->refreshTheme();
     m_dragPill->refreshTheme();
@@ -1169,6 +1230,7 @@ void EditorWindow::flushVideoSeek() {
 void EditorWindow::finishVideoSeek() {
     m_seekSettling = false;
     m_seekSettleTimer->stop();
+    m_loopSeeking = false;
     if (!m_timelineActive) {
         if (m_resumeAfterSeek && m_seekTarget >= m_trimInMs && m_seekTarget < m_trimOutMs)
             m_player->play();
@@ -1710,14 +1772,17 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_J:
         case Qt::Key_L:
             if (isVideo() && m_timeline) {
-                const qint64 frame = m_media.video.fps > 0.0
-                    ? qMax<qint64>(1, qRound64(1000.0 / m_media.video.fps)) : 33;
-                const qint64 delta = e->key() == Qt::Key_J ? -frame : frame;
-                const qint64 position = qBound<qint64>(0, m_timeline->position() + delta,
-                                                        m_timeline->duration());
-                m_timeline->setPosition(position);
                 ensureVideoPlayer();
-                if (m_player) m_player->setPosition(position);
+                if (m_player) m_player->pause();
+                m_resumeAfterSeek = false;
+                const qreal fps = m_media.video.fps > 0 ? m_media.video.fps : 30.0;
+                const qint64 frame = qRound64(m_timeline->position() * fps / 1000.0)
+                    + (e->key() == Qt::Key_J ? -1 : 1);
+                const qint64 position = qBound<qint64>(0, qRound64(frame * 1000.0 / fps),
+                    qMax<qint64>(0, m_timeline->duration() - 1));
+                m_timeline->setPosition(position);
+                requestVideoSeek(position);
+                flushVideoSeek();
                 break;
             }
             QWidget::keyPressEvent(e);
