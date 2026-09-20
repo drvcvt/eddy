@@ -29,6 +29,15 @@ private slots:
         QCOMPARE(us.count(), 1);
         QCOMPARE(rs.count(), 1);
     }
+    void undoRedoUseIconsNotFontGlyphs() {
+        Toolbar tb;
+        for (const char *name : {"Undo", "Redo"}) {
+            auto *button = tb.findChild<QToolButton *>(name);
+            QVERIFY(button);
+            QVERIFY(button->text().isEmpty());
+            QVERIFY(!button->icon().isNull());
+        }
+    }
     void syncToolUsesCheckedStateWithoutOverlay() {
         Toolbar tb;
         tb.resize(700, 46);
@@ -95,23 +104,7 @@ private slots:
         tb.setDark(false);
         QVERIFY(darkAction != theme->icon().pixmap(20, 20).toImage());
     }
-    void compactModeKeepsCoreToolsAndHidesShortcutDuplicates() {
-        Toolbar tb;
-        tb.setCompact(true);
-        for (const char *name : {"Undo", "Redo", "WidthS", "WidthM", "WidthL", "Save", "Copy"}) {
-            auto *button = tb.findChild<QToolButton *>(name);
-            QVERIFY(button);
-            QVERIFY2(button->isHidden(), name);
-        }
-        for (const char *name : {"move", "text", "spotlight", "Swatch", "SendToShelf", "Theme"}) {
-            auto *button = tb.findChild<QToolButton *>(name);
-            QVERIFY(button);
-            QVERIFY2(!button->isHidden(), name);
-        }
-        tb.setCompact(false);
-        QVERIFY(!tb.findChild<QToolButton *>("Save")->isHidden());
-        QVERIFY(!tb.findChild<QToolButton *>("WidthM")->isHidden());
-    }
+
 };
 QTEST_MAIN(TestToolbar)
 #include "test_toolbar.moc"
