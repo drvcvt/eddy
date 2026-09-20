@@ -54,10 +54,11 @@ QString styleSheet(bool dark) {
     QFile file(QStringLiteral(":/eddy.qss"));
     if (!file.open(QIODevice::ReadOnly)) return {};
     QString qss = QString::fromUtf8(file.readAll());
-    // Vis bar states use translucent ink; popup surfaces keep opaque tokens.
+    // The dark bar is translucent, so its state fills are pre-blended: stacking
+    // two translucent layers smears the rounded corners into mush.
     const QList<QPair<QString, QString>> tokens = dark
         ? QList<QPair<QString, QString>>{
-            {"@bar-active", "rgba(255, 255, 255, 38)"}, {"@bar-hover", "rgba(255, 255, 255, 24)"},
+            {"@bar-active", "#2E2E2E"}, {"@bar-hover", "#212121"},
             {"@bar", "rgba(0, 0, 0, 153)"}, {"@chip-on-fg", "#EEEEEE"}, {"@chip-on", "#414141"},
             {"@raise3", "#414141"}, {"@raise2", "#353535"},
             {"@raise1", "#202020"}, {"@faint", "#5C5C5C"},

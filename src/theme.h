@@ -28,7 +28,7 @@ QString styleSheet(bool dark);
 
 // Two control sizes carry the whole app: dense chrome (top bar, tool rail,
 // playback row) and the floating bars that sit over the canvas.
-inline constexpr QSize kBarButton{24, 22};
+inline constexpr QSize kBarButton{22, 22};
 inline constexpr QSize kFloatButton{30, 26};
 inline constexpr int kIconSize = 18;
 
