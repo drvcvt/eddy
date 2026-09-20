@@ -2,6 +2,7 @@
 #include <QColor>
 #include <QPalette>
 #include <QIcon>
+#include <QSize>
 #include <QString>
 
 namespace eddy {
@@ -25,9 +26,17 @@ QPalette palette(bool dark);
 bool resolveDark(ThemeMode mode, const QPalette &systemPalette);
 QString styleSheet(bool dark);
 
+// Two control sizes carry the whole app: dense chrome (top bar, tool rail,
+// playback row) and the floating bars that sit over the canvas.
+inline constexpr QSize kBarButton{24, 22};
+inline constexpr QSize kFloatButton{30, 26};
+inline constexpr int kIconSize = 18;
+
 // Render an SVG (resource path) to a monochrome QIcon: `rest` colour for the
-// Off/Normal state, `active` for the On state. HiDPI-crisp.
-QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active);
+// Off/Normal state, `active` for the On state. Rendered at 2x `size`, so pass
+// the size the button actually shows or the pixmap gets resampled.
+QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active,
+                 int size = kIconSize);
 
 } // namespace theme
 } // namespace eddy
