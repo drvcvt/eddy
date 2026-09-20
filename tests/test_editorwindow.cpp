@@ -42,6 +42,9 @@
 #include <QVideoSink>
 #include <QSettings>
 #include <QApplication>
+#include <QHelpEvent>
+#include <QLineEdit>
+#include <QMenu>
 #include <QUndoStack>
 #include <cstring>
 #ifndef Q_OS_WIN
@@ -97,6 +100,67 @@ static bool sceneHasVideoItem(const EditorWindow &w) {
 class TestEditorWindow : public QObject {
     Q_OBJECT
 private slots:
+    void compactTooltipStaysInsideEditorAndDismisses() {
+        QImage image(100, 80, QImage::Format_RGB32); image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, {});
+        window.show();
+        auto *fit = window.findChild<QToolButton *>("ZoomFit");
+        QVERIFY(fit);
+        QHelpEvent help(QEvent::ToolTip, fit->rect().center(),
+                        fit->mapToGlobal(fit->rect().center()));
+        QApplication::sendEvent(fit, &help);
+        auto *hint = window.findChild<QLabel *>("CompactTooltip");
+        QVERIFY(hint && hint->isVisible());
+        QCOMPARE(hint->text(), fit->toolTip());
+        QVERIFY(window.rect().contains(hint->geometry()));
+        QVERIFY(hint->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QEvent leave(QEvent::Leave);
+        QApplication::sendEvent(fit, &leave);
+        QVERIFY(!hint->isVisible());
+    }
+    void spaceTogglesVideoButNeverAfterPanningOrTyping() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("space.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=4:r=25", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(64, 48), 4000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        auto *canvas = window.findChild<Canvas *>();
+        QTRY_VERIFY(player->isSeekable());
+        QTest::keyClick(canvas, Qt::Key_Space);
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
+        QTest::keyClick(canvas, Qt::Key_Space);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTest::keyPress(canvas, Qt::Key_Space);
+        QKeyEvent repeat(QEvent::KeyRelease, Qt::Key_Space, Qt::NoModifier, " ", true);
+        QApplication::sendEvent(canvas, &repeat);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTest::mousePress(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(30, 30));
+        QTest::mouseMove(canvas->viewport(), QPoint(45, 40));
+        QTest::mouseRelease(canvas->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(45, 40));
+        QTest::keyRelease(canvas, Qt::Key_Space);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTest::keyPress(canvas, Qt::Key_Space);
+        QEvent deactivate(QEvent::WindowDeactivate);
+        QApplication::sendEvent(&window, &deactivate);
+        QTest::keyRelease(canvas, Qt::Key_Space);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QVERIFY(!canvas->spacePanActive());
+        auto *tools = window.findChild<ToolController *>();
+        tools->setTool(ToolType::Text);
+        auto *text = static_cast<TextItem *>(tools->placeText(QPointF(5, 5)));
+        text->setFocus();
+        QTest::keyClicks(canvas, "a b");
+        QCOMPARE(text->toPlainText(), QStringLiteral("a b"));
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+    }
     void usesPlatformWindowChrome() {
         QImage bg(100, 80, QImage::Format_ARGB32_Premultiplied);
         bg.fill(Qt::white);
@@ -666,6 +730,181 @@ private slots:
         const QImage overlay = window.exportComposite();
         QCOMPARE(overlay.pixelColor(14, 14).alpha(), 0);
         QCOMPARE(overlay.pixelColor(42, 14).alpha(), 0);
+
+        auto *black = new RedactItem(RedactMode::Blacken, QImage(doc.video.size, QImage::Format_RGB32),
+                                     QRectF(0, 30, 16, 16));
+        scene->addItem(black);
+        black->setFlag(QGraphicsItem::ItemIsSelectable);
+        black->setSelected(true);
+        const auto selected = scene->selectedItems();
+        const int undoCount = window.findChild<QUndoStack *>()->count();
+        QTest::keyClick(&window, Qt::Key_C, Qt::ControlModifier | Qt::ShiftModifier);
+        const QImage snapshot = QApplication::clipboard()->image();
+        QCOMPARE(snapshot.size(), doc.video.size);
+        QVERIFY(snapshot.pixelColor(14, 14).red() > 225); // Blur retained, not an empty overlay.
+        QVERIFY(snapshot.pixelColor(8, 38).red() < 30);
+        QCOMPARE(snapshot.pixelColor(60, 40), QColor(Qt::white));
+        QCOMPARE(scene->selectedItems(), selected);
+        QCOMPARE(window.findChild<QUndoStack *>()->count(), undoCount);
+        QVERIFY(videoItem->isVisible());
+    }
+    void realVideoScrubCopyLoopAndStop() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("seek.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=red:s=96x64:r=25:d=1.5", "-f", "lavfi", "-i",
+            "color=blue:s=96x64:r=25:d=1.5", "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0",
+            "-c:v", "libx264", "-g", "100", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(96, 64), 3040, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        auto *timeline = window.findChild<VideoTimeline *>();
+        auto *play = window.findChild<QToolButton *>("PlaybackPlay");
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        QTRY_VERIFY(player->isSeekable());
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        window.copyVideoFrame();
+        QVERIFY(QApplication::clipboard()->image().pixelColor(48, 32).red() > 200);
+        qint64 frameOrigin = video->videoSink()->videoFrame().startTime() < 0 ? -1
+            : video->videoSink()->videoFrame().startTime() / 1000;
+        connect(video->videoSink(), &QVideoSink::videoFrameChanged, &window, [&](const QVideoFrame &frame) {
+            if (frameOrigin < 0 && frame.startTime() >= 0) frameOrigin = frame.startTime() / 1000;
+        });
+        play->click();
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        timeline->interactionStarted(false);
+        QCOMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        timeline->seekRequested(2200);
+        QApplication::clipboard()->setText("waiting");
+        window.copyVideoFrame();
+        QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("waiting"));
+        timeline->interactionFinished(false);
+        QTRY_VERIFY2_WITH_TIMEOUT(!QApplication::clipboard()->image().isNull(), qPrintable(
+            QStringLiteral("seek position=%1 frame=%2..%3 state=%4 toast=%5 origin=%6")
+                .arg(player->position()).arg(video->videoSink()->videoFrame().startTime())
+                .arg(video->videoSink()->videoFrame().endTime()).arg(player->playbackState())
+                .arg(window.findChild<Toast *>()->text()).arg(frameOrigin)), 3000);
+        const QColor copied = QApplication::clipboard()->image().pixelColor(48, 32);
+        QVERIFY2(copied.blue() > 200 && copied.red() < 40, "Copied the stale red frame after a seek");
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
+        player->pause();
+
+        // Two committed time edits define a short loop inside the first GOP.
+        auto setTime = [&](const char *name, const char *value) {
+            auto *field = window.findChild<QLineEdit *>(name);
+            field->selectAll(); QTest::keyClicks(field, value); QTest::keyClick(field, Qt::Key_Return);
+        };
+        setTime("TrimInTime", "0.400");
+        setTime("TrimOutTime", "0.960");
+        QTRY_VERIFY(qAbs(video->videoSink()->videoFrame().startTime() / 1000 - frameOrigin - 400) <= 40);
+        auto *loop = window.findChild<QToolButton *>("PlaybackLoop");
+        loop->click();
+        auto *speed = window.findChild<QToolButton *>("PlaybackSpeed");
+        for (auto *action : speed->menu()->actions())
+            if (action->data().toDouble() == 2.0) action->trigger();
+        int wraps = 0;
+        qint64 previous = 400 + frameOrigin;
+        connect(video->videoSink(), &QVideoSink::videoFrameChanged, &window, [&](const QVideoFrame &frame) {
+            const qint64 time = frame.startTime() / 1000;
+            if (frame.isValid() && time >= 0) {
+                if (time < previous - 200) ++wraps;
+                previous = time;
+            }
+        });
+        play->click();
+        QTRY_VERIFY_WITH_TIMEOUT(wraps >= 2, 5000);
+        QCOMPARE(player->playbackRate(), 2.0);
+        loop->click();
+        QTRY_COMPARE_WITH_TIMEOUT(player->playbackState(), QMediaPlayer::PausedState, 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(qAbs(video->videoSink()->videoFrame().startTime() / 1000
+                                      - frameOrigin - 920) <= 1, 3000);
+        QCOMPARE(window.findChild<QUndoStack *>()->count(), 2);
+
+        window.findChild<QToolButton *>("TrimReset")->click();
+        loop->click();
+        wraps = 0;
+        play->click();
+        QTRY_VERIFY_WITH_TIMEOUT(wraps >= 1, 5000); // Backend end-of-media also loops.
+        loop->click();
+        QTRY_VERIFY_WITH_TIMEOUT(player->playbackState() != QMediaPlayer::PlayingState, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(video->videoSink()->videoFrame().startTime() / 1000 - frameOrigin >= 2960, 3000);
+    }
+    void videoFrameCopyKeepsRedactionSpotlightAndTextFocus() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = "/tmp/nonexistent-video-copy.mp4";
+        doc.video = {QSize(160, 120), 1000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {}); window.show();
+        QTRY_VERIFY(sceneHasVideoItem(window));
+        auto *scene = window.findChild<QGraphicsScene *>();
+        auto *player = window.findChild<QMediaPlayer *>();
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        QVideoFrame frame(QVideoFrameFormat(doc.video.size, QVideoFrameFormat::Format_BGRA8888));
+        QVERIFY(frame.map(QVideoFrame::WriteOnly));
+        QImage pattern(frame.bits(0), frame.width(), frame.height(), frame.bytesPerLine(0), QImage::Format_ARGB32);
+        for (int y = 0; y < pattern.height(); ++y)
+            for (int x = 0; x < pattern.width(); ++x)
+                pattern.setPixelColor(x, y, (x + y) % 2 ? Qt::white : Qt::black);
+        const QImage source = pattern.copy();
+        frame.unmap();
+        video->videoSink()->setVideoFrame(frame);
+        scene->addItem(new RedactItem(RedactMode::Blur, source, QRectF(10, 10, 40, 40)));
+        auto *ocr = new RedactItem(RedactMode::OcrBlacken, source, QRectF(60, 10, 80, 40));
+        ocr->setTextRects({QRectF(70, 20, 20, 20)}); scene->addItem(ocr);
+        auto *spotlight = new SpotlightItem(QRectF(0, 0, 160, 60), doc.video.size);
+        scene->addItem(spotlight);
+        auto *tools = window.findChild<ToolController *>();
+        tools->setTool(ToolType::Text);
+        auto *text = static_cast<TextItem *>(tools->placeText(QPointF(10, 65)));
+        text->setPlainText("Copy"); text->setFocus();
+        const auto selection = scene->selectedItems();
+        const int undo = window.findChild<QUndoStack *>()->count();
+        QApplication::setActiveWindow(&window);
+        QTest::keyClick(window.findChild<Canvas *>(), Qt::Key_C, Qt::ControlModifier | Qt::ShiftModifier);
+        const auto copied = QApplication::clipboard()->image();
+        const int blurred = copied.pixelColor(30, 30).red();
+        QVERIFY(blurred > 70 && blurred < 190);
+        QVERIFY(copied.pixelColor(75, 25).red() < 30);
+        QVERIFY(copied.pixelColor(150, 91).red() < source.pixelColor(150, 91).red());
+        QCOMPARE(scene->focusItem(), text);
+        QCOMPARE(scene->selectedItems(), selection);
+        QVERIFY(text->textInteractionFlags().testFlag(Qt::TextEditable));
+        QCOMPARE(window.findChild<QUndoStack *>()->count(), undo);
+    }
+    void narrowVideoKeepsControlsInsideWindow() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = "/tmp/nonexistent-video-layout.mp4";
+        doc.video = {QSize(640, 360), 36000000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.resize(520, 620); window.show();
+        QCoreApplication::processEvents();
+        QCOMPARE(window.width(), 520);
+        for (const auto *name : {"PlaybackPlay", "PlaybackLoop", "PlaybackSpeed", "PlaybackMute", "TrimInTime", "TrimOutTime"}) {
+            const auto *control = window.findChild<QWidget *>(name);
+            QVERIFY(control && control->isVisible());
+            QVERIFY2(window.rect().contains(QRect(control->mapTo(&window, QPoint()), control->size())), name);
+        }
+        QVERIFY(!window.findChild<QSlider *>("PlaybackVolume")->isVisible());
+        window.resize(1200, 680);
+        QCoreApplication::processEvents();
+        QVERIFY(window.findChild<QSlider *>("PlaybackVolume")->isVisible());
+    }
+    void missingVideoFrameDoesNotReplaceClipboard() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-video-frame-test.mp4");
+        doc.video = {QSize(64, 48), 1000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        QApplication::clipboard()->setText("keep me");
+        window.copyVideoFrame();
+        QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("keep me"));
+        QCOMPARE(window.findChild<Toast *>()->text(), QStringLiteral("Frame unavailable"));
     }
     void videoTrimKeyboardControlsUpdateTheRange() {
         MediaDocument doc;
@@ -703,8 +942,8 @@ private slots:
         EditorWindow w(doc, cfg, cli);
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *undo = w.findChild<QUndoStack *>();
-        auto *inTime = w.findChild<QLabel *>(QStringLiteral("TrimInTime"));
-        auto *outTime = w.findChild<QLabel *>(QStringLiteral("TrimOutTime"));
+        auto *inTime = w.findChild<QLineEdit *>(QStringLiteral("TrimInTime"));
+        auto *outTime = w.findChild<QLineEdit *>(QStringLiteral("TrimOutTime"));
         QVERIFY(timeline && undo && inTime && outTime);
         QCOMPARE(inTime->text(), QStringLiteral("0:00.000"));
         QCOMPARE(outTime->text(), QStringLiteral("0:12.500"));
@@ -721,6 +960,56 @@ private slots:
         undo->redo();
         QCOMPARE(timeline->trimIn(), 1234);
         QCOMPARE(inTime->text(), QStringLiteral("0:01.234"));
+    }
+    void loopAndSpeedArePreviewOnlyAndFrameStepsDoNotDrift() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-editorwindow-test.mp4");
+        doc.video = {QSize(64, 48), 60000, 30000.0 / 1001};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        auto *loop = window.findChild<QToolButton *>("PlaybackLoop");
+        auto *rate = window.findChild<QToolButton *>("PlaybackSpeed");
+        auto *timeline = window.findChild<VideoTimeline *>();
+        auto *undo = window.findChild<QUndoStack *>();
+        QVERIFY(loop && rate && timeline && undo);
+        loop->click();
+        QVERIFY(loop->isChecked());
+        for (auto *action : rate->menu()->actions())
+            if (action->data().toDouble() == 1.5) action->trigger();
+        QCOMPARE(window.findChild<QMediaPlayer *>()->playbackRate(), 1.5);
+        for (int i = 0; i < 300; ++i) QTest::keyClick(&window, Qt::Key_L);
+        QCOMPARE(timeline->position(), 10010);
+        QTest::keyClick(&window, Qt::Key_J);
+        QCOMPARE(timeline->position(), 9977);
+        QCOMPARE(undo->count(), 0);
+        QVERIFY(!window.findChild<QTimer *>("VideoExportTimer")->isActive());
+    }
+    void trimTimeEditingCommitsOnceAndEscapeDoesNotClose() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-editorwindow-test.mp4");
+        doc.video = {QSize(64, 48), 10000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        auto *field = window.findChild<QLineEdit *>("TrimInTime");
+        auto *timeline = window.findChild<VideoTimeline *>();
+        auto *undo = window.findChild<QUndoStack *>();
+        QVERIFY(field && timeline && undo);
+        field->selectAll(); QTest::keyClicks(field, "1.250");
+        QTest::keyClick(field, Qt::Key_Return);
+        QCOMPARE(timeline->trimIn(), 1250);
+        QCOMPARE(undo->count(), 1);
+        QCOMPARE(field->text(), QStringLiteral("0:01.250"));
+        field->selectAll(); QTest::keyClicks(field, "9:99");
+        QTest::keyClick(field, Qt::Key_Return);
+        QCOMPARE(timeline->trimIn(), 1250);
+        QCOMPARE(undo->count(), 1);
+        field->selectAll(); QTest::keyClicks(field, "2");
+        QTest::keyClick(field, Qt::Key_Escape);
+        QCOMPARE(field->text(), QStringLiteral("0:01.250"));
+        QCOMPARE(undo->count(), 1);
+        QCOMPARE(window.findChild<QLabel *>("TrimDuration")->text(), QStringLiteral("· 0:08.750"));
+        undo->undo();
+        QCOMPARE(timeline->trimIn(), 0);
     }
     void failedRequestedVideoExportIsVisible() {
         MediaDocument doc;
@@ -741,9 +1030,9 @@ private slots:
         w.sendToShelf();
         QVERIFY(toast->text().contains(QStringLiteral("Preparing")));
         QTRY_COMPARE_WITH_TIMEOUT(toast->text(), QStringLiteral("Video export failed"), 5000);
-        const auto exportTimers = w.findChildren<QTimer *>(QString(), Qt::FindDirectChildrenOnly);
-        QCOMPARE(exportTimers.size(), 1);
-        QVERIFY(!exportTimers.first()->isActive());
+        const auto *exportTimer = w.findChild<QTimer *>(QStringLiteral("VideoExportTimer"));
+        QVERIFY(exportTimer);
+        QVERIFY(!exportTimer->isActive());
     }
     void videoDocumentDefersPlayerCreationUntilShow() {
         MediaDocument doc;

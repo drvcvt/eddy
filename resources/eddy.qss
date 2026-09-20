@@ -3,12 +3,12 @@ QWidget {
     font-family: "Noto Sans", sans-serif;
     font-size: 13px;
 }
-QToolTip {
+QToolTip, QLabel#CompactTooltip {
     background-color: @raise2;
     color: @fg;
     border: none;
-    border-radius: 9px;
-    padding: 6px 9px;
+    border-radius: 7px;
+    padding: 3px 6px;
     font-family: "Noto Sans", sans-serif;
     font-size: 11px;
     font-weight: 500;
@@ -88,9 +88,11 @@ QWidget#PlaybackBar QToolButton {
 QWidget#PlaybackBar QToolButton:hover,
 QWidget#PlaybackBar QToolButton:focus { background-color: @bar-hover; color: @fg; }
 QWidget#PlaybackBar QToolButton:pressed { background-color: @bar-active; }
+QWidget#PlaybackBar QToolButton:checked { background-color: @bar-active; color: @fg; }
 QWidget#PlaybackBar QToolButton#PlaybackPlay,
 QWidget#PlaybackBar QToolButton#PlaybackMute,
-QWidget#PlaybackBar QToolButton#TrimReset { padding: 0; }
+QWidget#PlaybackBar QToolButton#TrimReset,
+QWidget#PlaybackBar QToolButton#PlaybackLoop { padding: 0; }
 QWidget#PlaybackBar QLabel {
     color: @sub;
     font-family: "MonoLisa", "Geist Mono", monospace;
@@ -98,6 +100,20 @@ QWidget#PlaybackBar QLabel {
     font-weight: 400;
 }
 QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
+QLabel#VideoExportStatus { color: @sub; font-size: 11px; padding-right: 8px; }
+QWidget#PlaybackBar QLineEdit {
+    background: transparent;
+    color: @sub;
+    border: none;
+    border-radius: 5px;
+    padding: 0 4px;
+    font-family: "MonoLisa", monospace;
+    font-size: 11px;
+}
+QWidget#PlaybackBar QLineEdit:hover { background: @bar-hover; }
+QWidget#PlaybackBar QLineEdit:focus { background: @bar-active; color: @fg; }
+QWidget#VideoPreview { background: @raise1; border: none; border-radius: 8px; }
+QWidget#VideoPreview QLabel { color: @fg; font-family: "MonoLisa", monospace; font-size: 10px; }
 QWidget#PlaybackBar QSlider::groove:horizontal {
     height: 3px;
     background: @bar-active;

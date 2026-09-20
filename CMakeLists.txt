@@ -35,6 +35,7 @@ add_library(eddy_core STATIC
     src/textbar.cpp
     src/spotlightbar.cpp
     src/videotimeline.cpp
+    src/videopreviewprovider.cpp
     src/toast.cpp
     src/dragpill.cpp
     src/selectionhandles.cpp
@@ -138,3 +139,4 @@ eddy_test(test_editorwindow)
 eddy_test(test_theme)
 eddy_test(test_selectionhandles)
 eddy_test(test_videotimeline)
+eddy_test(test_videopreviewprovider)

@@ -21,6 +21,9 @@
 #include <QVideoSink>
 #include <QVideoFrame>
 #include <QToolButton>
+#include <QHelpEvent>
+#include <QClipboard>
+#include <QElapsedTimer>
 #include <memory>
 
 int main(int argc, char **argv) {
@@ -87,9 +90,17 @@ int main(int argc, char **argv) {
         app.processEvents();
         if (mode.startsWith(QStringLiteral("video-file"))) {
             auto *output = qobject_cast<QGraphicsVideoItem*>(player->videoOutput());
+            QElapsedTimer loadTime; loadTime.start();
+            while (player->error() == QMediaPlayer::NoError && loadTime.elapsed() < 5000
+                   && (player->position() <= 0 || !output->videoSink()->videoFrame().isValid())) {
+                QTimer::singleShot(50, &wait, &QEventLoop::quit);
+                wait.exec();
+            }
             if (player->error() != QMediaPlayer::NoError || player->position() <= 0 ||
                 !output || !output->videoSink()->videoFrame().isValid()) {
-                qCritical() << "Video playback failed:" << player->errorString();
+                qCritical() << "Video playback failed:" << player->errorString()
+                            << player->position() << player->playbackState() << player->mediaStatus()
+                            << (output && output->videoSink()->videoFrame().isValid());
                 return 1;
             }
             qInfo() << "Decoded video frame; playback at" << player->position() << "ms";
@@ -99,6 +110,14 @@ int main(int argc, char **argv) {
             auto *timeline = window->findChild<eddy::VideoTimeline*>();
             timeline->setTrimRange(timeline->duration() / 5, timeline->duration() * 4 / 5);
             timeline->trimPreviewed(timeline->trimIn(), timeline->trimOut());
+        }
+        if (mode.contains(QStringLiteral("hover"))) {
+            auto *timeline = window->findChild<eddy::VideoTimeline*>();
+            timeline->zoomAt(2, timeline->duration() / 2);
+            timeline->hoverRequested(timeline->duration() / 2, QPoint(timeline->width() / 2, 18));
+            QEventLoop previewWait;
+            QTimer::singleShot(1200, &previewWait, &QEventLoop::quit);
+            previewWait.exec();
         }
     }
     if (mode == QStringLiteral("arrows")) {
@@ -118,6 +137,16 @@ int main(int argc, char **argv) {
         window->findChild<QGraphicsScene *>()->addItem(text);
         text->setSelected(true);
         app.processEvents();
+    }
+    if (mode == QStringLiteral("tooltip")) {
+        auto *fit = window->findChild<QToolButton *>(QStringLiteral("ZoomFit"));
+        QHelpEvent event(QEvent::ToolTip, fit->rect().center(),
+                         fit->mapToGlobal(fit->rect().center()));
+        QApplication::sendEvent(fit, &event);
+    }
+    if (mode.contains(QStringLiteral("copyframe"))) {
+        window->copyVideoFrame();
+        return QApplication::clipboard()->image().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
     }
     QPixmap pm = window->grab();
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");

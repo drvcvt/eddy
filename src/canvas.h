@@ -18,6 +18,7 @@ public:
     void resetZoom();
     void fitMedia();
     void setSpacePan(bool on);
+    void cancelPan();
     bool spacePanActive() const { return m_spacePan; }
     // Eyedropper: freeze the rendered viewport and let the user pick a colour off
     // it with a magnifier loupe. Emits colorPicked() on click, nothing on cancel.
@@ -43,6 +44,7 @@ private:
     QPoint sourcePixel(const QPoint &viewPos) const;   // viewport px -> snapshot device px
     void updateLoupe(const QPoint &viewPos);
     void updateCursor();
+    void updateNavigationBounds();
     ToolController *m_tools;
     double m_zoom = 1.0;            // visual (animated) scale
     double m_targetZoom = 1.0;      // logical target

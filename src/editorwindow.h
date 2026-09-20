@@ -7,11 +7,13 @@
 #include "exporter.h"
 #include <QSet>
 #include <QHash>
+#include <QPointer>
 #include <functional>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
-class QToolButton; class QSlider; class QLabel;
+class QToolButton; class QSlider; class QLabel; class QLineEdit;
 class QTimer;
+class QPropertyAnimation;
 namespace eddy {
 class Canvas; class Toolbar; class ToolController; class SelectionHandles;
 class RedactBar; class Toast; class RedactOcrController; class RedactItem;
@@ -19,6 +21,7 @@ class TextBar; class TextItem;
 class SpotlightBar; class SpotlightItem;
 class DragPill;
 class VideoTimeline;
+class VideoPreviewProvider;
 enum class RedactMode;
 
 enum class SaveRoute { ExplicitOutput, BoltsnapCard, ConfigDirectory, Shelf };
@@ -34,8 +37,10 @@ public:
 public slots:
     void save();   // to file/save-dir per cli/config
     void copy();   // to clipboard
+    void copyVideoFrame();
     void sendToShelf();
 protected:
+    bool eventFilter(QObject *object, QEvent *event) override;
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
@@ -60,6 +65,10 @@ private:
     void applyTrimRange(qint64 inMs, qint64 outMs);
     void setTrimRangeState(qint64 inMs, qint64 outMs);
     void updateTrimTimeLabels(qint64 inMs, qint64 outMs);
+    void commitTrimTime(QLineEdit *field);
+    void requestVideoSeek(qint64 position);
+    void flushVideoSeek();
+    void finishVideoSeek();
     QString videoDeliveryPath();
     void onVideoContentChanged();
     void scheduleVideoExportCache(int delayMs = 350);
@@ -81,8 +90,13 @@ private:
                           bool fallbackOnFailure = false);
     void saveVideo();
     void ensureVideoPlayer();
+    void togglePlayback();
+    void handlePlaybackEnd();
     void scheduleVideoLoad();
     void scheduleContactSheetLoad();
+    void hideVideoPreview();
+    void showVideoPreview();
+    void setVideoPreviewImage(const QImage &image);
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();
     void doRedo();
@@ -97,15 +111,45 @@ private:
     QGraphicsVideoItem *m_videoItem = nullptr;
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
+    QToolButton *m_loopButton = nullptr;
+    QToolButton *m_speedButton = nullptr;
+    bool m_loopSeeking = false;
     VideoTimeline *m_timeline = nullptr;
+    VideoPreviewProvider *m_previewProvider = nullptr;
+    QWidget *m_videoPreview = nullptr;
+    QLabel *m_previewImage = nullptr;
+    QLabel *m_previewTime = nullptr;
+    QTimer *m_previewTimer = nullptr;
+    QTimer *m_stripTimer = nullptr;
+    QPropertyAnimation *m_previewFade = nullptr;
+    qint64 m_hoverTime = -1;
+    qint64 m_previewSampleTime = -1;
+    QPoint m_hoverPoint;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
-    QLabel *m_trimInLabel = nullptr;
-    QLabel *m_trimOutLabel = nullptr;
+    QLabel *m_exportStatus = nullptr;
+    QLineEdit *m_trimInLabel = nullptr;
+    QLineEdit *m_trimOutLabel = nullptr;
+    QLabel *m_trimDurationLabel = nullptr;
+    QTimer *m_seekTimer = nullptr;
+    QTimer *m_seekSettleTimer = nullptr;
+    qint64 m_seekTarget = -1;
+    qint64 m_presentedStart = -1, m_presentedEnd = -1;
+    qint64 m_frameTimeOrigin = 0;
+    bool m_timelineActive = false;
+    bool m_seekSettling = false;
+    bool m_resumeAfterSeek = false;
+    bool m_hasVideoFrame = false;
+    bool m_hasSentVideoSeek = false;
+    bool m_copyFramePending = false;
+    QLabel *m_tooltip = nullptr;
+    QTimer *m_tooltipTimer = nullptr;
+    QPointer<QWidget> m_tooltipOwner;
+    bool m_spaceArmed = false;
+    bool m_spaceConsumed = false;
     qint64 m_trimInMs = 0;
     qint64 m_trimOutMs = 0;
     bool m_videoLoadQueued = false;
-    bool m_contactSheetQueued = false;
     QTimer *m_videoExportTimer = nullptr;
     QString m_cachedVideoPath;
     QSet<QString> m_clipboardVideoPaths;

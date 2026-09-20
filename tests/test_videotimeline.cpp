@@ -6,6 +6,68 @@ using namespace eddy;
 class TestVideoTimeline : public QObject {
     Q_OBJECT
 private slots:
+    void offscreenHandlesCannotBeGrabbedAndZeroDurationIsSafe() {
+        VideoTimeline timeline;
+        timeline.resize(300, 52); timeline.setDuration(0); timeline.fitClip();
+        QCOMPARE(timeline.visibleStart(), 0); QCOMPARE(timeline.visibleEnd(), 0);
+        timeline.setDuration(10000); timeline.zoomAt(10000.0 / 9000, 100); timeline.show();
+        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));
+        QVERIFY(!timeline.trimming());
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(70, 22));
+        QCOMPARE(timeline.trimIn(), 0); QCOMPARE(commits.count(), 0);
+    }
+    void releaseUsesFinalPointerAndCancelRestoresRange() {
+        VideoTimeline timeline;
+        timeline.resize(300, 38);
+        timeline.setDuration(1000);
+        timeline.show();
+        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 22));
+        QCOMPARE(timeline.trimIn(), 250);
+        QCOMPARE(commits.count(), 1);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 22));
+        QTest::mouseMove(&timeline, QPoint(150, 22));
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(150, 22));
+        QCOMPARE(timeline.trimIn(), 250);
+        QCOMPARE(commits.count(), 1);
+    }
+    void fineTrimPreservesGrabOffsetAndRejectsPlayerFeedback() {
+        VideoTimeline timeline;
+        timeline.resize(300, 38);
+        timeline.setDuration(10000);
+        timeline.setTrimRange(2500, 10000);
+        timeline.show();
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(82, 22));
+        QCOMPARE(timeline.trimIn(), 2500);
+        QMouseEvent move(QEvent::MouseMove, QPointF(226, 22), QPointF(226, 22),
+                         Qt::NoButton, Qt::LeftButton, Qt::ShiftModifier);
+        QApplication::sendEvent(&timeline, &move);
+        QCOMPARE(timeline.trimIn(), 3000);
+        const auto target = timeline.position();
+        timeline.setPosition(10);
+        QCOMPARE(timeline.position(), target);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(226, 22));
+        QCOMPARE(timeline.trimIn(), 3000);
+    }
+    void zoomKeepsAnchorAndDoesNotEditTrim() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
+        timeline.zoomAt(2, 2500);
+        QCOMPARE(timeline.visibleStart(), 1250);
+        QCOMPARE(timeline.visibleEnd(), 6250);
+        timeline.panBy(10000);
+        QCOMPARE(timeline.visibleEnd(), 10000);
+        QCOMPARE(timeline.trimIn(), 0);
+        QCOMPARE(timeline.trimOut(), 10000);
+        QCOMPARE(commits.count(), 0);
+        timeline.fitClip();
+        QCOMPARE(timeline.visibleStart(), 0);
+        QCOMPARE(timeline.visibleEnd(), 10000);
+    }
     void seekAndTrimRemainSeparateAndCommitOnce() {
         VideoTimeline timeline;
         timeline.resize(300, 38);

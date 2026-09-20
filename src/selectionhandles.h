@@ -24,6 +24,7 @@ public:
     QPointF handleScenePos(int i) const;
     void refresh();        // rebuild handles for the current selection (on selectionChanged)
     void reposition();     // move existing handles to the target's current geometry (during drag)
+    void setVisible(bool visible);
 signals:
     void resizeFinished(QGraphicsItem *item);
 private:

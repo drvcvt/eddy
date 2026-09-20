@@ -47,10 +47,26 @@ reaching a 20 unit live area, at a 2.8 stroke. `tools/normalize_icons.py`
 re-fits an icon to the grid and a test in `test_theme` enforces it. Dark and light themes are available from
 the toolbar.
 
-Video uses a full-width filmstrip above one compact transport row. Drag the muted
-end grips to trim, click the strip to seek, or use **In / Out** (`I` / `O`) to set
-the range at the playhead. Excluded frames fade into the background; precise trim
-times, playback and volume sit below the strip. **Drag out** remains at the bottom.
+Video has an adaptive filmstrip and a time ruler. Hover for a source-frame preview,
+drag to scrub, or pull the end grips to trim. Hold **Shift** for fine trim; **Esc**
+cancels the drag. Each completed trim is one undo step. **In / Out** (`I` / `O`)
+sets the range at the playhead, and the time fields accept seconds, `m:ss.mmm` or
+`h:mm:ss.mmm`. The selected duration is shown beside them.
+
+**Ctrl+wheel** zooms the timeline around the pointer; **Shift+wheel** or horizontal
+scrolling pans it. Its context menu offers Zoom and Fit. With timeline focus,
+`+`, `-`, `0` operate on the timeline. Elsewhere they still control the canvas.
+Scrubbing pauses playback and resumes inside the selection if it was playing;
+trimming stays paused. Frame stepping uses nominal fps; variable-rate clips remain
+time-based.
+
+Loop repeats the selected range. The speed menu offers **0.25×–2×** for preview
+only; exported video keeps its original speed and audio. Hold the **Copy** button
+to open **Copy current frame** (`Ctrl+Shift+C`), including annotations and redactions.
+Normal Copy still delivers the video. A pending seek finishes before its frame is
+copied. In narrow windows the trim fields get their own row; hold the speaker
+button for volume. Keyboard users can open these menus with **Alt+Down**.
+**Drag out** and quiet export preparation status remain at the bottom.
 
 **Toolbar controls:**
 
@@ -98,6 +114,11 @@ it does not track moving text.
 | `Enter` | Save (replace source card, use explicit/configured output, or return to shelf) |
 | `Ctrl+S` | Save |
 | `Ctrl+C` | Copy to clipboard |
+| `Ctrl+Shift+C` on video | Copy the displayed annotated frame |
+| Tap `Space` / `K` on video | Play / Pause |
+| `J` / `L` on video | Pause and step backward / forward |
+| `I` / `O` on video | Set In / Out at the playhead |
+| `Enter` / `Esc` in a trim time field | Apply / restore its value |
 | `Esc` | Cancel the active interaction, then close |
 | Scroll wheel / `+` / `-` | Zoom |
 | `0` / `1` | Fit image / 100% zoom |
