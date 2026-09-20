@@ -66,9 +66,9 @@ QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar
     font-size: 11px;
     font-weight: 500;
 }
-/* The text bar is icons plus the S/M/L size letters: padding would clip the
-   wider glyphs, and the letters need to carry the same mass as a 20px icon. */
-QWidget#TextBar QToolButton { padding: 0; font-size: 15px; font-weight: 600; }
+/* The text bar names discrete values as letters (S/M/L, B) and shows everything
+   else as a grid icon. Padding would clip the wider glyphs at 20px. */
+QWidget#TextBar QToolButton { padding: 0; font-size: 17px; font-weight: 600; }
 QWidget#RedactBar QToolButton:hover, QWidget#TextBar QToolButton:hover, QWidget#SpotlightBar QToolButton:hover { background-color: @raise2; color: @fg; }
 QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked { background-color: @raise3; color: @fg; }
 

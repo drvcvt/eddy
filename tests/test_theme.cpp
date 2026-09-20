@@ -3,6 +3,9 @@
 #include <QIcon>
 #include <QPixmap>
 #include <QImage>
+#include <QPainter>
+#include <QDirIterator>
+#include <QSvgRenderer>
 #include "theme.h"
 using namespace eddy;
 class TestTheme : public QObject {
@@ -41,6 +44,43 @@ private slots:
             QCOMPARE(pm.devicePixelRatio(), 2.0);
             QCOMPARE(pm.size(), QSize(size * 2, size * 2));
         }
+    }
+    void everyIconSharesOneGrid() {
+        // One keyline for the whole set: ink centred in the 24-unit viewBox and
+        // reaching a 20-unit live area. Drawing each icon to its own bounds is
+        // what made rows of them look ragged.
+        QDirIterator icons(QStringLiteral(":/icons"), {QStringLiteral("*.svg")}, QDir::Files);
+        int checked = 0;
+        while (icons.hasNext()) {
+            const QString path = icons.next();
+            QSvgRenderer renderer(path);
+            QVERIFY2(renderer.isValid(), qPrintable(path));
+            constexpr int kPixels = 240;                 // 10x the viewBox
+            constexpr qreal kUnit = kPixels / 24.0;
+            QImage sheet(kPixels, kPixels, QImage::Format_ARGB32_Premultiplied);
+            sheet.fill(Qt::transparent);
+            QPainter painter(&sheet);
+            renderer.render(&painter, QRectF(0, 0, kPixels, kPixels));
+            painter.end();
+            int left = kPixels, top = kPixels, right = -1, bottom = -1;
+            for (int y = 0; y < kPixels; ++y)
+                for (int x = 0; x < kPixels; ++x)
+                    if (qAlpha(sheet.pixel(x, y))) {
+                        left = qMin(left, x); right = qMax(right, x);
+                        top = qMin(top, y); bottom = qMax(bottom, y);
+                    }
+            QVERIFY2(right >= 0, qPrintable(path + " draws nothing"));
+            const qreal width = (right - left + 1) / kUnit;
+            const qreal height = (bottom - top + 1) / kUnit;
+            const qreal cx = (left + right + 1) / 2.0 / kUnit;
+            const qreal cy = (top + bottom + 1) / 2.0 / kUnit;
+            QVERIFY2(qAbs(cx - 12.0) <= 0.2, qPrintable(QStringLiteral("%1 cx=%2").arg(path).arg(cx)));
+            QVERIFY2(qAbs(cy - 12.0) <= 0.2, qPrintable(QStringLiteral("%1 cy=%2").arg(path).arg(cy)));
+            QVERIFY2(qAbs(qMax(width, height) - 20.0) <= 0.3,
+                     qPrintable(QStringLiteral("%1 live=%2").arg(path).arg(qMax(width, height))));
+            ++checked;
+        }
+        QVERIFY2(checked >= 25, qPrintable(QStringLiteral("only %1 icons found").arg(checked)));
     }
     void lightPaletteUsesApprovedTokens() {
         const QPalette p = theme::palette(false);
