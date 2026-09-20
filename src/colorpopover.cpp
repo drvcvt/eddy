@@ -23,7 +23,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     hex->setToolTip("Hex colour · Enter to apply");
     hex->setValidator(new QRegularExpressionValidator(QRegularExpression("#[0-9a-fA-F]{6}"), hex));
     hex->setMaxLength(7);
-    hex->setFixedHeight(30);
+    hex->setFixedHeight(theme::kFloatButton.height());
     connect(hex, &QLineEdit::returnPressed, this, [this, hex] {
         if (!hex->hasAcceptableInput()) return;
         emit picked(QColor(hex->text()));
@@ -39,7 +39,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
         const QColor c(presets[i]);
         auto *b = new QToolButton(this);
         b->setObjectName("ColorPreset");
-        b->setFixedSize(34, 30);
+        b->setFixedSize(theme::kFloatButton);
         b->setCheckable(true);
         b->setChecked(c == current);
         b->setToolTip(c.name().toUpper());
@@ -69,7 +69,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     custom->setObjectName("Custom");
     custom->setText("More colours…");
     custom->setAccessibleName(custom->text());
-    custom->setFixedHeight(28);
+    custom->setFixedHeight(theme::kFloatButton.height());
     custom->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     custom->setCursor(Qt::PointingHandCursor);
     connect(custom, &QToolButton::clicked, this, [this, current]{
@@ -84,10 +84,11 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     pipette->setAccessibleName(pipette->text());
     pipette->setIcon(theme::tintedIcon(QStringLiteral(":/icons/eyedropper.svg"),
                                        QApplication::palette().color(QPalette::WindowText),
-                                       QApplication::palette().color(QPalette::WindowText)));
-    pipette->setIconSize(QSize(18, 18));
+                                       QApplication::palette().color(QPalette::WindowText),
+                                       theme::kIconSize));
+    pipette->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     pipette->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    pipette->setFixedHeight(28);
+    pipette->setFixedHeight(theme::kFloatButton.height());
     pipette->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     pipette->setCursor(Qt::PointingHandCursor);
     connect(pipette, &QToolButton::clicked, this, [this]{

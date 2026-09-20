@@ -403,7 +403,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     fit->setAccessibleName(QStringLiteral("Fit to window"));
     fit->setFocusPolicy(Qt::NoFocus);
     fit->setCursor(Qt::PointingHandCursor);
-    fit->setFixedHeight(22);
+    fit->setFixedHeight(theme::kBarButton.height());
     connect(fit, &QToolButton::clicked, m_canvas, &Canvas::fitMedia);
     zoomControls->addWidget(fit);
     auto *zoom = new QToolButton(viewControls);
@@ -412,7 +412,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     zoom->setAccessibleName(QStringLiteral("Actual size"));
     zoom->setFocusPolicy(Qt::NoFocus);
     zoom->setCursor(Qt::PointingHandCursor);
-    zoom->setFixedSize(52, 22);
+    zoom->setFixedSize(52, theme::kBarButton.height());
     connect(zoom, &QToolButton::clicked, m_canvas, &Canvas::resetZoom);
     const auto updateZoom = [this, zoom] {
         zoom->setText(QStringLiteral("%1%").arg(qRound(m_canvas->zoom() * 100)));
@@ -510,8 +510,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setAutoRaise(true);
     m_playButton->setFocusPolicy(Qt::NoFocus);
     m_playButton->setCursor(Qt::PointingHandCursor);
-    m_playButton->setFixedSize(24, 24);
-    m_playButton->setIconSize(QSize(18, 18));
+    m_playButton->setFixedSize(theme::kBarButton);
+    m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_playButton->setToolTip(QStringLiteral("Play / Pause"));
     m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
@@ -523,8 +523,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setAutoRaise(true);
     m_muteButton->setFocusPolicy(Qt::NoFocus);
     m_muteButton->setCursor(Qt::PointingHandCursor);
-    m_muteButton->setFixedSize(24, 24);
-    m_muteButton->setIconSize(QSize(18, 18));
+    m_muteButton->setFixedSize(theme::kBarButton);
+    m_muteButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_muteButton->setToolTip(QStringLiteral("Mute audio"));
     m_muteButton->setAccessibleName(m_muteButton->toolTip());
 
@@ -555,15 +555,15 @@ QWidget *EditorWindow::createPlaybackBar() {
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
         button->setCursor(Qt::PointingHandCursor);
-        button->setFixedHeight(24);
+        button->setFixedHeight(theme::kBarButton.height());
         return button;
     };
     auto *setIn = makeTrimButton(QStringLiteral("In"), QStringLiteral("TrimSetIn"));
     auto *setOut = makeTrimButton(QStringLiteral("Out"), QStringLiteral("TrimSetOut"));
     auto *reset = makeTrimButton({}, QStringLiteral("TrimReset"));
     reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
-    reset->setFixedWidth(24);
-    reset->setIconSize(QSize(18, 18));
+    reset->setFixedWidth(theme::kBarButton.width());
+    reset->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     setIn->setToolTip(QStringLiteral("Set trim start · I"));
     setOut->setToolTip(QStringLiteral("Set trim end · O"));
     setIn->setAccessibleName(setIn->toolTip());

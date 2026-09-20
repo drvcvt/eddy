@@ -13,7 +13,7 @@ static QToolButton *textButton(QWidget *parent, const QString &label, bool check
     button->setAutoRaise(true);
     button->setFocusPolicy(Qt::NoFocus);
     button->setCursor(Qt::PointingHandCursor);
-    button->setFixedHeight(26);
+    button->setFixedHeight(theme::kFloatButton.height());
     return button;
 }
 
@@ -31,8 +31,8 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         m_sizes[i]->setObjectName(QStringLiteral("TextSize%1").arg(points[i]));
         m_sizes[i]->setToolTip(QStringLiteral("%1 pt text size").arg(points[i]));
         m_sizes[i]->setAccessibleName(m_sizes[i]->toolTip());
-        m_sizes[i]->setFixedWidth(32);
-        m_sizes[i]->setIconSize(QSize(16,16));
+        m_sizes[i]->setFixedWidth(theme::kFloatButton.width());
+        m_sizes[i]->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         sizes->addButton(m_sizes[i]); layout->addWidget(m_sizes[i]);
         connect(m_sizes[i], &QToolButton::clicked, this, [this, size=points[i]]{ emit sizeChosen(size); });
     }
@@ -40,8 +40,8 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
     m_bold->setObjectName(QStringLiteral("TextBold"));
     m_bold->setToolTip(QStringLiteral("Bold text"));
     m_bold->setAccessibleName(m_bold->toolTip());
-    m_bold->setFixedWidth(32);
-    m_bold->setIconSize(QSize(16,16));
+    m_bold->setFixedWidth(theme::kFloatButton.width());
+    m_bold->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     connect(m_bold, &QToolButton::toggled, this, &TextBar::boldChosen);
     layout->addWidget(m_bold);
 
@@ -53,8 +53,8 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         m_align[i]->setObjectName(QStringLiteral("TextAlign%1").arg(QString::fromLatin1(alignNames[i])));
         m_align[i]->setToolTip(QStringLiteral("Align %1").arg(QString::fromLatin1(alignNames[i]).toLower()));
         m_align[i]->setAccessibleName(m_align[i]->toolTip());
-        m_align[i]->setFixedWidth(32);
-        m_align[i]->setIconSize(QSize(16,16));
+        m_align[i]->setFixedWidth(theme::kFloatButton.width());
+        m_align[i]->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         alignments->addButton(m_align[i]); layout->addWidget(m_align[i]);
         connect(m_align[i], &QToolButton::clicked, this, [this, value=values[i]]{ emit alignmentChosen(value); });
     }
@@ -62,8 +62,8 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
     m_filled->setObjectName(QStringLiteral("TextFill"));
     m_filled->setToolTip(QStringLiteral("Filled label background"));
     m_filled->setAccessibleName(m_filled->toolTip());
-    m_filled->setFixedWidth(32);
-    m_filled->setIconSize(QSize(16,16));
+    m_filled->setFixedWidth(theme::kFloatButton.width());
+    m_filled->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     connect(m_filled, &QToolButton::toggled, this, [this](bool on){
         emit styleChosen(on ? TextLabelStyle::Filled : TextLabelStyle::Plain);
     });
@@ -78,13 +78,17 @@ void TextBar::refreshTheme() {
     const char *sizeIcons[] = {"text-small", "text-medium", "text-large"};
     for (int i = 0; i < 3; ++i)
         m_sizes[i]->setIcon(theme::tintedIcon(
-            QStringLiteral(":/icons/%1.svg").arg(QString::fromLatin1(sizeIcons[i])), rest, active));
-    m_bold->setIcon(theme::tintedIcon(QStringLiteral(":/icons/text-bold.svg"), rest, active));
+            QStringLiteral(":/icons/%1.svg").arg(QString::fromLatin1(sizeIcons[i])),
+            rest, active, theme::kIconSize));
+    m_bold->setIcon(theme::tintedIcon(QStringLiteral(":/icons/text-bold.svg"), rest, active,
+                                      theme::kIconSize));
     const char *icons[] = {"left", "center", "right"};
     for (int i = 0; i < 3; ++i)
         m_align[i]->setIcon(theme::tintedIcon(
-            QStringLiteral(":/icons/align-%1.svg").arg(QString::fromLatin1(icons[i])), rest, active));
-    m_filled->setIcon(theme::tintedIcon(QStringLiteral(":/icons/label-fill.svg"), rest, active));
+            QStringLiteral(":/icons/align-%1.svg").arg(QString::fromLatin1(icons[i])),
+            rest, active, theme::kIconSize));
+    m_filled->setIcon(theme::tintedIcon(QStringLiteral(":/icons/label-fill.svg"), rest, active,
+                                        theme::kIconSize));
 }
 
 void TextBar::setState(const TextState &state) {
