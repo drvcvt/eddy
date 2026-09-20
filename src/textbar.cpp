@@ -27,7 +27,7 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
     auto *sizes = new QButtonGroup(this); sizes->setExclusive(true);
     const qreal points[] = {14, 20, 28};
     for (int i = 0; i < 3; ++i) {
-        m_sizes[i] = textButton(this, QString());
+        m_sizes[i] = textButton(this, QStringLiteral("SML").mid(i, 1));
         m_sizes[i]->setObjectName(QStringLiteral("TextSize%1").arg(points[i]));
         m_sizes[i]->setToolTip(QStringLiteral("%1 pt text size").arg(points[i]));
         m_sizes[i]->setAccessibleName(m_sizes[i]->toolTip());
@@ -69,13 +69,10 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
 
 void TextBar::refreshTheme() {
     const QPalette palette = QApplication::palette();
-    const QColor rest = palette.color(QPalette::WindowText);
+    // Unchecked controls sit back, like the tool rail: the checked chip is not
+    // the only cue that a style is on.
+    const QColor rest = palette.color(QPalette::PlaceholderText);
     const QColor active = palette.color(QPalette::WindowText);
-    const char *sizeIcons[] = {"text-small", "text-medium", "text-large"};
-    for (int i = 0; i < 3; ++i)
-        m_sizes[i]->setIcon(theme::tintedIcon(
-            QStringLiteral(":/icons/%1.svg").arg(QString::fromLatin1(sizeIcons[i])),
-            rest, active, theme::kFloatIcon));
     m_bold->setIcon(theme::tintedIcon(QStringLiteral(":/icons/text-bold.svg"), rest, active,
                                       theme::kFloatIcon));
     const char *icons[] = {"left", "center", "right"};
