@@ -57,6 +57,7 @@
 #include <QScreen>
 #include <QSettings>
 #include <QHelpEvent>
+#include <QLineEdit>
 #include <limits>
 #include <utility>
 #ifdef Q_OS_WIN
@@ -555,10 +556,21 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_timeline->setMinimumRange(m_media.video.fps > 0.0
         ? qMax<qint64>(1, qRound64(1000.0 / m_media.video.fps)) : 1);
     m_timeline->setTrimRange(m_trimInMs, m_trimOutMs);
-    m_trimInLabel = new QLabel(formatPreciseTime(m_trimInMs), bar);
+    m_trimInLabel = new QLineEdit(formatPreciseTime(m_trimInMs), bar);
     m_trimInLabel->setObjectName(QStringLiteral("TrimInTime"));
-    m_trimOutLabel = new QLabel(formatPreciseTime(m_trimOutMs), bar);
+    m_trimOutLabel = new QLineEdit(formatPreciseTime(m_trimOutMs), bar);
     m_trimOutLabel->setObjectName(QStringLiteral("TrimOutTime"));
+    m_trimDurationLabel = new QLabel(bar);
+    m_trimDurationLabel->setObjectName(QStringLiteral("TrimDuration"));
+    m_trimDurationLabel->setToolTip(QStringLiteral("Selected duration"));
+    for (auto *field : {m_trimInLabel, m_trimOutLabel}) {
+        field->setMaxLength(20);
+        field->setFixedHeight(theme::kBarButton.height());
+        field->setAccessibleName(field == m_trimInLabel ? tr("Trim start") : tr("Trim end"));
+        field->setToolTip(tr("Edit time · Enter to apply · Esc to cancel"));
+        connect(field, &QLineEdit::editingFinished, this, [this, field] { commitTrimTime(field); });
+    }
+    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
     auto makeTrimButton = [bar](const QString &text, const QString &name) {
         auto *button = new QToolButton(bar);
         button->setText(text);
@@ -588,6 +600,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addWidget(setOut);
     trim->addWidget(m_trimOutLabel);
     trim->addWidget(reset);
+    trim->addWidget(m_trimDurationLabel);
     playback->addLayout(trim);
     playback->addStretch(1);
     playback->addWidget(m_muteButton);
@@ -619,10 +632,31 @@ QWidget *EditorWindow::createPlaybackBar() {
             m_muteButton->setAccessibleName(m_muteButton->toolTip());
         }
     });
-    connect(m_timeline, &VideoTimeline::seekRequested, this, [this](qint64 position){
+    m_seekTimer = new QTimer(this);
+    m_seekTimer->setSingleShot(true);
+    m_seekTimer->setInterval(33);
+    connect(m_seekTimer, &QTimer::timeout, this, &EditorWindow::flushVideoSeek);
+    m_seekSettleTimer = new QTimer(this);
+    m_seekSettleTimer->setSingleShot(true);
+    m_seekSettleTimer->setInterval(2000);
+    connect(m_seekSettleTimer, &QTimer::timeout, this, [this] {
+        m_resumeAfterSeek = false;
+        m_seekSettling = false;
+    });
+    connect(m_timeline, &VideoTimeline::interactionStarted, this, [this](bool trimming) {
         ensureVideoPlayer();
-        if (m_player) m_player->setPosition(position);
-        m_timeline->setPosition(position);
+        m_timelineActive = true;
+        m_resumeAfterSeek = !trimming && m_player
+            && m_player->playbackState() == QMediaPlayer::PlayingState;
+        if (m_player) m_player->pause();
+        if (m_videoExportTimer) m_videoExportTimer->stop();
+    });
+    connect(m_timeline, &VideoTimeline::seekRequested, this, &EditorWindow::requestVideoSeek);
+    connect(m_timeline, &VideoTimeline::interactionFinished, this, [this](bool cancelled) {
+        m_timelineActive = false;
+        if (cancelled) m_resumeAfterSeek = false;
+        flushVideoSeek();
+        if (hasVideoEdits() && m_cachedVideoRevision != m_videoRevision) scheduleVideoExportCache();
     });
     connect(m_timeline, &VideoTimeline::trimCommitted,
             this, &EditorWindow::applyTrimRange);
@@ -671,6 +705,20 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     auto *widget = qobject_cast<QWidget *>(object);
     if (!widget || (widget != this && !isAncestorOf(widget)))
         return QWidget::eventFilter(object, event);
+    if (event->type() == QEvent::KeyPress && (widget == m_trimInLabel || widget == m_trimOutLabel)) {
+        const auto *key = static_cast<QKeyEvent *>(event);
+        auto *field = static_cast<QLineEdit *>(widget);
+        if (key->key() == Qt::Key_Escape) {
+            field->setText(formatPreciseTime(field == m_trimInLabel ? m_trimInMs : m_trimOutMs));
+            field->setModified(false);
+            m_canvas->setFocus();
+            return true;
+        }
+        if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
+            commitTrimTime(field);
+            return true;
+        }
+    }
     if (event->type() == QEvent::ToolTip && !widget->toolTip().isEmpty()) {
         const auto *help = static_cast<QHelpEvent *>(event);
         m_tooltip->setText(widget->toolTip());
@@ -691,6 +739,7 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     if (event->type() == QEvent::WindowDeactivate && widget == this) {
         m_spaceArmed = false;
         m_canvas->cancelPan();
+        if (m_timeline) m_timeline->cancelInteraction();
     }
     if (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::KeyPress
         || event->type() == QEvent::WindowDeactivate
@@ -739,11 +788,17 @@ void EditorWindow::ensureVideoPlayer() {
                 image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio,
                                      Qt::SmoothTransformation);
             m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            m_presentedStart = frame.startTime() < 0 ? -1 : frame.startTime() / 1000;
+            m_presentedEnd = frame.endTime() < 0 ? -1 : frame.endTime() / 1000;
             m_tools->setBackground(m_bg);
             m_ocr->setBackground(m_bg);
             for (QGraphicsItem *item : m_scene->items())
                 if (auto *redact = dynamic_cast<RedactItem *>(item))
                     redact->setSource(m_bg);
+            if (m_seekSettling && m_presentedStart >= 0 && m_seekTarget >= m_presentedStart - 1
+                && m_seekTarget < (m_presentedEnd > m_presentedStart ? m_presentedEnd
+                    : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
+                finishVideoSeek();
         });
     }
     m_player = new QMediaPlayer(this);
@@ -768,10 +823,15 @@ void EditorWindow::ensureVideoPlayer() {
             m_timeline->setTrimRange(0, duration);
             m_trimOutMs = duration;
         }
+        m_media.video.durationMs = duration;
+        m_trimInMs = m_timeline->trimIn();
+        m_trimOutMs = m_timeline->trimOut();
+        updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(m_player->position()) + QStringLiteral(" / ") + formatTime(duration));
     });
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos){
+        if (m_timelineActive || m_seekSettling) return;
         if (m_timeline) m_timeline->setPosition(pos);
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(pos) + QStringLiteral(" / ") + formatTime(m_player->duration()));
@@ -779,6 +839,9 @@ void EditorWindow::ensureVideoPlayer() {
             m_player->pause();
             m_player->setPosition(m_trimOutMs);
         }
+    });
+    connect(m_player, &QMediaPlayer::seekableChanged, this, [this](bool seekable) {
+        if (seekable && m_seekTarget >= 0) flushVideoSeek();
     });
     m_player->setSource(QUrl::fromLocalFile(m_media.path));
 }
@@ -998,8 +1061,60 @@ void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
 }
 
 void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
-    if (m_trimInLabel) m_trimInLabel->setText(formatPreciseTime(inMs));
-    if (m_trimOutLabel) m_trimOutLabel->setText(formatPreciseTime(outMs));
+    for (auto *field : {m_trimInLabel, m_trimOutLabel}) {
+        if (!field) continue;
+        if (!field->hasFocus() || !field->isModified())
+            field->setText(formatPreciseTime(field == m_trimInLabel ? inMs : outMs));
+        field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs)) + 12);
+    }
+    if (m_trimDurationLabel)
+        m_trimDurationLabel->setText(QStringLiteral("· %1").arg(formatPreciseTime(outMs - inMs)));
+}
+
+void EditorWindow::commitTrimTime(QLineEdit *field) {
+    if (!field->isModified()) return;
+    qint64 time = 0;
+    const qint64 gap = m_media.video.fps > 0 ? qMax<qint64>(1, qRound64(1000 / m_media.video.fps)) : 1;
+    const bool valid = parseVideoTime(field->text(), &time)
+        && (field == m_trimInLabel ? time >= 0 && time <= m_trimOutMs - gap
+                                  : time >= m_trimInMs + gap && time <= m_media.video.durationMs);
+    field->setModified(false);
+    if (valid) applyTrimRange(field == m_trimInLabel ? time : m_trimInMs,
+                              field == m_trimOutLabel ? time : m_trimOutMs);
+    else if (m_toast) m_toast->showMessage(tr("Enter a time inside the clip, with In before Out"));
+    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+}
+
+void EditorWindow::requestVideoSeek(qint64 position) {
+    ensureVideoPlayer();
+    m_seekTarget = qBound<qint64>(0, position, qMax<qint64>(0, m_media.video.durationMs - 1));
+    m_seekSettling = true;
+    if (m_timeLabel) m_timeLabel->setText(formatPreciseTime(m_seekTarget)
+        + QStringLiteral(" / ") + formatTime(m_media.video.durationMs));
+    if (!m_seekTimer->isActive()) m_seekTimer->start();
+}
+
+void EditorWindow::flushVideoSeek() {
+    m_seekTimer->stop();
+    if (!m_player || m_seekTarget < 0 || !m_player->isSeekable()) return;
+    m_seekSettling = true;
+    m_seekSettleTimer->start();
+    if (m_player->position() == m_seekTarget && m_presentedStart >= 0
+        && m_seekTarget >= m_presentedStart && m_seekTarget < m_presentedEnd) {
+        finishVideoSeek();
+        return;
+    }
+    m_player->setPosition(m_seekTarget);
+}
+
+void EditorWindow::finishVideoSeek() {
+    m_seekSettling = false;
+    m_seekSettleTimer->stop();
+    if (!m_timelineActive) {
+        if (m_resumeAfterSeek && m_seekTarget >= m_trimInMs && m_seekTarget < m_trimOutMs)
+            m_player->play();
+        m_resumeAfterSeek = false;
+    }
 }
 
 QString EditorWindow::videoDeliveryPath() {
@@ -1027,7 +1142,7 @@ void EditorWindow::onVideoContentChanged() {
 }
 
 void EditorWindow::scheduleVideoExportCache(int delayMs) {
-    if (!isVideo() || !hasVideoEdits() || !m_videoExportTimer) return;
+    if (!isVideo() || !hasVideoEdits() || !m_videoExportTimer || m_timelineActive) return;
     m_videoExportTimer->start(qMax(0, delayMs));
 }
 

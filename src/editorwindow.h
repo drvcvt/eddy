@@ -11,7 +11,7 @@
 #include <functional>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
-class QToolButton; class QSlider; class QLabel;
+class QToolButton; class QSlider; class QLabel; class QLineEdit;
 class QTimer;
 namespace eddy {
 class Canvas; class Toolbar; class ToolController; class SelectionHandles;
@@ -62,6 +62,10 @@ private:
     void applyTrimRange(qint64 inMs, qint64 outMs);
     void setTrimRangeState(qint64 inMs, qint64 outMs);
     void updateTrimTimeLabels(qint64 inMs, qint64 outMs);
+    void commitTrimTime(QLineEdit *field);
+    void requestVideoSeek(qint64 position);
+    void flushVideoSeek();
+    void finishVideoSeek();
     QString videoDeliveryPath();
     void onVideoContentChanged();
     void scheduleVideoExportCache(int delayMs = 350);
@@ -103,8 +107,16 @@ private:
     VideoTimeline *m_timeline = nullptr;
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
-    QLabel *m_trimInLabel = nullptr;
-    QLabel *m_trimOutLabel = nullptr;
+    QLineEdit *m_trimInLabel = nullptr;
+    QLineEdit *m_trimOutLabel = nullptr;
+    QLabel *m_trimDurationLabel = nullptr;
+    QTimer *m_seekTimer = nullptr;
+    QTimer *m_seekSettleTimer = nullptr;
+    qint64 m_seekTarget = -1;
+    qint64 m_presentedStart = -1, m_presentedEnd = -1;
+    bool m_timelineActive = false;
+    bool m_seekSettling = false;
+    bool m_resumeAfterSeek = false;
     QLabel *m_tooltip = nullptr;
     QTimer *m_tooltipTimer = nullptr;
     QPointer<QWidget> m_tooltipOwner;

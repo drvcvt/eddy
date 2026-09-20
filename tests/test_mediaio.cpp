@@ -32,6 +32,15 @@ static bool runProcess(const QString &program, const QStringList &args) {
 class TestMediaIo : public QObject {
     Q_OBJECT
 private slots:
+    void parsesPreciseTimesWithoutOverflow() {
+        qint64 ms = -1;
+        QVERIFY(parseVideoTime("1:02.5", &ms)); QCOMPARE(ms, 62500);
+        QVERIFY(parseVideoTime("1:02:03.004", &ms)); QCOMPARE(ms, 3723004);
+        QVERIFY(parseVideoTime("75", &ms)); QCOMPARE(ms, 75000);
+        for (const QString &bad : {"-1", "1:60", "1.2345", "1:2:3:4", "nan", "",
+                                  "99999999999999999999999999", "9223372036854775807"})
+            QVERIFY2(!parseVideoTime(bad, &ms), qPrintable(bad));
+    }
     void recognizesCommonVideoExtensions() {
         QVERIFY(pathLooksLikeVideo(QStringLiteral("clip.mp4")));
         QVERIFY(pathLooksLikeVideo(QStringLiteral("clip.webm")));
