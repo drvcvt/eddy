@@ -135,6 +135,7 @@ private:
     QTimer *m_seekSettleTimer = nullptr;
     qint64 m_seekTarget = -1;
     qint64 m_presentedStart = -1, m_presentedEnd = -1;
+    qint64 m_frameTimeOrigin = 0;
     bool m_timelineActive = false;
     bool m_seekSettling = false;
     bool m_resumeAfterSeek = false;

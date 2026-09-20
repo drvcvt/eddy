@@ -439,6 +439,11 @@ Implementation decisions:
 - On this Qt FFmpeg backend, seeking exactly to a frame boundary returned the
   preceding frame. Seeking 1 ms inside the requested boundary fixed the observed
   failure; acknowledgement still checks the actual presented frame interval.
+- The Qt 6.4 GStreamer run exposed an 80 ms buffer timestamp origin for the
+  generated H.264 clip. Frame timestamps are anchored to the first presented
+  frame at source position zero before reconciliation with player positions.
+  No offset is inferred from a seek result. The real-media test compares source
+  frame intervals relative to this initial timestamp and verifies copied pixels.
 - Full-file playback may finish in Qt's Stopped state; trimmed playback pauses.
   Both retain the final included frame, and both end paths support looping.
 - Frame copying applies presentation rotation/mirroring and keeps letterboxing
