@@ -730,6 +730,34 @@ private slots:
         const QImage overlay = window.exportComposite();
         QCOMPARE(overlay.pixelColor(14, 14).alpha(), 0);
         QCOMPARE(overlay.pixelColor(42, 14).alpha(), 0);
+
+        auto *black = new RedactItem(RedactMode::Blacken, QImage(doc.video.size, QImage::Format_RGB32),
+                                     QRectF(0, 30, 16, 16));
+        scene->addItem(black);
+        black->setFlag(QGraphicsItem::ItemIsSelectable);
+        black->setSelected(true);
+        const auto selected = scene->selectedItems();
+        const int undoCount = window.findChild<QUndoStack *>()->count();
+        QTest::keyClick(&window, Qt::Key_C, Qt::ControlModifier | Qt::ShiftModifier);
+        const QImage snapshot = QApplication::clipboard()->image();
+        QCOMPARE(snapshot.size(), doc.video.size);
+        QVERIFY(snapshot.pixelColor(14, 14).red() > 225); // Blur retained, not an empty overlay.
+        QVERIFY(snapshot.pixelColor(8, 38).red() < 30);
+        QCOMPARE(snapshot.pixelColor(60, 40), QColor(Qt::white));
+        QCOMPARE(scene->selectedItems(), selected);
+        QCOMPARE(window.findChild<QUndoStack *>()->count(), undoCount);
+        QVERIFY(videoItem->isVisible());
+    }
+    void missingVideoFrameDoesNotReplaceClipboard() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/nonexistent-video-frame-test.mp4");
+        doc.video = {QSize(64, 48), 1000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        QApplication::clipboard()->setText("keep me");
+        window.copyVideoFrame();
+        QCOMPARE(QApplication::clipboard()->text(), QStringLiteral("keep me"));
+        QCOMPARE(window.findChild<Toast *>()->text(), QStringLiteral("Frame unavailable"));
     }
     void videoTrimKeyboardControlsUpdateTheRange() {
         MediaDocument doc;
