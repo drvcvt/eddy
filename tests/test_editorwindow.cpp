@@ -336,18 +336,21 @@ private slots:
     }
     void textContextControlsAreSelfExplanatory() {
         TextBar bar;
-        const QStringList names = {
-            QStringLiteral("TextSize14"), QStringLiteral("TextSize20"), QStringLiteral("TextSize28"),
+        // The size chooser spells out S/M/L; every other control is an icon.
+        const QStringList letters = {
+            QStringLiteral("TextSize14"), QStringLiteral("TextSize20"), QStringLiteral("TextSize28")};
+        const QStringList icons = {
             QStringLiteral("TextBold"), QStringLiteral("TextAlignLeft"),
             QStringLiteral("TextAlignCenter"), QStringLiteral("TextAlignRight"),
             QStringLiteral("TextFill")};
-        for (const QString &name : names) {
+        for (const QString &name : letters + icons) {
             auto *button = bar.findChild<QToolButton *>(name);
             QVERIFY2(button, qPrintable(name));
             QVERIFY2(!button->toolTip().isEmpty(), qPrintable(name));
-            QVERIFY2(button->text().isEmpty(), qPrintable(name));
-            QVERIFY2(!button->icon().isNull(), qPrintable(name));
             QCOMPARE(button->accessibleName(), button->toolTip());
+            const bool labelled = letters.contains(name);
+            QVERIFY2(button->text().isEmpty() != labelled, qPrintable(name));
+            QVERIFY2(button->icon().isNull() == labelled, qPrintable(name));
         }
     }
     void spotlightContextChangesAreUndoable() {
