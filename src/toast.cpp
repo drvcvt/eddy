@@ -10,7 +10,7 @@ Toast::Toast(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setAttribute(Qt::WA_TransparentForMouseEvents, true);   // never blocks the canvas
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(12, 7, 12, 7);
+    lay->setContentsMargins(12, 12, 12, 12);
     m_label = new QLabel(this);
     m_label->setObjectName("ToastText");
     lay->addWidget(m_label);
@@ -26,7 +26,7 @@ void Toast::showMessage(const QString &text, int ms) {
     adjustSize();
     if (QWidget *p = parentWidget()) {
         const int x = (p->width() - width()) / 2;
-        const int y = p->height() - height() - 24;
+        const int y = p->height() - height() - 48;   // clears the footer bar
         move(qMax(0, x), qMax(0, y));
     }
     show();

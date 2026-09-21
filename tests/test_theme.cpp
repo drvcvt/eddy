@@ -6,6 +6,9 @@
 #include <QPainter>
 #include <QDirIterator>
 #include <QSvgRenderer>
+#include <QFile>
+#include <QFontDatabase>
+#include <QRegularExpression>
 #include "theme.h"
 using namespace eddy;
 class TestTheme : public QObject {
@@ -29,21 +32,19 @@ private slots:
         QVERIFY(!on.isNull());
         QVERIFY(off.toImage() != on.toImage());   // rest vs active colour differ
     }
-    void tintedIconRendersAtTheRequestedSize() {
-        // Rendering at a fixed size and displaying at another resamples every
-        // stroke, which is what made the 18px chrome look soft.
-        for (int size : {theme::kIconSize, 24}) {
-            const QIcon icon = theme::tintedIcon(":/icons/rect.svg",
-                                                 QColor(theme::kIconRest),
-                                                 QColor(theme::kIconActive), size);
-            // availableSizes() reports what was actually rasterised, so a
-            // stale fixed render size shows up here even though pixmap() would
-            // happily rescale it.
-            QCOMPARE(icon.availableSizes(), QList<QSize>{QSize(size * 2, size * 2)});
-            const QPixmap pm = icon.pixmap(QSize(size, size), 2.0);
-            QCOMPARE(pm.devicePixelRatio(), 2.0);
-            QCOMPARE(pm.size(), QSize(size * 2, size * 2));
+    void tintedIconRendersAtTheDevicePixelSize() {
+        // A fixed 2x pixmap gets smooth-scaled on 1x and fractional displays,
+        // which made the chrome icons softer than the text beside them.
+        const QIcon icon = theme::tintedIcon(":/icons/rect.svg", QColor(theme::kIconRest),
+                                             QColor(theme::kIconActive));
+        QVERIFY(icon.availableSizes().isEmpty());          // nothing pre-rasterised
+        for (qreal scale : {1.0, 1.5, 2.0}) {
+            const int size = theme::kIconSize;
+            const QPixmap pm = icon.pixmap(QSize(size, size), scale);
+            QCOMPARE(pm.devicePixelRatio(), scale);
+            QCOMPARE(pm.size(), QSize(qRound(size * scale), qRound(size * scale)));
         }
+        QVERIFY(theme::tintedIcon(":/icons/missing.svg", Qt::white, Qt::white).isNull());
     }
     void everyIconSharesOneGrid() {
         // One keyline for the whole set: ink centred in the 24-unit viewBox and
@@ -100,6 +101,39 @@ private slots:
         QVERIFY(theme::resolveDark(ThemeMode::Dark, light));
         QVERIFY(!theme::resolveDark(ThemeMode::Light, dark));
     }
+    void typeComesOnlyFromTheScale() {
+        // Raw sizes and families crept in one widget at a time (9 to 14px, three
+        // faces); the sheet may only name the font and size tokens.
+        QFile file(QStringLiteral(":/eddy.qss"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QString raw = QString::fromUtf8(file.readAll());
+        static const QRegularExpression rawType(
+            QStringLiteral("font-(size|family)\\s*:\\s*+(?!@f)[^;]*"));
+        const auto hit = rawType.match(raw);
+        QVERIFY2(!hit.hasMatch(), qPrintable(hit.captured()));
+        const QString qss = theme::styleSheet(true);
+        QVERIFY(!qss.contains(QStringLiteral("@f")));
+        QVERIFY(qss.contains(QStringLiteral("\"Outfit\"")));
+        QVERIFY(QFontDatabase::families().contains(QStringLiteral("Outfit")));
+    }
+    void sheetKeepsToTheSpacingScaleAndDrawsNoBorders() {
+        QFile file(QStringLiteral(":/eddy.qss"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QString raw = QString::fromUtf8(file.readAll());
+        static const QSet<int> scale{0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 72};
+        static const QRegularExpression spacing(QStringLiteral("(padding|margin)[a-z-]*\\s*:([^;]*);"));
+        static const QRegularExpression number(QStringLiteral("-?(\\d+)"));
+        for (auto rule = spacing.globalMatch(raw); rule.hasNext();) {
+            const auto declaration = rule.next();
+            for (auto value = number.globalMatch(declaration.captured(2)); value.hasNext();)
+                QVERIFY2(scale.contains(value.next().captured(1).toInt()),
+                         qPrintable(declaration.captured()));
+        }
+        // Depth is brightness only: no outline may frame an element.
+        static const QRegularExpression border(QStringLiteral("border\\s*:\\s*+(?!none)[^;]*"));
+        const auto framed = border.match(raw);
+        QVERIFY2(!framed.hasMatch(), qPrintable(framed.captured()));
+    }
     void styleSheetExpandsSemanticTokens() {
         const QString dark = theme::styleSheet(true);
         const QString light = theme::styleSheet(false);
@@ -113,7 +147,7 @@ private slots:
         QVERIFY(light.contains(QStringLiteral("QToolTip")));
         QVERIFY(dark.contains(QStringLiteral("QWidget#PlaybackBar QLabel")));
         QVERIFY(!dark.contains(QStringLiteral("Z003")));
-        QVERIFY(dark.contains(QStringLiteral("font-family: \"Noto Sans\"")));
+        QVERIFY(dark.contains(QStringLiteral("font-family: \"Outfit\"")));
     }
 };
 QTEST_MAIN(TestTheme)
