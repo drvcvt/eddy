@@ -49,7 +49,8 @@ the toolbar.
 
 Video has an adaptive filmstrip and a time ruler. Hover for a source-frame preview,
 drag to scrub, or pull the end grips to trim. Hold **Shift** for fine trim; **Esc**
-cancels the drag. Each completed trim is one undo step. **In / Out** (`I` / `O`)
+cancels the drag. The **Start / End** labels and inward-facing brackets identify
+the kept range. Each completed trim is one undo step. **Start / End** (`I` / `O`)
 sets the range at the playhead, and the time fields accept seconds, `m:ss.mmm` or
 `h:mm:ss.mmm`. The selected duration is shown beside them.
 
@@ -117,7 +118,7 @@ it does not track moving text.
 | `Ctrl+Shift+C` on video | Copy the displayed annotated frame |
 | Tap `Space` / `K` on video | Play / Pause |
 | `J` / `L` on video | Pause and step backward / forward |
-| `I` / `O` on video | Set In / Out at the playhead |
+| `I` / `O` on video | Set Start / End at the playhead |
 | `Enter` / `Esc` in a trim time field | Apply / restore its value |
 | `Esc` | Cancel the active interaction, then close |
 | Scroll wheel / `+` / `-` | Zoom |

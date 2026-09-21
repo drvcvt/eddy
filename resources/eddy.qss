@@ -32,6 +32,10 @@ QToolButton {
     font-weight: 500;
 }
 QToolButton:disabled { color: @faint; }
+/* These buttons open secondary actions on hold; a native menu arrow overlaps
+   their centred 18px icons. Keep the speed selector's separate affordance. */
+QToolButton#Copy::menu-indicator,
+QToolButton#PlaybackMute::menu-indicator { image: none; width: 0; height: 0; }
 QToolButton:focus { background-color: @raise2; color: @fg; }
 QToolButton:hover { background-color: @raise2; color: @fg; }
 QToolButton:checked { background-color: @chip-on; color: @chip-on-fg; }
@@ -100,10 +104,11 @@ QWidget#PlaybackBar QLabel {
     font-weight: 400;
 }
 QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
+QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: "Noto Sans", sans-serif; }
 QLabel#VideoExportStatus { color: @sub; font-size: 11px; padding-right: 8px; }
 QWidget#PlaybackBar QLineEdit {
     background: transparent;
-    color: @sub;
+    color: @fg;
     border: none;
     border-radius: 5px;
     padding: 0 4px;
