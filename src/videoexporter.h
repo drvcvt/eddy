@@ -15,6 +15,7 @@ struct VideoExportRequest {
     qint64 trimOutMs = -1;
     int timeoutMs = 30 * 60 * 1000;
     QVector<QRect> blurRects;
+    QRect cropRect;
 };
 
 DeliverResult replaceFileAtomically(const QString &from, const QString &to);

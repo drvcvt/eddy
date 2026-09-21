@@ -1,5 +1,7 @@
 #include "editorwindow.h"
 #include "canvas.h"
+#include "cropcontroller.h"
+#include "cropbar.h"
 #include "toolbar.h"
 #include "toolcontroller.h"
 #include "exporter.h"
@@ -503,6 +505,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     // dropped), and setTool only emits on a *change* — so a default of "arrow"
     // (the controller's default) would emit nothing at all. Keep this call.
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
+    setupCrop();
     if (cfg.animations) setWindowOpacity(0.0);   // entrance fade starts transparent
 
     // Size the canvas to the image at 100%; only oversized media starts fitted.
@@ -922,6 +925,18 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     auto *widget = qobject_cast<QWidget *>(object);
     if (!widget || (widget != this && !isAncestorOf(widget)))
         return QWidget::eventFilter(object, event);
+    if (event->type() == QEvent::KeyPress && m_crop && m_crop->active()
+        && !qobject_cast<QMenu *>(widget) && !qobject_cast<QLineEdit *>(widget)) {
+        auto *key = static_cast<QKeyEvent *>(event);
+        if (key->key() == Qt::Key_Escape) {
+            if (m_crop->dragging()) m_crop->cancelDrag(); else m_crop->cancel();
+            return true;
+        }
+        if (m_crop->dragging() && ((key->modifiers().testFlag(Qt::ControlModifier)
+            && (key->key() == Qt::Key_C || key->key() == Qt::Key_S))
+            || key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter))
+            return true;
+    }
     if (event->type() == QEvent::KeyPress) {
         const auto *key = static_cast<QKeyEvent *>(event);
         auto *button = qobject_cast<QToolButton *>(widget);
@@ -969,6 +984,7 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
         m_canvas->cancelPan();
     }
     if (event->type() == QEvent::WindowDeactivate && widget == this) {
+        if (m_crop && m_crop->active()) m_crop->release();
         m_spaceArmed = false;
         m_canvas->cancelPan();
         if (m_timeline) m_timeline->cancelInteraction();
@@ -1025,6 +1041,7 @@ void EditorWindow::ensureVideoPlayer() {
     if (!m_videoItem) {
         auto *videoItem = new QGraphicsVideoItem;
         videoItem->setSize(QSizeF(m_media.nativeSize()));
+        videoItem->setAspectRatioMode(Qt::IgnoreAspectRatio);
         videoItem->setZValue(-1000);
         m_scene->addItem(videoItem);
         if (m_backgroundItem) {
@@ -1037,26 +1054,15 @@ void EditorWindow::ensureVideoPlayer() {
                 [this](const QVideoFrame &frame) {
             QImage image = frame.toImage();
             if (image.isNull()) return;
-            // toImage already applies the surface transformation. Add the
-            // frame's presentation transform, then match the video's fitted rect.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+            // Qt < 6.8 includes rotation/mirroring in toImage(). Newer Qt
+            // applies the surface transform there, but not the presentation one.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
             const int rotation = int(frame.rotation());
-#else
-            const int rotation = int(frame.rotationAngle());
-#endif
             if (rotation) image = image.transformed(QTransform().rotate(rotation));
             if (frame.mirrored()) image = image.transformed(QTransform().scale(-1, 1));
-            if (image.size() != m_media.nativeSize()) {
-                QImage presented(m_media.nativeSize(), QImage::Format_ARGB32_Premultiplied);
-                presented.fill(Qt::black);
-                const QSize fitted = image.size().scaled(presented.size(), Qt::KeepAspectRatio);
-                QPainter painter(&presented);
-                painter.setRenderHint(QPainter::SmoothPixmapTransform);
-                painter.drawImage(QRect(QPoint((presented.width() - fitted.width()) / 2,
-                                              (presented.height() - fitted.height()) / 2), fitted), image);
-                painter.end();
-                image = presented;
-            }
+#endif
+            if (image.size() != m_media.nativeSize())
+                image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
             // GStreamer's buffer PTS may include a stream offset (e.g. H.264
             // reordering delay), while QMediaPlayer positions start at zero.
@@ -1249,8 +1255,109 @@ void EditorWindow::onRedactModeChosen(RedactMode m) {
     positionRedactBar();
 }
 
-void EditorWindow::doUndo() { m_ocr->cancel(); m_undo->undo(); refreshRedactBar(); }
-void EditorWindow::doRedo() { m_ocr->cancel(); m_undo->redo(); refreshRedactBar(); }
+void EditorWindow::doUndo() { if (m_crop && m_crop->active()) m_crop->cancel(); m_ocr->cancel(); m_undo->undo(); refreshRedactBar(); }
+void EditorWindow::doRedo() { if (m_crop && m_crop->active()) m_crop->cancel(); m_ocr->cancel(); m_undo->redo(); refreshRedactBar(); }
+
+void EditorWindow::setupCrop() {
+    m_crop = new CropController(this);
+    m_cropBar = new CropBar(m_canvas->viewport());
+    m_cropBar->setSourceSize(m_media.nativeSize());
+    m_cropBar->hide();
+    m_canvas->setCropController(m_crop);
+    connect(m_crop, &CropController::changed, this, [this] {
+        if (!m_crop->active()) return;
+        m_cropBar->setOutputSize(m_crop->pixels().size());
+        positionCropBar();
+    });
+    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionCropBar);
+    connect(m_cropBar, &CropBar::ratioChosen, this, [this](qreal ratio) {
+        m_crop->setRatio(ratio);
+        positionCropBar();
+    });
+    connect(m_cropBar, &CropBar::resetRequested, this, [this] {
+        m_cropBar->resetRatio();
+        m_crop->reset();
+        positionCropBar();
+    });
+    connect(m_cropBar, &CropBar::applyRequested, m_crop, &CropController::accept);
+    connect(m_cropBar, &CropBar::cancelRequested, m_crop, &CropController::cancel);
+    connect(m_crop, &CropController::accepted, this, [this](QRect rect) {
+        if (rect == QRect(QPoint(), m_media.nativeSize())) rect = {};
+        if (rect != m_cropRect)
+            m_undo->push(new SetCropCommand(m_cropRect, rect, [this](QRect value) { setCropRect(value); }));
+        else setCropRect(rect);
+        m_cropBar->hide();
+        m_handles->setVisible(true);
+        if (m_tools->tool() == ToolType::Crop) m_tools->setTool(ToolType::Move);
+        m_canvas->setFocus();
+        if (isVideo() && hasVideoEdits()) scheduleVideoExportCache();
+    });
+    connect(m_crop, &CropController::cancelled, this, [this] {
+        m_canvas->setContentRect(m_cropRect);
+        m_canvas->restoreView(m_beforeCropView, m_beforeCropCenter, m_beforeCropFit);
+        const auto items = m_scene->items();
+        for (auto *item : m_beforeCropSelection)
+            if (items.contains(item)) item->setSelected(true);
+        m_cropBar->hide();
+        m_handles->setVisible(true);
+        if (m_tools->tool() == ToolType::Crop) m_tools->setTool(ToolType::Move);
+        m_canvas->setFocus();
+        if (isVideo() && hasVideoEdits()) scheduleVideoExportCache();
+    });
+    connect(m_tools, &ToolController::toolChanged, this, [this](ToolType type) {
+        if (type != ToolType::Crop) { finishCrop(); return; }
+        if (isVideo() && !m_media.video.cropSupported) {
+            m_toast->showMessage(tr("Crop is unavailable for this video's display transform"));
+            m_tools->setTool(ToolType::Move);
+            return;
+        }
+        m_tools->commitTextEdit();
+        m_beforeCropSelection = m_scene->selectedItems();
+        m_scene->clearSelection();
+        m_scene->clearFocus();
+        m_handles->setVisible(false);
+        m_beforeCropView = m_canvas->transform();
+        m_beforeCropCenter = m_canvas->mapToScene(m_canvas->viewport()->rect().center());
+        m_beforeCropFit = m_canvas->fitted();
+        m_canvas->setContentRect({});
+        m_cropBar->resetRatio();
+        m_crop->begin(m_media.nativeSize(), m_cropRect, isVideo() ? 2 : 1);
+        if (m_beforeCropFit) m_canvas->fitMedia();
+        m_cropBar->show();
+        positionCropBar();
+        m_canvas->setFocus();
+    });
+    if (m_tools->tool() == ToolType::Crop) {
+        m_tools->setTool(ToolType::Move);
+        QTimer::singleShot(0, this, [this] { m_tools->setTool(ToolType::Crop); });
+    }
+}
+
+void EditorWindow::finishCrop() {
+    if (m_crop && m_crop->active()) m_crop->accept();
+}
+
+void EditorWindow::setCropRect(QRect rect) {
+    m_cropRect = rect;
+    m_canvas->setContentRect(rect);
+    const QSize size = rect.isEmpty() ? m_media.nativeSize() : rect.size();
+    const QString name = m_media.path.isEmpty() ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
+    setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
+        .arg(name).arg(size.width()).arg(size.height()));
+}
+
+void EditorWindow::positionCropBar() {
+    if (!m_crop || !m_crop->active()) return;
+    m_cropBar->setAvailableWidth(m_canvas->viewport()->width() - 12);
+    const QRect rect = m_canvas->mapFromScene(m_crop->rect()).boundingRect();
+    const QSize viewport = m_canvas->viewport()->size();
+    int y = rect.bottom() + 12;
+    if (y + m_cropBar->height() > viewport.height() - 6) y = rect.top() - m_cropBar->height() - 12;
+    m_cropBar->move(qBound(6, rect.center().x() - m_cropBar->width() / 2,
+                          qMax(6, viewport.width() - m_cropBar->width() - 6)),
+                    qBound(6, y, qMax(6, viewport.height() - m_cropBar->height() - 6)));
+    m_cropBar->raise();
+}
 
 void EditorWindow::toggleTheme() {
     m_dark = !m_dark;
@@ -1290,13 +1397,14 @@ void EditorWindow::toggleTheme() {
 }
 
 QImage EditorWindow::exportComposite() {
+    finishCrop();
     if (isVideo())
         return renderAnnotationOverlay();
     const auto selection = m_scene->selectedItems();
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the image
     QImage image = renderToImage(*m_scene, m_bg.size());
     for (QGraphicsItem *item : selection) item->setSelected(true);
-    return image;
+    return m_cropRect.isEmpty() ? image : image.copy(m_cropRect);
 }
 
 QImage EditorWindow::renderAnnotationOverlay() {
@@ -1340,7 +1448,7 @@ bool EditorWindow::hasTrim() const {
 }
 
 bool EditorWindow::hasVideoEdits() const {
-    return hasVideoAnnotations() || hasTrim();
+    return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty();
 }
 
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
@@ -1438,6 +1546,7 @@ void EditorWindow::finishVideoSeek() {
 }
 
 QString EditorWindow::videoDeliveryPath() {
+    finishCrop();
     if (!hasVideoEdits())
         return m_media.path;
     if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath))
@@ -1483,7 +1592,7 @@ QString EditorWindow::createVideoTempPath() const {
 }
 
 void EditorWindow::startVideoExportCache() {
-    if (!isVideo() || !hasVideoEdits() || m_timelineActive) return;
+    if (!isVideo() || !hasVideoEdits() || m_timelineActive || (m_crop && m_crop->active())) return;
     if (m_videoExportInProgress) {
         m_videoExportPending = true;
         return;
@@ -1501,6 +1610,7 @@ void EditorWindow::startVideoExportCache() {
         m_media.path, path, renderAnnotationOverlay(),
         m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000
     };
+    request.cropRect = m_cropRect;
     for (QGraphicsItem *item : m_scene->items())
         if (auto *redact = dynamic_cast<RedactItem *>(item))
             request.blurRects += redact->blurRectsInScene();
@@ -1844,6 +1954,7 @@ void EditorWindow::postVideoToShelf(const QString &path, bool takeOwnership, boo
 }
 
 void EditorWindow::save() {
+    finishCrop();
     if (isVideo()) { saveVideo(); return; }
     QImage img = exportComposite();
     const SaveRoute route = saveRoute(m_cli, m_cfg);
@@ -1896,6 +2007,7 @@ void EditorWindow::save() {
 }
 
 void EditorWindow::sendToShelf() {
+    finishCrop();
     if (isVideo()) {
         if (!hasVideoEdits()) {
             const bool copyAfter = m_copyVideoPending;
@@ -1923,6 +2035,7 @@ void EditorWindow::sendToShelf() {
 }
 
 void EditorWindow::copy() {
+    finishCrop();
     if (isVideo()) {
         const QString path = videoDeliveryPath();
         if (path.isEmpty())
@@ -1935,6 +2048,7 @@ void EditorWindow::copy() {
 }
 
 void EditorWindow::copyVideoFrame() {
+    finishCrop();
     if (!isVideo()) return;
     if (m_seekSettling || m_timelineActive || m_seekTimer->isActive()) {
         m_copyFramePending = true;
@@ -1966,11 +2080,27 @@ void EditorWindow::copyVideoFrame() {
     m_scene->clearSelection();
     m_scene->clearFocus();
     const QImage image = renderToImage(*m_scene, m_media.nativeSize());
-    QApplication::clipboard()->setImage(image);
+    QApplication::clipboard()->setImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect));
     m_toast->showMessage(tr("Frame copied"));
 }
 
 void EditorWindow::keyPressEvent(QKeyEvent *e) {
+    if (m_crop->active() && !e->modifiers().testFlag(Qt::ControlModifier)) {
+        if (e->key() == Qt::Key_Escape) {
+            if (m_crop->dragging()) m_crop->cancelDrag(); else m_crop->cancel();
+            e->accept(); return;
+        }
+        if (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) {
+            m_crop->accept(); e->accept(); return;
+        }
+        const int step = e->modifiers().testFlag(Qt::ShiftModifier) ? 10 : (isVideo() ? 2 : 1);
+        QPoint delta;
+        if (e->key() == Qt::Key_Left) delta.setX(-step);
+        if (e->key() == Qt::Key_Right) delta.setX(step);
+        if (e->key() == Qt::Key_Up) delta.setY(-step);
+        if (e->key() == Qt::Key_Down) delta.setY(step);
+        if (!delta.isNull()) { m_crop->nudge(delta); e->accept(); return; }
+    }
     if (m_canvas->eyedropperActive()) {           // eyedropper swallows keys; Esc cancels
         if (e->key() == Qt::Key_Escape) m_canvas->cancelEyedropper();
         e->accept();
@@ -2076,6 +2206,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
                 if (isVideo() && e->modifiers().testFlag(Qt::ShiftModifier)) copyVideoFrame();
                 else copy();
             }
+            else m_tools->setTool(ToolType::Crop);
             break;
         case Qt::Key_D: if (e->modifiers() & Qt::ControlModifier)
                             m_tools->duplicateSelection(QPointF(8,8));

@@ -98,6 +98,14 @@ private slots:
         QVERIFY(r.error.contains(QStringLiteral("stdout")));
     }
 
+    void rejectsInvalidCropBeforeStartingEncoder() {
+        QImage overlay(160, 120, QImage::Format_ARGB32_Premultiplied); overlay.fill(Qt::transparent);
+        for (QRect crop : {QRect(1, 0, 80, 60), QRect(0, 0, 81, 60), QRect(100, 0, 80, 60), QRect(2, 2, -4, 8), QRect(2, 2, 0, 0)}) {
+            VideoExportRequest request{"missing.mp4", "output.mp4", overlay}; request.cropRect = crop;
+            const auto result = writeVideoWithOverlay(request);
+            QVERIFY(!result.ok); QVERIFY(result.error.contains("crop"));
+        }
+    }
     void timesOutHungFfmpeg() {
 #ifdef Q_OS_WIN
         QSKIP("POSIX fake ffmpeg helper is not available on Windows");
@@ -176,6 +184,26 @@ private slots:
         QVERIFY2(c.red() > 120 && c.green() < 100 && c.blue() < 100,
                  qPrintable(QStringLiteral("expected red-ish overlay pixel, got %1,%2,%3")
                                 .arg(c.red()).arg(c.green()).arg(c.blue())));
+    }
+
+    void cropsAfterAnnotations() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg unavailable");
+        QTemporaryDir dir;
+        const auto input = dir.filePath("input.mp4");
+        const auto output = dir.filePath("output.mp4");
+        const auto frame = dir.filePath("frame.png");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-y", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=0.2:r=5", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied); overlay.fill(Qt::transparent);
+        { QPainter painter(&overlay); painter.fillRect(24, 16, 24, 24, Qt::red); }
+        VideoExportRequest request{input, output, overlay}; request.cropRect = {20, 12, 40, 32};
+        const auto result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-y", "-i", output, "-frames:v", "1", frame}));
+        const QImage decoded(frame);
+        QCOMPARE(decoded.size(), QSize(40, 32));
+        QVERIFY(decoded.pixelColor(12, 12).red() > 200);
+        QVERIFY(decoded.pixelColor(34, 12).red() < 30);
     }
 
     void exportsBlurredRegionsOntoVideo() {

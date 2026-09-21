@@ -6,6 +6,10 @@
 #include <QStandardPaths>
 #include <QRegularExpression>
 #include <limits>
+#include <cmath>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
 
 namespace eddy {
 
@@ -95,8 +99,8 @@ ProbeVideoResult probeVideoFile(const QString &path) {
     p.start(ffprobe, {
         QStringLiteral("-v"), QStringLiteral("error"),
         QStringLiteral("-select_streams"), QStringLiteral("v:0"),
-        QStringLiteral("-show_entries"), QStringLiteral("stream=width,height,r_frame_rate:format=duration"),
-        QStringLiteral("-of"), QStringLiteral("default=noprint_wrappers=1"),
+        QStringLiteral("-show_entries"), QStringLiteral("stream=width,height,r_frame_rate,sample_aspect_ratio:stream_side_data=rotation,displaymatrix:format=duration"),
+        QStringLiteral("-of"), QStringLiteral("json"),
         path
     });
     if (!p.waitForFinished(15000)) {
@@ -111,24 +115,45 @@ ProbeVideoResult probeVideoFile(const QString &path) {
         return r;
     }
 
-    const QString out = QString::fromUtf8(p.readAllStandardOutput());
-    int width = 0;
-    int height = 0;
-    double fps = 0.0;
-    qint64 durationMs = 0;
-    for (const QString &line : out.split('\n', Qt::SkipEmptyParts)) {
-        const int eq = line.indexOf('=');
-        if (eq <= 0) continue;
-        const QString key = line.left(eq).trimmed();
-        const QString value = line.mid(eq + 1).trimmed();
-        if (key == "width") width = value.toInt();
-        else if (key == "height") height = value.toInt();
-        else if (key == "r_frame_rate") fps = parseRate(value);
-        else if (key == "duration") {
-            bool ok = false;
-            const double seconds = value.toDouble(&ok);
-            if (ok && seconds > 0.0) durationMs = qRound64(seconds * 1000.0);
+    const auto metadata = QJsonDocument::fromJson(p.readAllStandardOutput()).object();
+    const auto streams = metadata.value("streams").toArray();
+    const auto stream = streams.isEmpty() ? QJsonObject() : streams.first().toObject();
+    int width = stream.value("width").toInt();
+    int height = stream.value("height").toInt();
+    const double fps = parseRate(stream.value("r_frame_rate").toString());
+    const double seconds = metadata.value("format").toObject().value("duration").toString().toDouble();
+    const qint64 durationMs = std::isfinite(seconds) && seconds > 0
+        && seconds < double(std::numeric_limits<qint64>::max() / 1000) ? qRound64(seconds * 1000) : 0;
+    const QString sar = stream.value("sample_aspect_ratio").toString();
+    const double aspect = parseRate(QString(sar).replace(':', '/'));
+    if (aspect > 0 && std::isfinite(aspect) && width * aspect <= std::numeric_limits<int>::max())
+        width = qRound(width * aspect);
+    else if (!sar.isEmpty() && sar != "N/A" && sar != "0:1") r.info.cropSupported = false;
+    for (const auto &value : stream.value("side_data_list").toArray()) {
+        const auto data = value.toObject();
+        if (!data.contains("rotation")) {
+            if (data.contains("displaymatrix")) r.info.cropSupported = false;
+            continue;
         }
+        const double rotation = data.value("rotation").toDouble();
+        if (!std::isfinite(rotation) || qAbs(std::remainder(rotation, 90.0)) > 0.01) {
+            r.info.cropSupported = false;
+            continue;
+        }
+        if (qAbs(std::remainder(rotation, 180.0)) > 1) std::swap(width, height);
+        // Only unscaled, orthogonal rotations share Qt/ffmpeg display coordinates.
+        // Mirroring, shear, translation and perspective need a separate mapping.
+        QList<qint64> matrix;
+        for (const auto &line : data.value("displaymatrix").toString().split('\n')) {
+            if (!line.contains(':')) continue;
+            for (const auto &number : line.section(':', 1).split(QRegularExpression("\\s+"), Qt::SkipEmptyParts))
+                matrix.append(number.toLongLong());
+        }
+        if (matrix.size() != 9) { r.info.cropSupported = false; continue; }
+        const auto axis = [](qint64 n) { return n == 0 || n == 65536 || n == -65536; };
+        r.info.cropSupported = r.info.cropSupported && axis(matrix[0]) && axis(matrix[1])
+            && axis(matrix[3]) && axis(matrix[4]) && matrix[0] * matrix[4] - matrix[1] * matrix[3] == 4294967296LL
+            && matrix[2] == 0 && matrix[5] == 0 && matrix[6] == 0 && matrix[7] == 0 && matrix[8] == 1073741824;
     }
 
     if (width <= 0 || height <= 0) {
