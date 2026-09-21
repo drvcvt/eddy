@@ -1,0 +1,282 @@
+<div id="eddy-next-tools" aria-label="Eddy: Crop, Audio und Annotationen, UI-Entwurf">
+  <style>
+    #eddy-next-tools { --ed-bg:light-dark(#fafafa,#181818); --ed-bar:light-dark(#f1f1f1,#0a0a0a); --ed-raised:light-dark(#f1f1f1,#202020); --ed-hover:light-dark(#e9e9e9,#353535); --ed-active:light-dark(#e0e0e0,#2e2e2e); --ed-fg:light-dark(#1a1a1a,#eee); --ed-sub:light-dark(#6e6e6e,#999); --ed-faint:light-dark(#a6a6a6,#5c5c5c); --ed-ink:#ff3b30; color:var(--ed-fg); font-family:"Noto Sans",sans-serif; font-size:13px; width:100%; }
+    #eddy-next-tools * { box-sizing:border-box; }
+    #eddy-next-tools .ed-window { background:var(--ed-bg); width:100%; overflow:hidden; }
+    #eddy-next-tools button, #eddy-next-tools select { font:500 12px "Noto Sans",sans-serif; color:var(--ed-sub); background:transparent; border:0; border-radius:8px; min-width:22px; height:22px; padding:0; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; }
+    #eddy-next-tools button:hover, #eddy-next-tools select:hover { background:var(--ed-hover); color:var(--ed-fg); }
+    #eddy-next-tools button[aria-pressed="true"] { background:var(--ed-active); color:var(--ed-fg); }
+    #eddy-next-tools button:disabled { color:var(--ed-faint); cursor:default; background:transparent; }
+    #eddy-next-tools .ed-icon { display:inline-block; width:18px; height:18px; background:currentColor; mask:var(--ed-icon-url) center/contain no-repeat; -webkit-mask:var(--ed-icon-url) center/contain no-repeat; }
+    #eddy-next-tools [data-lucide], #eddy-next-tools button>svg { width:18px; height:18px; stroke-width:2.8; }
+    #eddy-next-tools .ed-top { height:28px; padding:3px 6px; display:flex; gap:2px; align-items:center; background:var(--ed-bar); }
+    #eddy-next-tools .ed-spacer { flex:1; }
+    #eddy-next-tools .ed-gap { width:6px; flex-shrink:0; }
+    #eddy-next-tools .ed-swatch { width:14px; height:14px; border-radius:50%; background:var(--ed-ink); margin:0 5px; }
+    #eddy-next-tools .ed-shelf { gap:4px; padding:0 8px; font-size:14px; color:var(--ed-fg); }
+    #eddy-next-tools .ed-workspace { display:grid; grid-template-columns:30px minmax(0,1fr); min-height:340px; }
+    #eddy-next-tools .ed-rail { display:flex; flex-direction:column; gap:2px; padding:4px; align-self:start; }
+    #eddy-next-tools .ed-rail button { width:22px; }
+    #eddy-next-tools .ed-rail .ed-new { margin-top:6px; }
+    #eddy-next-tools .ed-canvas { min-width:0; position:relative; display:flex; align-items:center; justify-content:center; padding:24px 20px 62px; }
+    #eddy-next-tools .ed-media { background:#151515; color:#ccc; width:min(100%,640px); aspect-ratio:16/9; position:relative; overflow:hidden; font:11px "MonoLisa","Geist Mono",monospace; }
+    #eddy-next-tools .ed-recorded-title { color:#888; background:#1e1e1e; padding:9px 14px; }
+    #eddy-next-tools .ed-terminal { padding:18px 22px; line-height:1.9; overflow:hidden; white-space:nowrap; }
+    #eddy-next-tools .ed-command { color:#eee; margin-bottom:12px; }
+    #eddy-next-tools .ed-success { color:#ddd; margin-top:9px; }
+    #eddy-next-tools .ed-dim { color:#888; }
+    #eddy-next-tools .ed-crop-mask { position:absolute; inset:0; background:#0009; pointer-events:none; }
+    #eddy-next-tools .ed-crop { position:absolute; border:1px solid #eee; cursor:move; touch-action:none; }
+    #eddy-next-tools .ed-crop:focus-visible { outline:2px solid #fff; outline-offset:3px; }
+    #eddy-next-tools .ed-handle { position:absolute; width:6px; height:6px; background:#eee; border:1px solid #333; transform:translate(-50%,-50%); }
+    #eddy-next-tools .ed-gridline { position:absolute; background:#fff3; pointer-events:none; }
+    #eddy-next-tools .ed-gridline.vertical { width:1px; height:100%; top:0; }
+    #eddy-next-tools .ed-gridline.horizontal { height:1px; width:100%; left:0; }
+    #eddy-next-tools .ed-float { position:absolute; bottom:15px; left:50%; transform:translateX(-50%); background:var(--ed-raised); padding:3px; border-radius:11px; display:flex; align-items:center; justify-content:center; gap:2px; max-width:calc(100% - 12px); flex-wrap:wrap; }
+    #eddy-next-tools .ed-float button { width:24px; height:24px; }
+    #eddy-next-tools .ed-float button svg, #eddy-next-tools .ed-float .ed-icon { width:20px; height:20px; }
+    #eddy-next-tools .ed-float select { height:24px; padding:0 6px; width:72px; font-size:11px; }
+    #eddy-next-tools .ed-dimensions { font:11px "MonoLisa",monospace; white-space:nowrap; padding:0 7px; }
+    #eddy-next-tools .ed-step { position:absolute; top:48%; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background:var(--ed-ink); color:#fff; font:500 16px "Noto Sans",sans-serif; }
+    #eddy-next-tools .ed-step::after { content:""; position:absolute; inset:-4px; border:1px dashed #ddd9; }
+    #eddy-next-tools .ed-guide { position:absolute; height:1px; background:#ddd9; left:10%; right:8%; top:54%; pointer-events:none; }
+    #eddy-next-tools .ed-timeline { background:var(--ed-bar); padding:0 12px; position:relative; }
+    #eddy-next-tools .ed-ruler { height:18px; display:flex; justify-content:space-between; align-items:center; font:10px "MonoLisa",monospace; color:var(--ed-sub); }
+    #eddy-next-tools .ed-track { position:relative; }
+    #eddy-next-tools .ed-filmstrip { display:flex; height:30px; gap:1px; overflow:hidden; border-radius:6px; background:#222; }
+    #eddy-next-tools .ed-thumb { min-width:0; flex:1; background:#151515; position:relative; padding:4px; }
+    #eddy-next-tools .ed-thumb::before { content:""; display:block; height:2px; margin-bottom:3px; width:65%; background:#777; box-shadow:0 5px #444,0 10px #777; }
+    #eddy-next-tools .ed-wave { display:block; width:100%; height:28px; margin-top:4px; color:var(--ed-sub); }
+    #eddy-next-tools .ed-wave-base { stroke:var(--ed-faint); stroke-width:0.5; opacity:0.55; }
+    #eddy-next-tools .ed-excluded { position:absolute; top:0; bottom:0; background:var(--ed-bar); opacity:.65; pointer-events:none; }
+    #eddy-next-tools .ed-trim { position:absolute; top:0; bottom:0; width:6px; background:var(--ed-faint); border-radius:3px; pointer-events:none; }
+    #eddy-next-tools .ed-trim::after { content:""; display:block; position:absolute; height:12px; width:1px; left:3px; top:9px; background:var(--ed-fg); }
+    #eddy-next-tools .ed-playhead { position:absolute; top:-4px; bottom:0; width:1px; background:var(--ed-fg); pointer-events:none; }
+    #eddy-next-tools .ed-playhead::before { content:""; position:absolute; width:6px; height:4px; border-radius:2px; background:var(--ed-fg); left:-2.5px; }
+    #eddy-next-tools .ed-seek { appearance:none; position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:ew-resize; margin:0; }
+    #eddy-next-tools .ed-track:focus-within { outline:1px solid var(--ed-sub); outline-offset:2px; }
+    #eddy-next-tools .ed-transport { background:var(--ed-bar); padding:4px 12px 2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+    #eddy-next-tools .ed-time, #eddy-next-tools .ed-trim-fields { font:11px "MonoLisa",monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    #eddy-next-tools .ed-time { min-width:102px; }
+    #eddy-next-tools .ed-trim-fields { display:flex; gap:10px; align-items:center; color:var(--ed-sub); margin-left:auto; }
+    #eddy-next-tools .ed-trim-fields b { color:var(--ed-fg); font-weight:400; }
+    #eddy-next-tools .ed-transport button { border-radius:6px; }
+    #eddy-next-tools .ed-rate { width:32px; }
+    #eddy-next-tools .ed-noaudio { color:var(--ed-sub); font:11px "MonoLisa",monospace; white-space:nowrap; }
+    #eddy-next-tools .ed-footer { display:flex; align-items:center; position:relative; height:28px; padding:3px 16px; background:var(--ed-bar); font:12px "MonoLisa",monospace; }
+    #eddy-next-tools .ed-footer button { font:12px "MonoLisa",monospace; padding:0 8px; }
+    #eddy-next-tools .ed-drag { display:flex; align-items:center; gap:6px; position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; }
+    #eddy-next-tools .ed-menu { position:absolute; right:6px; top:31px; z-index:5; width:268px; max-width:calc(100% - 12px); background:var(--ed-raised); padding:5px; border-radius:11px; }
+    #eddy-next-tools .ed-menu button { width:100%; height:28px; justify-content:space-between; padding:0 8px; font-size:12px; color:var(--ed-fg); }
+    #eddy-next-tools .ed-menu small { color:var(--ed-sub); font:10px "MonoLisa",monospace; }
+    #eddy-next-tools .ed-menu label { display:flex; gap:8px; align-items:center; padding:7px 8px; font-size:12px; }
+    #eddy-next-tools .ed-menu input { accent-color:var(--ed-sub); }
+    #eddy-next-tools .ed-menu-separator { height:6px; }
+    #eddy-next-tools .ed-audio-menu { top:auto; bottom:58px; }
+    #eddy-next-tools .ed-window { position:relative; }
+    #eddy-next-tools [hidden] { display:none !important; }
+    @media(max-width:760px) { #eddy-next-tools .ed-trim-fields { order:5; width:100%; justify-content:center; margin-left:0; } #eddy-next-tools .ed-transport .ed-spacer { display:block; } }
+    @media(max-width:460px) { #eddy-next-tools .ed-workspace { min-height:328px; } #eddy-next-tools .ed-canvas { padding:18px 8px 82px; } #eddy-next-tools .ed-terminal { padding:16px 12px; } #eddy-next-tools .ed-trim-fields { gap:6px; flex-wrap:wrap; } #eddy-next-tools .ed-float { bottom:10px; width:max-content; } #eddy-next-tools .ed-dimensions { padding:0 4px; } #eddy-next-tools .ed-shelf { font-size:12px; padding:0 4px; } #eddy-next-tools .ed-shelf .ed-icon { display:none; } #eddy-next-tools .ed-drag { position:static; transform:none; margin-left:auto; } #eddy-next-tools .ed-timeline { padding:0 7px; } #eddy-next-tools .ed-ruler span:nth-child(even) { visibility:hidden; } }
+    @media(pointer:coarse) { #eddy-next-tools button { min-width:32px; min-height:32px; } #eddy-next-tools .ed-top { height:auto; flex-wrap:wrap; } #eddy-next-tools .ed-workspace { grid-template-columns:38px minmax(0,1fr); } #eddy-next-tools .ed-rail { gap:8px; } #eddy-next-tools .ed-footer { height:38px; } }
+  </style>
+  <div class="ed-window">
+    <div class="ed-top" aria-label="Werkzeug-Einstellungen und Ausgabe">
+      <button disabled aria-label="Undo"><span class="ed-icon" data-ed-icon="undo"></span></button>
+      <button disabled aria-label="Redo"><span class="ed-icon" data-ed-icon="redo"></span></button>
+      <span class="ed-gap"></span>
+      <button disabled aria-label="Thin line"><span class="ed-icon" data-ed-icon="width-thin"></span></button>
+      <button aria-pressed="true" disabled aria-label="Medium line"><span class="ed-icon" data-ed-icon="width-medium"></span></button>
+      <button disabled aria-label="Thick line"><span class="ed-icon" data-ed-icon="width-thick"></span></button>
+      <span class="ed-swatch" aria-label="Annotation colour: red"></span><span class="ed-spacer"></span>
+      <button class="ed-save-button" aria-label="Projektaktionen anzeigen" aria-expanded="false" data-tooltip="Save · Projektmenü im Entwurf"><span class="ed-icon" data-ed-icon="save"></span></button>
+      <button disabled aria-label="Copy"><span class="ed-icon" data-ed-icon="copy"></span></button>
+      <button disabled class="ed-shelf" aria-label="To shelf"><span class="ed-icon" data-ed-icon="shelf"></span>To shelf</button>
+      <button class="ed-theme-button" aria-label="Dark / Light" data-tooltip="Dark / Light"><span class="ed-icon" data-ed-icon="sun"></span></button>
+    </div>
+    <div class="ed-workspace">
+      <div class="ed-rail" aria-label="Werkzeuge">
+        <button data-ed-mode="normal" aria-label="Move" data-tooltip="Move · M"><span class="ed-icon" data-ed-icon="move"></span></button>
+        <button disabled aria-label="Arrow"><span class="ed-icon" data-ed-icon="arrow"></span></button>
+        <button disabled aria-label="Pen"><span class="ed-icon" data-ed-icon="pen"></span></button>
+        <button disabled aria-label="Rectangle"><span class="ed-icon" data-ed-icon="rect"></span></button>
+        <button disabled aria-label="Ellipse"><span class="ed-icon" data-ed-icon="ellipse"></span></button>
+        <button disabled aria-label="Highlight"><span class="ed-icon" data-ed-icon="highlight"></span></button>
+        <button disabled aria-label="Text"><span class="ed-icon" data-ed-icon="text"></span></button>
+        <button disabled aria-label="Redact"><span class="ed-icon" data-ed-icon="redact"></span></button>
+        <button disabled aria-label="Spotlight"><span class="ed-icon" data-ed-icon="spotlight"></span></button>
+        <button class="ed-new" data-ed-mode="crop" aria-label="Crop" aria-pressed="true" data-tooltip="Crop · C"><i data-lucide="crop" aria-hidden="true"></i></button>
+        <button data-ed-mode="steps" aria-label="Numbered steps and alignment" data-tooltip="Step · N"><i data-lucide="list-ordered" aria-hidden="true"></i></button>
+      </div>
+      <div class="ed-canvas">
+        <div class="ed-media" aria-label="Beispiel einer aufgenommenen Build-Ausgabe">
+          <div class="ed-recorded-title">~/projects/eddy</div>
+          <div class="ed-terminal">
+            <div class="ed-command">$ ctest --test-dir build-rel</div>
+            <div class="ed-dim">23/25 Test #1: test_canvas … Passed</div>
+            <div class="ed-dim">24/25 Test #24: test_videotimeline … Passed</div>
+            <div class="ed-dim">25/25 Test #21: test_editorwindow … Passed</div>
+            <div class="ed-success">100% tests passed, 0 tests failed out of 25</div>
+          </div>
+          <div class="ed-step" data-step="0" hidden>1</div>
+          <div class="ed-step" data-step="1" hidden>2</div>
+          <div class="ed-step" data-step="2" hidden>3</div>
+          <div class="ed-guide" hidden></div>
+          <div class="ed-crop-mask"></div>
+          <div class="ed-crop" aria-label="Ausschnitt verschieben">
+            <span class="ed-gridline vertical" style="left:33.333%"></span><span class="ed-gridline vertical" style="left:66.667%"></span>
+            <span class="ed-gridline horizontal" style="top:33.333%"></span><span class="ed-gridline horizontal" style="top:66.667%"></span>
+            <span class="ed-handle" style="left:0;top:0"></span><span class="ed-handle" style="left:50%;top:0"></span><span class="ed-handle" style="left:100%;top:0"></span>
+            <span class="ed-handle" style="left:0;top:50%"></span><span class="ed-handle" style="left:100%;top:50%"></span>
+            <span class="ed-handle" style="left:0;top:100%"></span><span class="ed-handle" style="left:50%;top:100%"></span><span class="ed-handle" style="left:100%;top:100%"></span>
+          </div>
+        </div>
+        <div class="ed-float ed-crop-bar" aria-label="Crop-Einstellungen">
+          <select class="ed-ratio" aria-label="Seitenverhältnis"><option>Free</option><option>Original</option><option selected>16:9</option><option>9:16</option><option>1:1</option></select>
+          <span class="ed-dimensions">1280 × 720</span>
+          <button class="ed-crop-reset" aria-label="Reset crop" data-tooltip="Reset crop"><span class="ed-icon" data-ed-icon="reset"></span></button>
+          <button class="ed-crop-cancel" aria-label="Cancel crop" data-tooltip="Cancel · Esc"><i data-lucide="x" aria-hidden="true"></i></button>
+          <button class="ed-crop-apply" aria-label="Apply crop" data-tooltip="Apply · Enter"><i data-lucide="check" aria-hidden="true"></i></button>
+        </div>
+        <div class="ed-float ed-align-bar" aria-label="Mehrfachauswahl ausrichten" hidden>
+          <button data-align="left" aria-label="Align left" data-tooltip="Align left"><i data-lucide="align-start-vertical" aria-hidden="true"></i></button>
+          <button data-align="center" aria-label="Align horizontal centres" data-tooltip="Align horizontal centres"><i data-lucide="align-center-vertical" aria-hidden="true"></i></button>
+          <button data-align="right" aria-label="Align right" data-tooltip="Align right"><i data-lucide="align-end-vertical" aria-hidden="true"></i></button>
+          <span class="ed-gap"></span>
+          <button data-align="top" aria-label="Align top" data-tooltip="Align top"><i data-lucide="align-start-horizontal" aria-hidden="true"></i></button>
+          <button data-align="middle" aria-label="Align vertical centres" data-tooltip="Align vertical centres"><i data-lucide="align-center-horizontal" aria-hidden="true"></i></button>
+          <button data-align="bottom" aria-label="Align bottom" data-tooltip="Align bottom"><i data-lucide="align-end-horizontal" aria-hidden="true"></i></button>
+          <span class="ed-gap"></span>
+          <button data-align="distribute" aria-label="Distribute horizontal gaps" data-tooltip="Equal horizontal gaps"><i data-lucide="align-horizontal-space-around" aria-hidden="true"></i></button>
+          <button data-align="distribute-y" aria-label="Distribute vertical gaps" data-tooltip="Equal vertical gaps"><i data-lucide="align-vertical-space-around" aria-hidden="true"></i></button>
+        </div>
+      </div>
+    </div>
+    <div class="ed-timeline" aria-label="Gemeinsame Bild- und Audio-Timeline">
+      <div class="ed-ruler"><span>0:00</span><span>0:01</span><span>0:02</span><span>0:03</span><span>0:04</span><span>0:05</span><span>0:06</span><span>0:07</span><span>0:08</span></div>
+      <div class="ed-track">
+        <div class="ed-filmstrip" aria-hidden="true"></div>
+        <svg class="ed-wave" role="img" aria-label="Schematische Audio-Wellenform mit Sprechpausen"><line class="ed-wave-base"></line><path class="ed-wave-path" fill="currentColor"></path></svg>
+        <div class="ed-excluded" style="left:0;width:10%"></div><div class="ed-excluded" style="left:90%;width:10%"></div>
+        <div class="ed-trim" style="left:10%"></div><div class="ed-trim" style="left:90%"></div>
+        <div class="ed-playhead" style="left:37.5%"></div>
+        <input class="ed-seek" type="range" min="0" max="8" step="0.01" value="3" aria-label="Playhead in Sekunden">
+      </div>
+    </div>
+    <div class="ed-transport">
+      <button class="ed-play" aria-label="Play / Pause" aria-pressed="false" data-tooltip="Play / Pause · Space"><span class="ed-icon" data-ed-icon="play"></span></button>
+      <span class="ed-time">0:03.000 / 0:08</span>
+      <div class="ed-trim-fields"><span>In&nbsp; <b>0:00.800</b></span><span>Out&nbsp; <b>0:07.200</b></span><span>· 0:06.400</span></div>
+      <span class="ed-spacer"></span>
+      <button class="ed-loop" aria-label="Loop selection" aria-pressed="false" data-tooltip="Loop selection"><span class="ed-icon" data-ed-icon="loop"></span></button>
+      <button disabled class="ed-rate" aria-label="Preview speed">1×</button>
+      <button class="ed-audio-button" aria-label="Audio-Menü anzeigen" aria-expanded="false" data-tooltip="Audio-Menü im Entwurf"><span class="ed-icon" data-ed-icon="volume"></span></button>
+      <span class="ed-noaudio" hidden>No audio</span>
+    </div>
+    <div class="ed-footer"><button class="ed-fit" aria-label="Fit">Fit</button><span>87%</span><span class="ed-drag"><span class="ed-icon" data-ed-icon="dragout"></span>Drag out</span></div>
+    <div class="ed-menu ed-project-menu" aria-label="Projektmenü" hidden>
+      <button disabled>Save output <small>Ctrl+S</small></button>
+      <div class="ed-menu-separator"></div>
+      <button disabled>Save project… <small>Ctrl+Shift+S</small></button>
+      <button disabled>Open project… <small>Ctrl+O</small></button>
+      <button disabled>Resume editing…</button>
+    </div>
+    <div class="ed-menu ed-audio-menu" aria-label="Audio-Einstellungen" hidden>
+      <label><input class="ed-preview-mute" type="checkbox">Mute preview</label>
+      <label>Volume <input type="range" min="0" max="100" value="80" aria-label="Preview volume" style="width:130px"></label>
+      <div class="ed-menu-separator"></div>
+      <label><input class="ed-include-audio" type="checkbox" checked>Include audio in output</label>
+      <label><input class="ed-show-wave" type="checkbox" checked>Show waveform</label>
+    </div>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById('eddy-next-tools');
+      const q = s => root.querySelector(s);
+      const all = s => [...root.querySelectorAll(s)];
+      const iconAssets = {"arrow":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtNi42NTAwIC02LjY1MDApIHNjYWxlKDEuNTU0MjMpIj48cGF0aCBkPSJNNyAxNyAxNyA3Ii8+PHBhdGggZD0iTTcgN2gxMHYxMCIvPjwvZz48L3N2Zz4K","copy":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMi4yNTAwIC0yLjI1MDApIHNjYWxlKDEuMTg0NzMpIj48cmVjdCB4PSI5IiB5PSI5IiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIHJ4PSIzIi8+PHBhdGggZD0iTTUgMTVWN2EyIDIgMCAwIDEgMi0yaDgiLz48L2c+PC9zdmc+Cg==","dragout":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuNTUwMCAtMS41NTAwKSBzY2FsZSgxLjEzMDcxKSI+PGNpcmNsZSBjeD0iOCIgY3k9IjUiIHI9IjEuOCIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iNSIgcj0iMS44Ii8+PGNpcmNsZSBjeD0iOCIgY3k9IjEyIiByPSIxLjgiLz48Y2lyY2xlIGN4PSIxNiIgY3k9IjEyIiByPSIxLjgiLz48Y2lyY2xlIGN4PSI4IiBjeT0iMTkiIHI9IjEuOCIvPjxjaXJjbGUgY3g9IjE2IiBjeT0iMTkiIHI9IjEuOCIvPjwvZz48L3N2Zz4K","ellipse":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjU1MDAgMC41NTAwKSBzY2FsZSgwLjk1Njc1KSI+PGVsbGlwc2UgY3g9IjEyIiBjeT0iMTIiIHJ4PSI5IiByeT0iNi42Ii8+PC9nPjwvc3ZnPgo=","highlight":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjU1MDAgMS4wNTAwKSBzY2FsZSgwLjkxMjg3KSI+PHBhdGggZD0ibTkgMTEtNiA2djNoOWwzLTMiLz48cGF0aCBkPSJtMjIgMTItNC42IDQuNmEyIDIgMCAwIDEtMi44IDBsLTUuMi01LjJhMiAyIDAgMCAxIDAtMi44TDE0IDR6Ii8+PC9nPjwvc3ZnPgo=","loop":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMS43MDAwIDEuNzUwMCkgc2NhbGUoMC44NTU3MSkiPjxwYXRoIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzLjI3MjEiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZD0iTTQgOVY3YTIgMiAwIDAgMSAyLTJoMTRtLTQtMyA0IDMtNCAzTTIwIDE1djJhMiAyIDAgMCAxLTIgMkg0bTQtMy00IDMgNCAzIi8+PC9nPjwvc3ZnPgo=","move":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuMjAwMCAtMC4xMDAwKSBzY2FsZSgxLjA1MjYzKSI+PHBhdGggZD0ibTUgMyAxNSA4LTcgMi0yIDdaIi8+PC9nPjwvc3ZnPgo=","muted":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTMuMDUwMCAtMy4xNTAwKSBzY2FsZSgxLjI2MzQxKSI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTQgOXY2aDRsNSA0VjVMOCA5SDRabTExLjQuMiAxLjYgMS42IDEuNi0xLjYgMS4yIDEuMi0xLjYgMS42IDEuNiAxLjYtMS4yIDEuMi0xLjYtMS42LTEuNiAxLjYtMS4yLTEuMiAxLjYtMS42LTEuNi0xLjYgMS4yLTEuMloiLz48L2c+PC9zdmc+Cg==","pen":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjU1MDAgMS4wNTAwKSBzY2FsZSgwLjk1Njc1KSI+PHBhdGggZD0iTTEyIDIwaDkiLz48cGF0aCBkPSJNMTYuNSAzLjVhMi4xMjEgMi4xMjEgMCAwIDEgMyAzTDcgMTlsLTQgMSAxLTR6Ii8+PC9nPjwvc3ZnPgo=","play":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTYuNjAwMCAtMy45NTAwKSBzY2FsZSgxLjMyNjQyKSI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTggNS41djEzYTEgMSAwIDAgMCAxLjU0Ljg0bDEwLTYuNWExIDEgMCAwIDAgMC0xLjY4bC0xMC02LjVBMSAxIDAgMCAwIDggNS41WiIvPjwvZz48L3N2Zz4K","rect":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMC43NTAwIC0wLjcwMDApIHNjYWxlKDEuMDU4NTQpIj48cmVjdCB4PSI0IiB5PSI1IiB3aWR0aD0iMTYiIGhlaWdodD0iMTQiIHJ4PSI0Ii8+PC9nPjwvc3ZnPgo=","redact":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuMjUwMCAtMS4yNTAwKSBzY2FsZSgxLjEwNTU4KSI+PHJlY3QgeD0iMyIgeT0iMyIgd2lkdGg9IjgiIGhlaWdodD0iOCIgcng9IjIiLz48cmVjdCB4PSIxMyIgeT0iMTMiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHJ4PSIyIi8+PHJlY3QgeD0iMTMiIHk9IjMiIHdpZHRoPSI4IiBoZWlnaHQ9IjgiIHJ4PSIyIiBvcGFjaXR5PSIuNCIvPjxyZWN0IHg9IjMiIHk9IjEzIiB3aWR0aD0iOCIgaGVpZ2h0PSI4IiByeD0iMiIgb3BhY2l0eT0iLjQiLz48L2c+PC9zdmc+Cg==","redo":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMS45NTAwIC0wLjg1MDApIHNjYWxlKDEuMTE4MDEpIj48cGF0aCBkPSJtMTUgNCA1IDUtNSA1TTIwIDlIMTBhNSA1IDAgMCAwIDAgMTAiLz48L2c+PC9zdmc+Cg==","reset":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuMTUwMCAtMS4xMDAwKSBzY2FsZSgxLjE0MDY1KSI+PHBhdGggZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuNDU0NyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBkPSJNNCA4VjRtMCAwaDRNNCA0bDMgM2E3IDcgMCAxIDEtMS41IDcuNSIvPjwvZz48L3N2Zz4K","save":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjU1MDAgMC41NTAwKSBzY2FsZSgwLjk1Njc1KSI+PHBhdGggZD0iTTYgM2gxMGw1IDV2MTBhMyAzIDAgMCAxLTMgM0g2YTMgMyAwIDAgMS0zLTNWNmEzIDMgMCAwIDEgMy0zWiIvPjxwYXRoIGQ9Ik04IDN2Nmg4TTggMjF2LTZoOHY2Ii8+PC9nPjwvc3ZnPgo=","shelf":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjU1MDAgMS4wNTAwKSBzY2FsZSgwLjkxMjg3KSI+PHBhdGggZD0iTTEyIDdINmEzIDMgMCAwIDAtMyAzdjhhMyAzIDAgMCAwIDMgM2g4YTMgMyAwIDAgMCAzLTN2LTZNNyAzaDVNMTkgM3Y2bS0zLTNoNiIvPjwvZz48L3N2Zz4K","spotlight":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgwLjU1MDAgMC41NTAwKSBzY2FsZSgwLjk1Njc1KSI+PHBhdGggZD0iTTggM0g2YTMgMyAwIDAgMC0zIDN2Mm0xMy01aDJhMyAzIDAgMCAxIDMgM3YyTTMgMTZ2MmEzIDMgMCAwIDAgMyAzaDJtOCAwaDJhMyAzIDAgMCAwIDMtM3YtMiIvPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjMiLz48L2c+PC9zdmc+Cg==","sun":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxLjU1MDAgMS41NTAwKSBzY2FsZSgwLjg3MjgzKSI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMy41Ii8+PHBhdGggZD0iTTEyIDJ2Mk0xMiAyMHYyTTIgMTJoMk0yMCAxMmgyTTQuOSA0LjlsMS40IDEuNE0xNy43IDE3LjdsMS40IDEuNE0xOS4xIDQuOWwtMS40IDEuNE02LjMgMTcuN2wtMS40IDEuNCIvPjwvZz48L3N2Zz4K","text":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMC43NTAwIC0wLjcwMDApIHNjYWxlKDEuMDU4NTQpIj48cGF0aCBkPSJNNCA2VjRoMTZ2MiIvPjxwYXRoIGQ9Ik0xMiA0djE2Ii8+PHBhdGggZD0iTTkgMjBoNiIvPjwvZz48L3N2Zz4K","undo":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmZmZmIiBzdHJva2Utd2lkdGg9IjIuOCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgtMC44NTAwIC0wLjg1MDApIHNjYWxlKDEuMTE4MDEpIj48cGF0aCBkPSJtOSA0LTUgNSA1IDVNNCA5aDEwYTUgNSAwIDAgMSAwIDEwIi8+PC9nPjwvc3ZnPgo=","volume":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTMuMjAwMCAtMy43MDAwKSBzY2FsZSgxLjMwOTgwKSI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTQgOXY2aDRsNSA0VjVMOCA5SDRabTExLjUtLjh2Ny42YTQuNSA0LjUgMCAwIDAgMC03LjZabTAtMy4ydjIuMWE2LjUgNi41IDAgMCAxIDAgOS44VjE5YTguNSA4LjUgMCAwIDAgMC0xNFoiLz48L2c+PC9zdmc+Cg==","width-medium":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuNTUwMCAtMS41NTAwKSBzY2FsZSgxLjEyODAzKSI+PHBhdGggZD0iTTQuNSAxMmgxNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIuNjU5NSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9nPjwvc3ZnPgo=","width-thick":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuNzUwMCAtMS43NTAwKSBzY2FsZSgxLjE1MTM3KSI+PHBhdGggZD0iTTUuNSAxMmgxMyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjQuMzQyNiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9nPjwvc3ZnPgo=","width-thin":"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoLTEuMzUwMCAtMS4zMDAwKSBzY2FsZSgxLjExNzAwKSI+PHBhdGggZD0iTTMuNzUgMTJoMTYuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjEuMzQyOSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9nPjwvc3ZnPgo="};
+      all('[data-ed-icon]').forEach(el => el.style.setProperty('--ed-icon-url', `url("${iconAssets[el.dataset.edIcon]}")`));
+      const state = {mode:'crop', theme:'system', waveformHeight:28, waveform:true};
+      const crop = {x:1/6,y:1/6,w:2/3,h:2/3};
+      const points = [{x:0.18,y:0.48},{x:0.43,y:0.48},{x:0.75,y:0.48}];
+      let playing = false, loop = false, lastTick = 0, frameId = 0, drag = null;
+      function wave() {
+        const svg=q('.ed-wave'), width=Math.max(1,svg.clientWidth), height=state.waveformHeight;
+        svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
+        svg.style.height=`${height}px`;
+        const base=q('.ed-wave-base');
+        for (const [key,val] of Object.entries({x1:0,y1:height/2,x2:width,y2:height/2})) base.setAttribute(key,val);
+        let top=[], bottom=[];
+        for(let x=0;x<=width;x+=2) {
+          const t=x/width*8;
+          const envelope=[1.1,2.7,3.5,5.25,6.7].reduce((v,c)=>Math.max(v,Math.exp(-Math.pow((t-c)/0.37,2))),0);
+          const a=(height/2-2)*envelope*(0.32+0.68*Math.abs(Math.sin(t*68)*Math.cos(t*23)));
+          top.push(`${x},${height/2-a}`); bottom.push(`${x},${height/2+a}`);
+        }
+        q('.ed-wave-path').setAttribute('d',`M${top.join('L')}L${bottom.reverse().join('L')}Z`);
+      }
+      function cropRender() {
+        const box=q('.ed-crop');
+        Object.assign(box.style,{left:`${crop.x*100}%`,top:`${crop.y*100}%`,width:`${crop.w*100}%`,height:`${crop.h*100}%`});
+        const x=crop.x*100,y=crop.y*100,r=(crop.x+crop.w)*100,b=(crop.y+crop.h)*100;
+        q('.ed-crop-mask').style.clipPath=`polygon(evenodd,0 0,100% 0,100% 100%,0 100%,0 0,${x}% ${y}%,${x}% ${b}%,${r}% ${b}%,${r}% ${y}%,${x}% ${y}%)`;
+      }
+      function render() {
+        root.style.colorScheme=state.theme==='system'?'light dark':state.theme;
+        all('[data-ed-mode]').forEach(el=>el.setAttribute('aria-pressed',el.dataset.edMode===state.mode?'true':'false'));
+        for(const s of ['.ed-crop','.ed-crop-mask','.ed-crop-bar']) q(s).hidden=state.mode!=='crop';
+        q('.ed-align-bar').hidden=state.mode!=='steps';
+        q('.ed-guide').hidden=state.mode!=='steps'||!points.every(p=>Math.abs(p.y-points[0].y)<.001);
+        q('.ed-guide').style.top=`${points[0].y*100+1500/q('.ed-media').clientHeight}%`;
+        all('.ed-step').forEach((el,i)=>{el.hidden=state.mode!=='steps';el.style.left=`${points[i].x*100}%`;el.style.top=`${points[i].y*100}%`;});
+        q('.ed-wave').hidden=!state.waveform;
+        q('.ed-show-wave').checked=state.waveform;
+        cropRender(); wave();
+      }
+      const strip=q('.ed-filmstrip');
+      for(let i=0;i<14;i++) { const el=document.createElement('div');el.className='ed-thumb';strip.append(el); }
+      all('[data-ed-mode]').forEach(el=>el.addEventListener('click',()=>{state.mode=el.dataset.edMode;render();}));
+      q('.ed-theme-button').addEventListener('click',()=>{const dark=state.theme==='dark'||(state.theme==='system'&&matchMedia('(prefers-color-scheme:dark)').matches);state.theme=dark?'light':'dark';render();});
+      q('.ed-ratio').addEventListener('change',()=>{
+        const ratio=q('.ed-ratio').value;
+        const r=ratio==='9:16'?9/16:ratio==='1:1'?1:16/9;
+        const media=q('.ed-media').getBoundingClientRect();
+        crop.w=2/3;crop.h=crop.w*media.width/r/media.height;
+        if(crop.h>0.8) {crop.h=0.8;crop.w=crop.h*media.height*r/media.width;}
+        crop.x=(1-crop.w)/2;crop.y=(1-crop.h)/2;
+        q('.ed-dimensions').textContent=`${Math.round(crop.w*1920/2)*2} × ${Math.round(crop.h*1080/2)*2}`;
+        cropRender();
+      });
+      q('.ed-crop-reset').addEventListener('click',()=>{Object.assign(crop,{x:0,y:0,w:1,h:1});q('.ed-dimensions').textContent='1920 × 1080';cropRender();});
+      for(const sel of ['.ed-crop-apply','.ed-crop-cancel']) q(sel).addEventListener('click',()=>{state.mode='normal';render();});
+      q('.ed-crop').addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,cx:crop.x,cy:crop.y};e.currentTarget.setPointerCapture(e.pointerId);});
+      q('.ed-crop').addEventListener('pointermove',e=>{if(!drag)return;const rect=q('.ed-media').getBoundingClientRect();crop.x=Math.max(0,Math.min(1-crop.w,drag.cx+(e.clientX-drag.x)/rect.width));crop.y=Math.max(0,Math.min(1-crop.h,drag.cy+(e.clientY-drag.y)/rect.height));cropRender();});
+      for(const event of ['pointerup','pointercancel','lostpointercapture']) q('.ed-crop').addEventListener(event,()=>{drag=null;});
+      all('[data-align]').forEach(el=>el.addEventListener('click',()=>{
+        const op=el.dataset.align, xs=points.map(p=>p.x), ys=points.map(p=>p.y);
+        const left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...ys),bottom=Math.max(...ys);
+        points.forEach((p,i)=>{if(op==='left')p.x=left;if(op==='center')p.x=(left+right)/2;if(op==='right')p.x=right;if(op==='top')p.y=top;if(op==='middle')p.y=(top+bottom)/2;if(op==='bottom')p.y=bottom;if(op==='distribute')p.x=.18+i*.29;if(op==='distribute-y')p.y=.22+i*.23;});
+        render();
+      }));
+      function seek(value) {q('.ed-seek').value=value;q('.ed-playhead').style.left=`${value/8*100}%`;q('.ed-time').textContent=`0:${value.toFixed(3).padStart(6,'0')} / 0:08`;}
+      q('.ed-seek').addEventListener('input',e=>seek(Number(e.target.value)));
+      function tick(now) {if(!playing)return;if(lastTick) {let value=Number(q('.ed-seek').value)+(now-lastTick)/1000;if(value>=7.2) {if(loop)value=.8;else {value=7.2;playing=false;q('.ed-play').setAttribute('aria-pressed','false');}}seek(value);}lastTick=now;if(playing)frameId=requestAnimationFrame(tick);}
+      q('.ed-play').addEventListener('click',()=>{playing=!playing;q('.ed-play').setAttribute('aria-pressed',String(playing));cancelAnimationFrame(frameId);lastTick=0;if(playing){if(Number(q('.ed-seek').value)>=7.2)seek(.8);frameId=requestAnimationFrame(tick);}});
+      q('.ed-loop').addEventListener('click',()=>{loop=!loop;q('.ed-loop').setAttribute('aria-pressed',String(loop));});
+      for(const [button,menu,other] of [['.ed-save-button','.ed-project-menu','.ed-audio-menu'],['.ed-audio-button','.ed-audio-menu','.ed-project-menu']]) q(button).addEventListener('click',()=>{q(menu).hidden=!q(menu).hidden;q(other).hidden=true;q(button).setAttribute('aria-expanded',String(!q(menu).hidden));});
+      q('.ed-include-audio').addEventListener('change',e=>q('.ed-noaudio').hidden=e.target.checked);
+      q('.ed-preview-mute').addEventListener('change',e=>q('.ed-audio-button .ed-icon').style.setProperty('--ed-icon-url',`url("${iconAssets[e.target.checked?'muted':'volume']}")`));
+      q('.ed-show-wave').addEventListener('change',e=>{state.waveform=e.target.checked;render();});
+      root.addEventListener('keydown',e=>{if(e.key==='Escape'){q('.ed-project-menu').hidden=true;q('.ed-audio-menu').hidden=true;state.mode='normal';render();}});
+      q('.ed-fit').addEventListener('click',()=>{state.mode='normal';render();});
+      new ResizeObserver(()=>{cropRender();wave();}).observe(q('.ed-track'));
+      render();
+      if(globalThis.Tweak) {
+        const tweak=new Tweak({container:root,onChange:render});
+        tweak.addSelect(state,'mode',{label:'Ansicht',options:[{label:'Crop',value:'crop'},{label:'Mehrfachauswahl',value:'steps'},{label:'Ohne Kontextleiste',value:'normal'}]});
+        tweak.addSelect(state,'theme',{label:'Theme',options:[{label:'System',value:'system'},{label:'Dark',value:'dark'},{label:'Light',value:'light'}]});
+        tweak.addSlider(state,'waveformHeight',{label:'Audiospur-Höhe',min:24,max:32,step:4,unit:'px'});
+        tweak.addToggle(state,'waveform',{label:'Wellenform sichtbar'});
+      }
+    })();
+  </script>
+</div>
