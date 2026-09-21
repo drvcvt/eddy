@@ -45,16 +45,22 @@ public:
     void setImageProvider(std::function<QImage()> provider);
     void setFileProvider(std::function<FileDragPayload()> provider);
     void refreshTheme();
+    void setPreparationNeeded(bool needed);
+signals:
+    void preparationRequested();
 
 protected:
     void mousePressEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
+    void mouseReleaseEvent(QMouseEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
 
 private:
     void startDrag();
     std::function<QImage()> m_provider;
     std::function<FileDragPayload()> m_fileProvider;
     QPoint m_pressPos;
+    bool m_preparationNeeded = false;
     QString m_lastTempPath;   // previous generated temp file, removed before the next / on destroy
 };
 

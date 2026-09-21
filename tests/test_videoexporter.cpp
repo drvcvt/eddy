@@ -138,6 +138,44 @@ private slots:
 #endif
     }
 
+    void hardwareFailureFallsBackWithoutAnEmptyOverlay() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        const QString ffmpeg = QStandardPaths::findExecutable("ffmpeg");
+        if (ffmpeg.isEmpty()) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath("input.mp4");
+        const QString output = dir.filePath("output.mp4");
+        QVERIFY(runProcess(ffmpeg, {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=red:s=64x48:d=1:r=10", "-pix_fmt", "yuv420p", input}));
+        const auto quoted = [](QString value) { return "'" + value.replace("'", "'\\''") + "'"; };
+        QFile script(dir.filePath("ffmpeg"));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write(("#!/bin/sh\ncase \" $* \" in\n"
+            " *' color=size=320x180:rate=30 '*) exit 0;;\n"
+            " *' h264_nvenc '*) printf rejected > " + quoted(dir.filePath("rejected")) + "; exit 1;;\n"
+            " *' -loop '*) exit 2;;\nesac\nexec " + quoted(ffmpeg) + " \"$@\"\n").toUtf8());
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        QImage overlay(64, 48, QImage::Format_ARGB32); overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, output, overlay, 200, 800};
+        request.cropRect = QRect(8, 4, 32, 24);
+        const auto result = writeVideoWithOverlay(request);
+        qputenv("PATH", oldPath);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(QFileInfo::exists(dir.filePath("rejected")));
+        const QString frame = dir.filePath("frame.png");
+        QVERIFY(runProcess(ffmpeg, {"-v", "error", "-i", output, "-frames:v", "1", frame}));
+        const QImage decoded(frame);
+        QCOMPARE(decoded.size(), QSize(32, 24));
+        QVERIFY(decoded.pixelColor(16, 12).red() > 230);
+#endif
+    }
+
     void exportsStaticOverlayOntoVideo() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

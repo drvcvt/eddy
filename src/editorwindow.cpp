@@ -493,7 +493,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_exportStatus->setObjectName(QStringLiteral("VideoExportStatus"));
         m_exportStatus->setFixedWidth(110);
         m_exportStatus->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        m_exportStatus->setToolTip(tr("Background preparation for Copy, Save and Drag out"));
+        m_exportStatus->setToolTip(tr("Video export status"));
         fl->addWidget(m_exportStatus, 0, 0, Qt::AlignRight);
     }
     viewControls->setAttribute(Qt::WA_StyledBackground, true);
@@ -506,6 +506,12 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     // (the controller's default) would emit nothing at all. Keep this call.
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
     setupCrop();
+    if (isVideo()) {
+        connect(m_tools, &ToolController::toolChanged, this, [this](ToolType type) {
+            if (type == ToolType::Redact) updateVideoBackground();
+        });
+        connect(m_dragPill, &DragPill::preparationRequested, this, [this] { videoDeliveryPath(); });
+    }
     if (cfg.animations) setWindowOpacity(0.0);   // entrance fade starts transparent
 
     // Size the canvas to the image at 100%; only oversized media starts fitted.
@@ -1036,6 +1042,30 @@ void EditorWindow::setVideoPreviewImage(const QImage &image) {
     m_previewImage->setPixmap(pixmap);
 }
 
+bool EditorWindow::updateVideoBackground() {
+    if (m_videoBackgroundCurrent) return true;
+    const auto &frame = m_lastVideoFrame;
+    QImage image = frame.toImage();
+    if (image.isNull()) return false;
+    // Qt < 6.8 includes rotation/mirroring in toImage(). Newer Qt
+    // applies the surface transform there, but not the presentation one.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    const int rotation = int(frame.rotation());
+    if (rotation) image = image.transformed(QTransform().rotate(rotation));
+    if (frame.mirrored()) image = image.transformed(QTransform().scale(-1, 1));
+#endif
+    if (image.size() != m_media.nativeSize())
+        image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    m_tools->setBackground(m_bg);
+    m_ocr->setBackground(m_bg);
+    for (QGraphicsItem *item : m_scene->items())
+        if (auto *redact = dynamic_cast<RedactItem *>(item))
+            redact->setSource(m_bg);
+    m_videoBackgroundCurrent = true;
+    return true;
+}
+
 void EditorWindow::ensureVideoPlayer() {
     if (!isVideo() || m_player) return;
     if (!m_videoItem) {
@@ -1052,18 +1082,14 @@ void EditorWindow::ensureVideoPlayer() {
         m_backgroundItem = m_videoItem;
         connect(videoItem->videoSink(), &QVideoSink::videoFrameChanged, this,
                 [this](const QVideoFrame &frame) {
-            QImage image = frame.toImage();
-            if (image.isNull()) return;
-            // Qt < 6.8 includes rotation/mirroring in toImage(). Newer Qt
-            // applies the surface transform there, but not the presentation one.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-            const int rotation = int(frame.rotation());
-            if (rotation) image = image.transformed(QTransform().rotate(rotation));
-            if (frame.mirrored()) image = image.transformed(QTransform().scale(-1, 1));
-#endif
-            if (image.size() != m_media.nativeSize())
-                image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-            m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+            if (!frame.isValid()) return;
+            m_lastVideoFrame = frame;
+            m_videoBackgroundCurrent = false;
+            bool needsPixels = m_tools->tool() == ToolType::Redact;
+            if (!needsPixels)
+                for (QGraphicsItem *item : m_scene->items())
+                    if (dynamic_cast<RedactItem *>(item)) { needsPixels = true; break; }
+            if (needsPixels) updateVideoBackground();
             // GStreamer's buffer PTS may include a stream offset (e.g. H.264
             // reordering delay), while QMediaPlayer positions start at zero.
             // Loading primes the initial still. Anchor that first frame before
@@ -1076,11 +1102,6 @@ void EditorWindow::ensureVideoPlayer() {
             if (!m_timelineActive && !m_seekSettling && m_presentedStart >= 0
                 && m_player->playbackState() == QMediaPlayer::PlayingState)
                 m_timeline->setPosition(m_presentedStart);
-            m_tools->setBackground(m_bg);
-            m_ocr->setBackground(m_bg);
-            for (QGraphicsItem *item : m_scene->items())
-                if (auto *redact = dynamic_cast<RedactItem *>(item))
-                    redact->setSource(m_bg);
             if (m_seekSettling && m_presentedStart >= 0 && m_seekTarget >= m_presentedStart - 1
                 && m_seekTarget < (m_presentedEnd > m_presentedStart ? m_presentedEnd
                     : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
@@ -1551,8 +1572,8 @@ QString EditorWindow::videoDeliveryPath() {
         return m_media.path;
     if (m_cachedVideoRevision == m_videoRevision && QFileInfo::exists(m_cachedVideoPath))
         return m_cachedVideoPath;
-    scheduleVideoExportCache(0);
     m_videoStatusRequested = true;
+    scheduleVideoExportCache(0);
     if (m_toast)
         m_toast->showMessage(QStringLiteral("Preparing video export…"));
     return {};
@@ -1560,10 +1581,17 @@ QString EditorWindow::videoDeliveryPath() {
 
 void EditorWindow::onVideoContentChanged() {
     if (!isVideo()) return;
+    // Undo/redo may restore a redaction while paused on a newer source frame.
+    for (QGraphicsItem *item : m_scene->items()) {
+        if (dynamic_cast<RedactItem *>(item)) { updateVideoBackground(); break; }
+    }
     ++m_videoRevision;
     const bool edited = hasVideoEdits();
-    if (m_exportStatus) m_exportStatus->setText(edited ? tr("Preparing…") : QString());
-    if (m_dragPill) m_dragPill->setEnabled(!edited);
+    if (m_exportStatus) m_exportStatus->setText(edited ? tr("Edited") : QString());
+    if (m_dragPill) {
+        m_dragPill->setPreparationNeeded(edited);
+        m_dragPill->setEnabled(!m_videoExportInProgress || !edited);
+    }
     if (edited) {
         scheduleVideoExportCache();
     } else if (m_videoStatusRequested) {
@@ -1572,7 +1600,7 @@ void EditorWindow::onVideoContentChanged() {
 }
 
 void EditorWindow::scheduleVideoExportCache(int delayMs) {
-    if (!isVideo() || !hasVideoEdits() || !m_videoExportTimer || m_timelineActive) return;
+    if (!isVideo() || !hasVideoEdits() || !m_videoExportTimer || m_timelineActive || !m_videoStatusRequested) return;
     m_videoExportTimer->start(qMax(0, delayMs));
 }
 
@@ -1592,7 +1620,8 @@ QString EditorWindow::createVideoTempPath() const {
 }
 
 void EditorWindow::startVideoExportCache() {
-    if (!isVideo() || !hasVideoEdits() || m_timelineActive || (m_crop && m_crop->active())) return;
+    if (!isVideo() || !hasVideoEdits() || !m_videoStatusRequested || m_timelineActive
+        || (m_crop && m_crop->active())) return;
     if (m_videoExportInProgress) {
         m_videoExportPending = true;
         return;
@@ -1615,6 +1644,7 @@ void EditorWindow::startVideoExportCache() {
         if (auto *redact = dynamic_cast<RedactItem *>(item))
             request.blurRects += redact->blurRectsInScene();
     m_videoExportInProgress = true;
+    if (m_dragPill) m_dragPill->setEnabled(false);
     if (m_exportStatus) m_exportStatus->setText(tr("Preparing…"));
 
     QPointer<EditorWindow> receiver(this);
@@ -1642,7 +1672,10 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         }
         m_cachedVideoPath = path;
         m_cachedVideoRevision = revision;
-        if (m_dragPill) m_dragPill->setEnabled(true);
+        if (m_dragPill) {
+            m_dragPill->setPreparationNeeded(false);
+            m_dragPill->setEnabled(true);
+        }
         if (m_exportStatus) m_exportStatus->setText(tr("Ready"));
     } else {
         QFile::remove(path);
@@ -1795,6 +1828,7 @@ void EditorWindow::finishVideoFileSave(const QString &path, const DeliverResult 
 
 void EditorWindow::failPendingVideoActions() {
     m_videoStatusRequested = false;
+    if (m_dragPill) m_dragPill->setEnabled(true);
     m_copyVideoPending = false;
     m_sendVideoToShelfPending = false;
     m_videoShelfFallbackPending = false;
@@ -2054,7 +2088,7 @@ void EditorWindow::copyVideoFrame() {
         m_copyFramePending = true;
         return;
     }
-    if (!m_hasVideoFrame || m_bg.isNull()) {
+    if (!m_hasVideoFrame || !updateVideoBackground()) {
         m_toast->showMessage(tr("Frame unavailable"));
         return;
     }
