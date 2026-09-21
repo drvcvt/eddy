@@ -45,6 +45,7 @@
 #include <QApplication>
 #include <QHelpEvent>
 #include <QLineEdit>
+#include <QLayout>
 #include <QMenu>
 #include <QUndoStack>
 #include <cstring>
@@ -914,6 +915,17 @@ private slots:
             QVERIFY2(end - start >= field->fontMetrics().horizontalAdvance(field->text()) - 1, name);
         }
         window.resize(1200, 680);
+        QTest::qWait(100);
+        auto *bar = window.findChild<QWidget *>("PlaybackBar");
+        auto *trimControls = window.findChild<QWidget *>("TrimControls");
+        qInfo() << "Wide playback layout" << window.size() << bar->size()
+                << "trim minimum" << trimControls->minimumSizeHint();
+        auto *transport = bar->layout()->itemAt(1)->layout();
+        for (int i = 0; i < transport->count(); ++i) {
+            auto *item = transport->itemAt(i);
+            qInfo() << "transport" << (item->widget() ? item->widget()->objectName() : QStringLiteral("spacer"))
+                    << item->geometry() << item->minimumSize() << item->sizeHint();
+        }
         QTRY_VERIFY_WITH_TIMEOUT(window.findChild<QSlider *>("PlaybackVolume")->isVisible(), 1000);
     }
     void videoMenusOpenFromKeyboardWithoutRunningPrimaryAction() {
