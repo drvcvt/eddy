@@ -343,6 +343,10 @@ weder QGraphicsScene noch alle Item-Klassen durch ein neues Framework.
   aber nicht ungefragt eine angeforderte neue Bearbeitung. Nach Absturz ebenso.
 - Eine kurze Resume-Liste mit Dateiname, Zeitpunkt und Status genügt. Sie verwaltet
   Editierstände, keine zweite Capture-History neben Boltsnap. Kein neues Dashboard.
+- `eddy --resume` und eine Desktop-Aktion `Resume editing` öffnen diese Liste
+  auch ohne vorhandene Eingabedatei. Der Einstieg erfolgt vor dem normalen
+  Medienladen, damit Recovery nach dem Entfernen einer Shelf-Quelle erreichbar
+  bleibt. Das Save-Menü verwendet denselben Dialog.
 - Explizite Aktionen `Save as project` und `Discard recovery`; Datennutzung
   sichtbar. Startbudget 2 GiB für neue Recovery-Quellkopien, konfigurierbar.
   Wenn voll, vorhandene Stände behalten und weitere Sicherung sichtbar aussetzen.
@@ -448,7 +452,8 @@ Konkrete bestehende Integrationspunkte:
   Zeitursprung. Alte Metadatenfelder weiter sinnvoll unterstützen.
 - `main.*`, `cli.*`, Desktop/MIME-Registrierung: `.eddy` vor normalem Medienladen
   erkennen. Native Open-Dialoge erhalten den Projektfilter. Kein neues globales
-  Dateiformat-Handling für fremde Anwendungen.
+  Dateiformat-Handling für fremde Anwendungen. `--resume` ohne Input und die
+  Desktop-Resume-Aktion sind explizite neue Einstiege, keine Änderung von Capture.
 - `theme.*`, QSS, QRC: existierende Tokens und Größen; nur notwendige neue Selektoren
   und Icons, keine globale Neuskalierung bisheriger Controls.
 
@@ -521,3 +526,9 @@ Noch nicht nachgewiesen: reale Performance der vorgeschlagenen Waveform-Budgets,
 vollständige Mediengeometrie über beide Qt-Backends, exakte Crop-/Alignment-Icon-
 Optik im Qt-Renderer und Fehlerfälle der noch zu bauenden Persistenz. Diese Punkte
 haben oben explizite Implementierungs- und Abnahmeschritte, keine stillen Annahmen.
+
+Planungsprüfung: Die HTML-Skizze wurde im Browser bei 320/360/520/736/1024 px
+geprüft, darunter Dark und Light. Keine fehlenden Glyphen, JavaScript-Ausnahmen
+oder horizontal überstehenden Controls im geprüften Layout. Playhead-Zeit,
+Audio-Ausgabestatus, Seitenverhältnis-Anzeige und Waveform-Sichtbarkeit reagieren
+im Entwurf. Diese Prüfung ist keine Produktabnahme oder Qt-Pixelprüfung.
