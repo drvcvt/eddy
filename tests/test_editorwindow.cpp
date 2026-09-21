@@ -914,8 +914,7 @@ private slots:
             QVERIFY2(end - start >= field->fontMetrics().horizontalAdvance(field->text()) - 1, name);
         }
         window.resize(1200, 680);
-        QCoreApplication::processEvents();
-        QVERIFY(window.findChild<QSlider *>("PlaybackVolume")->isVisible());
+        QTRY_VERIFY_WITH_TIMEOUT(window.findChild<QSlider *>("PlaybackVolume")->isVisible(), 1000);
     }
     void videoMenusOpenFromKeyboardWithoutRunningPrimaryAction() {
         MediaDocument doc; doc.kind = MediaKind::Video;
