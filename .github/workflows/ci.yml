@@ -49,6 +49,7 @@ jobs:
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
+          QT_QPA_FONTDIR: 'C:\Windows\Fonts'
         run: |
           ctest --test-dir build -C Release --parallel 3 --output-on-failure
           $testExit = $LASTEXITCODE
