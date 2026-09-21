@@ -23,6 +23,7 @@ Takes an image or video from a file (images also support stdin), lets you annota
 | Text | `T` | Inline text with wrapping, alignment, size, bold and filled-label styles |
 | Redact | `X` | Draw a redaction region; a floating mode-bar lets you switch between **Blur / Blacken / OCR-Blur / OCR-Blacken** |
 | Spotlight | — | Keep one rounded or oval focus region bright while dimming the surrounding canvas |
+| Crop | `C` | Set the visible image or video area, with eight handles and aspect presets |
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
 
@@ -46,6 +47,17 @@ Every icon sits on one keyline grid: ink centred in the 24 unit viewBox,
 reaching a 20 unit live area, at a 2.8 stroke. `tools/normalize_icons.py`
 re-fits an icon to the grid and a test in `test_theme` enforces it. Dark and light themes are available from
 the toolbar.
+
+**Crop** has a visible button at the bottom of the tool rail. Drag a handle to
+resize, drag inside to move the area, or drag outside to draw a new one. Its
+floating bar offers Free, Original, 16:9, 9:16 and 1:1, the output dimensions,
+Reset, Cancel and Apply. Shift keeps the current ratio; Alt resizes from the
+center. Enter applies one undo step; Escape first cancels a drag, then the crop.
+Middle-drag and Space-drag still pan. Reopening Crop reveals the original image;
+annotations retain their original positions. Save, Copy, frame copy, drag and
+shelf delivery use the same crop. Video crop coordinates align to even pixels.
+Orthogonal video rotations and non-square pixels use display coordinates;
+unsupported display transforms show an explanation when Crop is selected.
 
 Video has an adaptive filmstrip and a time ruler. Hover for a source-frame preview,
 drag to scrub, or pull the end grips to trim. Hold **Shift** for fine trim; **Esc**
@@ -120,6 +132,7 @@ it does not track moving text.
 | `J` / `L` on video | Pause and step backward / forward |
 | `I` / `O` on video | Set Start / End at the playhead |
 | `Enter` / `Esc` in a trim time field | Apply / restore its value |
+| `C`, then `Enter` / `Esc` | Open Crop, apply / cancel |
 | `Esc` | Cancel the active interaction, then close |
 | Scroll wheel / `+` / `-` | Zoom |
 | `0` / `1` | Fit image / 100% zoom |

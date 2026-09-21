@@ -75,6 +75,12 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         r.error = QStringLiteral("video export needs a non-null overlay image");
         return r;
     }
+    const QRect crop = req.cropRect;
+    if (crop != QRect() && (crop.isEmpty() || !req.overlay.rect().contains(crop)
+        || crop.x() % 2 || crop.y() % 2 || crop.width() % 2 || crop.height() % 2)) {
+        r.error = QStringLiteral("video crop must fit the source and use even pixel coordinates");
+        return r;
+    }
     const bool trimmed = req.trimOutMs >= 0;
     if (req.trimInMs < 0 || (trimmed && req.trimOutMs <= req.trimInMs)) {
         r.error = QStringLiteral("invalid video trim range");
@@ -134,8 +140,11 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     }
 
     constexpr int videoBlurRadius = 12;
-    QString filter;
-    QString current = QStringLiteral("[0:v]");
+    // ffmpeg autorotates before the filter graph. Normalize sample aspect ratio
+    // to the same display-pixel coordinate system used by the editor.
+    QString filter = QStringLiteral("[0:v]scale=%1:%2,setsar=1[base];")
+        .arg(req.overlay.width()).arg(req.overlay.height());
+    QString current = QStringLiteral("[base]");
     int blurIndex = 0;
     for (const QRect &requested : req.blurRects) {
         const QRect rect = requested.intersected(req.overlay.rect());
@@ -156,7 +165,10 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         current = next;
         ++blurIndex;
     }
-    filter += current + QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1[v]");
+    filter += current + QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1");
+    if (!crop.isNull())
+        filter += QStringLiteral(",crop=%1:%2:%3:%4").arg(crop.width()).arg(crop.height()).arg(crop.x()).arg(crop.y());
+    filter += QStringLiteral("[v]");
 
     QStringList args = {
         QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),

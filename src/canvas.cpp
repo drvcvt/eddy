@@ -1,6 +1,8 @@
 #include "canvas.h"
 #include "loupe.h"
+#include "cropcontroller.h"
 #include <QPainter>
+#include <QPainterPath>
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
@@ -74,6 +76,7 @@ void Canvas::updateNavigationBounds() {
 void Canvas::zoomBy(double factor) {
     const double next = qBound(0.05, m_targetZoom * factor, 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
+    m_fitted = false;
     m_targetZoom = next;
     if (!m_animations) {
         const double inc = m_targetZoom / m_zoom;
@@ -103,6 +106,7 @@ void Canvas::zoomBy(double factor) {
 }
 
 void Canvas::resetZoom() {
+    m_fitted = false;
     if (m_zoomAnim) m_zoomAnim->stop();
     resetTransform();
     m_zoom = m_targetZoom = 1.0;
@@ -113,11 +117,79 @@ void Canvas::resetZoom() {
 void Canvas::fitMedia() {
     if (m_zoomAnim) m_zoomAnim->stop();
     resetTransform();
-    fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
+    m_fitted = true;
+    QRectF fittedRect = contentRect();
+    if (m_crop && m_crop->active()) {
+        const qreal scale = qMax(0.001, qMin((viewport()->width() - 4.0) / fittedRect.width(),
+                                            (viewport()->height() - 4.0) / fittedRect.height()));
+        fittedRect.adjust(-10 / scale, -10 / scale, 10 / scale, 10 / scale);
+    }
+    fitInView(fittedRect, Qt::KeepAspectRatio);
     m_zoom = m_targetZoom = transform().m11();
     updateNavigationBounds();
-    centerOn(scene()->sceneRect().center());
+    centerOn(contentRect().center());
     emit viewChanged();
+}
+
+QRectF Canvas::contentRect() const {
+    return m_contentRect.isEmpty() ? scene()->sceneRect() : m_contentRect;
+}
+
+void Canvas::setContentRect(QRectF rect) {
+    m_contentRect = rect;
+    if (m_fitted) fitMedia();
+    viewport()->update();
+}
+
+void Canvas::restoreView(const QTransform &transform, QPointF center, bool fitted) {
+    if (m_zoomAnim) m_zoomAnim->stop();
+    setTransform(transform);
+    m_zoom = m_targetZoom = transform.m11();
+    m_fitted = fitted;
+    updateNavigationBounds();
+    centerOn(center);
+    emit viewChanged();
+}
+
+void Canvas::setCropController(CropController *crop) {
+    m_crop = crop;
+    viewport()->setMouseTracking(true);
+    connect(crop, &CropController::changed, this, [this] {
+        viewport()->update();
+        updateCursor();
+    });
+}
+
+void Canvas::drawForeground(QPainter *painter, const QRectF &) {
+    const bool cropping = m_crop && m_crop->active();
+    if (!cropping && contentRect() == scene()->sceneRect()) return;
+    painter->save();
+    painter->resetTransform();
+    const QRectF frame = viewportTransform().mapRect(cropping ? m_crop->rect() : contentRect());
+    QPainterPath outside;
+    outside.addRect(viewport()->rect());
+    outside.addRect(frame);
+    painter->fillPath(outside, cropping ? QColor(0, 0, 0, 155) : palette().color(QPalette::Window));
+    if (cropping) {
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setPen(QPen(QColor(255, 255, 255, 70), 1));
+        for (int i = 1; i < 3; ++i) {
+            const qreal x = frame.left() + frame.width() * i / 3;
+            const qreal y = frame.top() + frame.height() * i / 3;
+            painter->drawLine(QPointF(x, frame.top()), QPointF(x, frame.bottom()));
+            painter->drawLine(QPointF(frame.left(), y), QPointF(frame.right(), y));
+        }
+        painter->setPen(QPen(QColor(255, 255, 255, 210), 1));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRect(frame);
+        painter->setPen(QPen(palette().color(QPalette::Window), 1));
+        painter->setBrush(palette().color(QPalette::WindowText));
+        for (const auto &point : m_crop->handles()) {
+            const QPointF p = viewportTransform().map(point);
+            painter->drawRoundedRect(QRectF(p - QPointF(5, 5), QSizeF(10, 10)), 3, 3);
+        }
+    }
+    painter->restore();
 }
 
 void Canvas::startEyedropper() {
@@ -169,6 +241,9 @@ void Canvas::keyPressEvent(QKeyEvent *e) {
 }
 
 void Canvas::mouseDoubleClickEvent(QMouseEvent *e) {
+    if ((m_crop && m_crop->active()) || !contentRect().contains(mapToScene(e->pos()))) {
+        e->accept(); return;
+    }
     if (e->button() == Qt::LeftButton) {
         if (auto *text = dynamic_cast<TextItem *>(itemAt(e->pos()))) {
             m_tools->editText(text);
@@ -211,9 +286,20 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
         // Manual middle-drag pan. (ScrollHandDrag only grabs the left button, so it
         // can't pan on a middle-press — scroll the view by the cursor delta instead.)
         m_dragging = true;
+        m_fitted = false;
         m_panButton = e->button();
         m_panLast = e->pos();
         updateCursor();
+        e->accept(); return;
+    }
+    if (m_crop && m_crop->active()) {
+        if (e->button() == Qt::LeftButton)
+            m_crop->press(mapToScene(e->pos()), 10 / transform().m11(), e->modifiers());
+        e->accept(); return;
+    }
+    if (e->button() == Qt::LeftButton && !contentRect().contains(mapToScene(e->pos()))) {
+        m_swallowRelease = e->button();
+        scene()->clearSelection();
         e->accept(); return;
     }
     if (e->button() == Qt::LeftButton && m_tools->tool() == ToolType::Text) {
@@ -266,6 +352,11 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         emit viewChanged();                             // overlays (mode-bar) re-anchor
         e->accept(); return;
     }
+    if (m_crop && m_crop->active()) {
+        if (e->buttons() & Qt::LeftButton) m_crop->move(mapToScene(e->pos()), e->modifiers());
+        if (!m_spacePan) viewport()->setCursor(m_crop->cursor(mapToScene(e->pos()), 10 / transform().m11()));
+        e->accept(); return;
+    }
     if ((e->buttons() & Qt::LeftButton) && !isPointerTool()) {
         m_tools->update(mapToScene(e->pos()), e->modifiers()); e->accept(); return;
     }
@@ -284,6 +375,13 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
         updateCursor();
         e->accept(); return;
     }
+    if (m_crop && m_crop->active()) {
+        if (e->button() == Qt::LeftButton) {
+            m_crop->move(mapToScene(e->pos()), e->modifiers());
+            m_crop->release();
+        }
+        e->accept(); return;
+    }
     if (e->button() == Qt::LeftButton && !isPointerTool()) {
         m_tools->finish(mapToScene(e->pos()), e->modifiers()); e->accept(); return;
     }
@@ -297,7 +395,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
 void Canvas::resizeEvent(QResizeEvent *e) {
     if (m_eyedropper) cancelEyedropper();        // snapshot + loupe placement go stale on resize
     QGraphicsView::resizeEvent(e);
-    updateNavigationBounds();
+    if (m_fitted) fitMedia(); else updateNavigationBounds();
     emit viewChanged();
 }
 

@@ -90,8 +90,10 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         {ToolType::Text,"text","Text","T"},
         {ToolType::Redact,"redact","Redact","X"},
         {ToolType::Spotlight,"spotlight","Spotlight",""},
+        {ToolType::Crop,"crop","Crop","C"},
     };
     for (const T &t : tools) {
+        if (t.type == ToolType::Crop) rail->addSpacing(6);
         auto *b = mkBtn(true, true);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(t.id),
                                      iconRest, iconOn));
@@ -99,6 +101,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         b->setObjectName(QString::fromLatin1(t.id));
         b->setToolTip(*t.key ? QString("%1 \xC2\xB7 %2").arg(t.name, t.key)
                              : QString::fromLatin1(t.name));
+        b->setAccessibleName(QString::fromLatin1(t.name));
         group->addButton(b);
         m_btns.insert(int(t.type), b);
         connect(b, &QToolButton::clicked, this, [this, tt=t.type]{ emit toolChosen(tt); });

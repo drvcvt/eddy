@@ -29,6 +29,7 @@ ToolType toolFromName(const QString &name) {
     if (n=="blur"||n=="pixelate") return ToolType::Redact;   // legacy aliases -> unified redact
     if (n=="redact") return ToolType::Redact;
     if (n=="spotlight") return ToolType::Spotlight;
+    if (n=="crop") return ToolType::Crop;
     return ToolType::Arrow;
 }
 

@@ -251,3 +251,24 @@ QWidget#ColorPopover QToolButton#Pipette {
 QWidget#ColorPopover QToolButton:hover,
 QWidget#ColorPopover QToolButton:focus { background-color: @raise3; }
 QWidget#ColorPopover QToolButton:checked { background-color: @raise3; }
+
+/* Crop shares the floating annotation controls' compact geometry. */
+QWidget#CropBar { background: @raise1; border: none; border-radius: 11px; }
+QWidget#CropBar QToolButton {
+    color: @sub; padding: 0 8px; border-radius: 8px;
+    font-size: 11px; font-weight: 500;
+}
+QWidget#CropBar QToolButton:hover, QWidget#CropBar QToolButton:focus {
+    background: @raise2; color: @fg;
+}
+QWidget#CropBar QToolButton#CropApply { background: @chip-on; color: @chip-on-fg; }
+QWidget#CropBar QToolButton#CropApply:hover, QWidget#CropBar QToolButton#CropApply:focus {
+    background: @fg; color: @bg;
+}
+QWidget#CropBar QLabel { color: @sub; font-family: "MonoLisa", "Geist Mono", monospace; font-size: 11px; padding: 0 6px; }
+QWidget#CropBar QToolButton#CropRatio { padding-right: 15px; }
+QMenu#CropRatioMenu { background: @raise1; color: @sub; border: none; border-radius: 11px; padding: 4px; font-size: 12px; font-weight: 500; }
+QMenu#CropRatioMenu::item { padding: 3px 10px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
+QMenu#CropRatioMenu::item:checked { background: @raise2; color: @fg; }
+QMenu#CropRatioMenu::item:selected { background: @raise3; color: @fg; }
+QMenu#CropRatioMenu::indicator { image: none; width: 0; height: 0; }
