@@ -174,7 +174,7 @@ QWidget#DragPill {
     border: none;
     border-radius: 9px;
 }
-QWidget#DragPill:hover { background-color: @bar-hover; }
+QWidget#DragPill:hover, QWidget#DragPill:focus { background-color: @bar-hover; }
 QWidget#DragPill:disabled { background-color: transparent; }
 QLabel#DragPillText {
     color: @fg;

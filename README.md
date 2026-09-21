@@ -79,7 +79,14 @@ to open **Copy current frame** (`Ctrl+Shift+C`), including annotations and redac
 Normal Copy still delivers the video. A pending seek finishes before its frame is
 copied. In narrow windows the trim fields get their own row; hold the speaker
 button for volume. Keyboard users can open these menus with **Alt+Down**.
-**Drag out** and quiet export preparation status remain at the bottom.
+**Drag out** and a quiet export status remain at the bottom. Editing and playback
+do not start an export. For an edited video, click **Prepare drag** once, then
+drag the ready file out. Save, Copy and Shelf prepare the video when requested;
+they reuse the result until you make another edit.
+H.264 export uses a hardware encoder after a real capability check and retries
+with the CPU encoder if necessary. Pure trim/crop exports skip the empty
+annotation layer. Playback only materializes CPU images for tools that need
+their pixels, or when copying a frame.
 
 **Toolbar controls:**
 

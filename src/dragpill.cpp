@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QApplication>
 #include <QGuiApplication>
 #include <QClipboard>
@@ -187,13 +188,40 @@ void DragPill::refreshTheme() {
 void DragPill::setImageProvider(std::function<QImage()> provider) { m_provider = std::move(provider); }
 void DragPill::setFileProvider(std::function<FileDragPayload()> provider) { m_fileProvider = std::move(provider); }
 
+void DragPill::setPreparationNeeded(bool needed) {
+    m_preparationNeeded = needed;
+    const QString text = needed ? tr("Prepare drag") : tr("Drag out");
+    findChild<QLabel *>(QStringLiteral("DragPillText"))->setText(text);
+    setAccessibleName(text);
+    setToolTip(needed ? tr("Prepare the edited video for dragging") : tr("Drag into another app"));
+    setCursor(needed ? Qt::PointingHandCursor : Qt::OpenHandCursor);
+    setFocusPolicy(needed ? Qt::StrongFocus : Qt::NoFocus);
+    setMinimumWidth(sizeHint().width());
+}
+
+void DragPill::mouseReleaseEvent(QMouseEvent *e) {
+    if (m_preparationNeeded && e->button() == Qt::LeftButton && rect().contains(e->pos())) {
+        emit preparationRequested();
+        e->accept(); return;
+    }
+    QWidget::mouseReleaseEvent(e);
+}
+
+void DragPill::keyPressEvent(QKeyEvent *e) {
+    if (m_preparationNeeded && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter || e->key() == Qt::Key_Space)) {
+        if (!e->isAutoRepeat()) emit preparationRequested();
+        e->accept(); return;
+    }
+    QWidget::keyPressEvent(e);
+}
+
 void DragPill::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) { m_pressPos = e->pos(); e->accept(); }
     else QWidget::mousePressEvent(e);
 }
 
 void DragPill::mouseMoveEvent(QMouseEvent *e) {
-    if ((e->buttons() & Qt::LeftButton)
+    if (!m_preparationNeeded && (e->buttons() & Qt::LeftButton)
         && (e->pos() - m_pressPos).manhattanLength() >= QApplication::startDragDistance()) {
         startDrag();
         e->accept();

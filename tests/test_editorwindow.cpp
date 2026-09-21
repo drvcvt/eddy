@@ -1214,6 +1214,9 @@ private slots:
             QVERIFY(copied != doc.path);
             timeline->setPosition(800);
             QTest::keyClick(&w, Qt::Key_I);
+            QTest::mouseClick(w.findChild<DragPill *>(), Qt::LeftButton);
+            QTRY_COMPARE_WITH_TIMEOUT(w.findChild<QLabel *>("DragPillText")->text(),
+                                      QStringLiteral("Drag out"), 5000);
             QTRY_VERIFY_WITH_TIMEOUT(w.findChild<DragPill *>()->isEnabled(), 5000);
             QVERIFY2(QFileInfo::exists(copied),
                      "cache refresh removed the video still referenced by the clipboard");
@@ -1486,7 +1489,7 @@ private slots:
         else
             qputenv("EDDY_BOLTSNAP_SOCKET", oldSocket);
     }
-    void videoDragWaitsForCurrentExport() {
+    void videoEditsOnlyExportWhenRequested() {
         if (!have(QStringLiteral("ffmpeg")))
             QSKIP("ffmpeg not available");
         QTemporaryDir dir;
@@ -1512,8 +1515,27 @@ private slots:
         QVERIFY(pill && scene && undo);
 
         undo->push(new AddItemCommand(scene, new RectItem(QRectF(4, 4, 12, 12))));
-        QVERIFY(!pill->isEnabled());
+        auto *timer = w.findChild<QTimer *>("VideoExportTimer");
+        auto *label = pill->findChild<QLabel *>("DragPillText");
+        QVERIFY(timer && label);
+        QVERIFY(!timer->isActive());
+        QVERIFY(pill->isEnabled());
+        QCOMPARE(label->text(), QStringLiteral("Prepare drag"));
+        QTest::qWait(450); // Editing alone must not start the old debounced export.
+        QCOMPARE(label->text(), QStringLiteral("Prepare drag"));
+        QVERIFY(!timer->isActive());
+
+        QTest::mouseClick(pill, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(label->text(), QStringLiteral("Drag out"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(pill->isEnabled(), 5000);
+        undo->undo();
+        QCOMPARE(label->text(), QStringLiteral("Drag out"));
+        QVERIFY(!timer->isActive());
+        undo->redo();
+        QCOMPARE(label->text(), QStringLiteral("Prepare drag"));
+        QVERIFY(!timer->isActive());
+        QTest::keyClick(pill, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(label->text(), QStringLiteral("Drag out"), 5000);
     }
 };
 QTEST_MAIN(TestEditorWindow)
