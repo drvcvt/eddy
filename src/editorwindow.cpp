@@ -591,6 +591,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
+    m_timeLabel->ensurePolished();
     m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(
         formatPreciseTime(m_media.video.durationMs) + QStringLiteral(" / ") + formatTime(m_media.video.durationMs)));
 
@@ -602,7 +603,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setCursor(Qt::PointingHandCursor);
     m_muteButton->setFixedSize(theme::kBarButton);
     m_muteButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_muteButton->setToolTip(QStringLiteral("Mute audio"));
+    m_muteButton->setToolTip(tr("Mute audio · hold for volume"));
     m_muteButton->setAccessibleName(m_muteButton->toolTip());
 
     m_volumeSlider = new QSlider(Qt::Horizontal, bar);
@@ -647,10 +648,13 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_trimDurationLabel->setObjectName(QStringLiteral("TrimDuration"));
     m_trimDurationLabel->setToolTip(QStringLiteral("Selected duration"));
     for (auto *field : {m_trimInLabel, m_trimOutLabel}) {
+        field->ensurePolished();
         field->setMaxLength(20);
         field->setFixedHeight(theme::kBarButton.height());
         field->setAccessibleName(field == m_trimInLabel ? tr("Trim start") : tr("Trim end"));
-        field->setToolTip(tr("Edit time · Enter to apply · Esc to cancel"));
+        field->setToolTip(field == m_trimInLabel
+            ? tr("Start of the exported clip · Enter to apply · Esc to cancel")
+            : tr("End of the exported clip · Enter to apply · Esc to cancel"));
         connect(field, &QLineEdit::editingFinished, this, [this, field] { commitTrimTime(field); });
     }
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
@@ -664,17 +668,17 @@ QWidget *EditorWindow::createPlaybackBar() {
         button->setFixedHeight(theme::kBarButton.height());
         return button;
     };
-    auto *setIn = makeTrimButton(QStringLiteral("In"), QStringLiteral("TrimSetIn"));
-    auto *setOut = makeTrimButton(QStringLiteral("Out"), QStringLiteral("TrimSetOut"));
+    auto *setIn = makeTrimButton(tr("Start"), QStringLiteral("TrimSetIn"));
+    auto *setOut = makeTrimButton(tr("End"), QStringLiteral("TrimSetOut"));
     auto *reset = makeTrimButton({}, QStringLiteral("TrimReset"));
     reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
     reset->setFixedWidth(theme::kBarButton.width());
     reset->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    setIn->setToolTip(QStringLiteral("Set trim start · I"));
-    setOut->setToolTip(QStringLiteral("Set trim end · O"));
+    setIn->setToolTip(tr("Set start to playhead · I"));
+    setOut->setToolTip(tr("Set end to playhead · O"));
     setIn->setAccessibleName(setIn->toolTip());
     setOut->setAccessibleName(setOut->toolTip());
-    reset->setToolTip(QStringLiteral("Use the complete clip"));
+    reset->setToolTip(tr("Reset trim · use the complete clip"));
     reset->setAccessibleName(reset->toolTip());
 
     trim->addWidget(setIn);
@@ -682,8 +686,14 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addSpacing(8);
     trim->addWidget(setOut);
     trim->addWidget(m_trimOutLabel);
-    trim->addWidget(reset);
+    trim->addSpacing(8);
+    auto *durationCaption = new QLabel(tr("Duration"), trimControls);
+    durationCaption->setObjectName(QStringLiteral("TrimDurationCaption"));
+    trim->addWidget(durationCaption);
     trim->addWidget(m_trimDurationLabel);
+    trim->addSpacing(4);
+    trim->addWidget(reset);
+    trim->addStretch(1);
     playback->addWidget(trimControls);
     playback->addStretch(1);
     m_loopButton = new QToolButton(bar);
@@ -798,7 +808,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_muteButton->setIcon(theme::tintedIcon(
             muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
             palette().color(QPalette::ButtonText), palette().color(QPalette::ButtonText)));
-        m_muteButton->setToolTip(muted ? QStringLiteral("Unmute audio") : QStringLiteral("Mute audio"));
+        m_muteButton->setToolTip(muted ? tr("Unmute audio · hold for volume") : tr("Mute audio · hold for volume"));
         m_muteButton->setAccessibleName(m_muteButton->toolTip());
     });
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value){
@@ -809,7 +819,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             m_audioOutput->setMuted(false);
             const QColor color = palette().color(QPalette::ButtonText);
             m_muteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/volume.svg"), color, color));
-            m_muteButton->setToolTip(QStringLiteral("Mute audio"));
+            m_muteButton->setToolTip(tr("Mute audio · hold for volume"));
             m_muteButton->setAccessibleName(m_muteButton->toolTip());
         }
     });
@@ -909,6 +919,16 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     auto *widget = qobject_cast<QWidget *>(object);
     if (!widget || (widget != this && !isAncestorOf(widget)))
         return QWidget::eventFilter(object, event);
+    if (event->type() == QEvent::KeyPress) {
+        const auto *key = static_cast<QKeyEvent *>(event);
+        auto *button = qobject_cast<QToolButton *>(widget);
+        if (button && button->isEnabled() && button->menu()
+            && key->key() == Qt::Key_Down && key->modifiers() == Qt::AltModifier) {
+            m_tooltip->hide();
+            if (!key->isAutoRepeat()) button->showMenu();
+            return true;
+        }
+    }
     if (event->type() == QEvent::KeyPress && (widget == m_trimInLabel || widget == m_trimOutLabel)) {
         const auto *key = static_cast<QKeyEvent *>(event);
         auto *field = static_cast<QLineEdit *>(widget);
@@ -1356,7 +1376,7 @@ void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
         field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs)) + 12);
     }
     if (m_trimDurationLabel)
-        m_trimDurationLabel->setText(QStringLiteral("· %1").arg(formatPreciseTime(outMs - inMs)));
+        m_trimDurationLabel->setText(formatPreciseTime(outMs - inMs));
 }
 
 void EditorWindow::commitTrimTime(QLineEdit *field) {
@@ -1369,7 +1389,7 @@ void EditorWindow::commitTrimTime(QLineEdit *field) {
     field->setModified(false);
     if (valid) applyTrimRange(field == m_trimInLabel ? time : m_trimInMs,
                               field == m_trimOutLabel ? time : m_trimOutMs);
-    else if (m_toast) m_toast->showMessage(tr("Enter a time inside the clip, with In before Out"));
+    else if (m_toast) m_toast->showMessage(tr("Enter a time inside the clip, with Start before End"));
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
 }
 

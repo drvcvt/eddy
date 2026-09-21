@@ -205,22 +205,46 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
                            qMax(0.0, track.right() - outX), track.height()), shade);
     painter.restore();
 
-    auto handle = [&](qreal x, Drag kind) {
-        if (x < track.left() || x > track.right()) return;
-        const bool active = m_drag == kind || m_hover == kind;
-        painter.setBrush(ink(active ? 0.36 : 0.23));
-        painter.drawRoundedRect(QRectF(x - 5, track.top() - 1, 10, track.height() + 2), 4, 4);
-        painter.setBrush(ink(active ? 0.92 : 0.65));
-        painter.drawRoundedRect(QRectF(x - 1, track.center().y() - 5, 2, 10), 1, 1);
-    };
-    handle(inX, Drag::In);
-    handle(outX, Drag::Out);
-
     const qreal playX = xForTime(m_position);
     painter.setBrush(ink(0.86));
     if (playX >= track.left() && playX <= track.right()) {
         painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, track.height() + 3), 1, 1);
         painter.drawRoundedRect(QRectF(playX - 3, track.top() - 4, 6, 5), 2, 2);
+    }
+    auto handle = [&](qreal x, Drag kind) {
+        if (x < track.left() || x > track.right()) return;
+        const bool active = m_drag == kind || m_hover == kind;
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ink(active ? 0.36 : 0.23));
+        painter.drawRoundedRect(QRectF(x - 5, track.top() - 1, 10, track.height() + 2), 4, 4);
+        // Brackets point into the kept range and stay distinct from the playhead.
+        const qreal direction = kind == Drag::In ? 1 : -1;
+        const qreal y = track.center().y();
+        QPainterPath bracket;
+        bracket.moveTo(x + direction * 2, y - 5);
+        bracket.lineTo(x - direction * 1, y - 5);
+        bracket.lineTo(x - direction * 1, y + 5);
+        bracket.lineTo(x + direction * 2, y + 5);
+        painter.setPen(QPen(ink(active ? 0.95 : 0.8), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(bracket);
+    };
+    handle(inX, Drag::In);
+    handle(outX, Drag::Out);
+
+    QFont boundaryFont = font(); boundaryFont.setPixelSize(10);
+    const QFontMetricsF boundaryMetrics(boundaryFont);
+    const QString start = tr("Start"), end = tr("End");
+    auto labelRect = [&](qreal x, const QString &text, bool before) {
+        if (x < track.left() || x > track.right()) return QRectF();
+        const qreal w = boundaryMetrics.horizontalAdvance(text);
+        return QRectF(qBound(track.left(), before ? x - w - 4 : x + 4, track.right() - w), 0, w, 13);
+    };
+    QRectF startLabel = labelRect(inX, start, true);
+    QRectF endLabel = labelRect(outX, end, false);
+    if (!startLabel.isEmpty() && !endLabel.isEmpty() && startLabel.right() + 8 > endLabel.left()) {
+        endLabel.moveLeft(qMin(track.right() - endLabel.width(), startLabel.right() + 8));
+        startLabel.moveRight(qMin(startLabel.right(), endLabel.left() - 8));
     }
     painter.setPen(ink(0.6));
     QFont ruler = font(); ruler.setPixelSize(9); painter.setFont(ruler);
@@ -232,8 +256,15 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         const QString label = QStringLiteral("%1:%2").arg(t / 60000)
             .arg((t / 1000) % 60, 2, 10, QLatin1Char('0'))
             + (step < 1000 ? QStringLiteral(".%1").arg((t % 1000) / 100) : QString());
-        painter.drawText(QRectF(x - 30, 0, 60, 13), Qt::AlignCenter, label);
+        const QRectF tickLabel(x - 30, 0, 60, 13);
+        if ((!startLabel.isEmpty() && tickLabel.intersects(startLabel.adjusted(-4, 0, 4, 0)))
+            || (!endLabel.isEmpty() && tickLabel.intersects(endLabel.adjusted(-4, 0, 4, 0)))) continue;
+        painter.drawText(tickLabel, Qt::AlignCenter, label);
     }
+    painter.setFont(boundaryFont);
+    painter.setPen(ink(0.85));
+    if (!startLabel.isEmpty()) painter.drawText(startLabel, Qt::AlignCenter, start);
+    if (!endLabel.isEmpty()) painter.drawText(endLabel, Qt::AlignCenter, end);
     if (m_in < m_viewStart) painter.drawText(QRectF(0, 19, 14, 26), Qt::AlignCenter, QStringLiteral("‹"));
     if (m_out > m_viewEnd) painter.drawText(QRectF(width() - 14, 19, 14, 26), Qt::AlignCenter, QStringLiteral("›"));
     if (hasFocus()) {
