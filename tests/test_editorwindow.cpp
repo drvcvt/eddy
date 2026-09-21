@@ -842,21 +842,21 @@ private slots:
         };
         QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
         QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
-        QTRY_VERIFY(visibleColor().red() > 200);
+        QTRY_VERIFY(visibleColor().red() > 200 && visibleColor().blue() < 40);
         QCOMPARE(player->position(), 0);
         for (const auto &change : states)
             QVERIFY(change.first().value<QMediaPlayer::PlaybackState>() != QMediaPlayer::PlayingState);
 
         // A cleared backend surface must not erase a paused, already decoded still.
         video->videoSink()->setVideoFrame(QVideoFrame());
-        QVERIFY(visibleColor().red() > 200);
+        QVERIFY(visibleColor().red() > 200 && visibleColor().blue() < 40);
         QTest::keyClick(&window, Qt::Key_Space);
         QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
-        QTRY_VERIFY(visibleColor().blue() > 200);
+        QTRY_VERIFY(visibleColor().blue() > 200 && visibleColor().red() < 40);
         QTest::keyClick(&window, Qt::Key_Space);
         QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
         video->videoSink()->setVideoFrame(QVideoFrame());
-        QVERIFY(visibleColor().blue() > 200);
+        QVERIFY(visibleColor().blue() > 200 && visibleColor().red() < 40);
         window.copyVideoFrame();
         QVERIFY(QApplication::clipboard()->image().pixelColor(48, 32).blue() > 200);
         QCOMPARE(window.exportComposite().pixelColor(48, 32).alpha(), 0);
