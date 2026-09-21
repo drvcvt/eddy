@@ -45,6 +45,28 @@ QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:check
     color: @fg;
 }
 
+QMenu#PlaybackRateMenu {
+    background-color: @raise1;
+    color: @sub;
+    border: 1px solid @raise2;
+    border-radius: 11px;
+    padding: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+QMenu#PlaybackRateMenu::item {
+    min-width: 44px;
+    padding: 2px 10px;
+    margin: 1px 0;
+    border: none;
+    border-radius: 6px;
+    background-color: transparent;
+}
+QMenu#PlaybackRateMenu::item:checked { background-color: @raise2; color: @fg; }
+QMenu#PlaybackRateMenu::item:selected { background-color: @raise3; color: @fg; }
+/* The filled row marks the current rate, without a separate radio-button gutter. */
+QMenu#PlaybackRateMenu::indicator { image: none; width: 0; height: 0; }
+
 QToolButton#SendToShelf {
     padding-left: 8px;
     padding-right: 8px;
