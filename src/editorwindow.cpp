@@ -1343,8 +1343,9 @@ void EditorWindow::setCropRect(QRect rect) {
     m_cropRect = rect;
     m_canvas->setContentRect(rect);
     const QSize size = rect.isEmpty() ? m_media.nativeSize() : rect.size();
-    setWindowTitle(QStringLiteral("%1 · %2 × %3 · Eddy")
-        .arg(QFileInfo(m_media.path).fileName()).arg(size.width()).arg(size.height()));
+    const QString name = m_media.path.isEmpty() ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
+    setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
+        .arg(name).arg(size.width()).arg(size.height()));
 }
 
 void EditorWindow::positionCropBar() {
