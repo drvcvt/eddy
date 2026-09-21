@@ -158,6 +158,7 @@ int main(int argc, char **argv) {
         crop->press(crop->rect().topLeft(), 1, {});
         crop->move(crop->rect().topLeft() + QPointF(120, 80), {});
         crop->release();
+        if (mode.contains(QStringLiteral("applied"))) crop->accept();
         app.processEvents();
     }
     QPixmap pm = window->grab();

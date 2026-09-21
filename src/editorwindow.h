@@ -8,9 +8,10 @@
 #include <QSet>
 #include <QHash>
 #include <QPointer>
+#include <QVideoFrame>
 #include <functional>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
-class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
+class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel; class QLineEdit;
 class QTimer;
 class QPropertyAnimation;
@@ -92,6 +93,8 @@ private:
                           bool fallbackOnFailure = false);
     void saveVideo();
     void ensureVideoPlayer();
+    bool updateVideoBackground();
+    void showVideoStill();
     void togglePlayback();
     void handlePlaybackEnd();
     void scheduleVideoLoad();
@@ -122,6 +125,7 @@ private:
     QMediaPlayer *m_player = nullptr;
     QAudioOutput *m_audioOutput = nullptr;
     QGraphicsVideoItem *m_videoItem = nullptr;
+    QGraphicsPixmapItem *m_videoStill = nullptr;
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
     QToolButton *m_loopButton = nullptr;
@@ -153,6 +157,8 @@ private:
     bool m_seekSettling = false;
     bool m_resumeAfterSeek = false;
     bool m_hasVideoFrame = false;
+    QVideoFrame m_lastVideoFrame;
+    bool m_videoBackgroundCurrent = false;
     bool m_hasSentVideoSeek = false;
     bool m_copyFramePending = false;
     QLabel *m_tooltip = nullptr;

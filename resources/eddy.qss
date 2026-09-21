@@ -1,16 +1,16 @@
 /* eddy — mt-ui-style semantic tokens, expanded once at startup. */
 QWidget {
-    font-family: "Noto Sans", sans-serif;
-    font-size: 13px;
+    font-family: @font-ui;
+    font-size: @fs-small;
 }
 QToolTip, QLabel#CompactTooltip {
     background-color: @raise2;
     color: @fg;
     border: none;
-    border-radius: 7px;
-    padding: 3px 6px;
-    font-family: "Noto Sans", sans-serif;
-    font-size: 11px;
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-family: @font-ui;
+    font-size: @fs-micro;
     font-weight: 500;
 }
 QWidget#EditorRoot { background-color: @bg; }
@@ -27,15 +27,17 @@ QToolButton {
     color: @sub;
     border: none;
     border-radius: 9px;
-    font-family: "Noto Sans", sans-serif;
-    font-size: 12px;
+    font-family: @font-ui;
+    font-size: @fs-small;
     font-weight: 500;
 }
 QToolButton:disabled { color: @faint; }
-/* These buttons open secondary actions on hold; a native menu arrow overlaps
-   their centred 18px icons. Keep the speed selector's separate affordance. */
+/* No native menu arrows: hold-to-open buttons show none, and the menu buttons
+   carry theme::setMenuArrow's rounded, filled one instead. */
 QToolButton#Copy::menu-indicator,
-QToolButton#PlaybackMute::menu-indicator { image: none; width: 0; height: 0; }
+QToolButton#PlaybackMute::menu-indicator,
+QToolButton#PlaybackSpeed::menu-indicator,
+QToolButton#CropRatio::menu-indicator { image: none; width: 0; height: 0; }
 QToolButton:focus { background-color: @raise2; color: @fg; }
 QToolButton:hover { background-color: @raise2; color: @fg; }
 QToolButton:checked { background-color: @chip-on; color: @chip-on-fg; }
@@ -48,15 +50,15 @@ QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:check
 QMenu#PlaybackRateMenu {
     background-color: @raise1;
     color: @sub;
-    border: 1px solid @raise2;
-    border-radius: 11px;
+    border: none;
+    border-radius: 10px;   /* 6px rows inset by the 4px padding */
     padding: 4px;
-    font-size: 12px;
+    font-size: @fs-small;
     font-weight: 500;
 }
 QMenu#PlaybackRateMenu::item {
     min-width: 44px;
-    padding: 2px 10px;
+    padding: 2px 8px;
     margin: 1px 0;
     border: none;
     border-radius: 6px;
@@ -67,10 +69,7 @@ QMenu#PlaybackRateMenu::item:selected { background-color: @raise3; color: @fg; }
 /* The filled row marks the current rate, without a separate radio-button gutter. */
 QMenu#PlaybackRateMenu::indicator { image: none; width: 0; height: 0; }
 
-QToolButton#SendToShelf {
-    padding-left: 8px;
-    padding-right: 8px;
-}
+QToolButton#SendToShelf { padding: 0 8px; }
 
 QWidget#ColorPopover {
     background-color: @raise1;
@@ -80,16 +79,16 @@ QWidget#ColorPopover {
 QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar {
     background-color: @raise1;
     border: none;
-    /* 8px chip inset by the 3px margin: any larger and these bars round off
-       into a stadium. */
-    border-radius: 11px;
+    /* 8px chip inset by the 4px margin, so the gap stays concentric; any larger
+       and these bars round off into a stadium. */
+    border-radius: 12px;
 }
 QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar QToolButton {
     color: @sub;
     padding: 0 8px;
     border-radius: 8px;
-    font-family: "Noto Sans", sans-serif;
-    font-size: 11px;
+    font-family: @font-ui;
+    font-size: @fs-micro;
     font-weight: 500;
 }
 /* The text bar is icons throughout, letterforms included: padding would clip
@@ -107,8 +106,9 @@ QWidget#PlaybackBar QToolButton {
     background-color: transparent;
     border-radius: 6px;
     color: @sub;
-    padding: 0 5px;
-    font-size: 12px;
+    padding: 0 6px;
+    /* Start/End sit beside the Duration caption and the timecodes: one step. */
+    font-size: @fs-micro;
     font-weight: 500;
 }
 QWidget#PlaybackBar QToolButton:hover,
@@ -121,38 +121,40 @@ QWidget#PlaybackBar QToolButton#TrimReset,
 QWidget#PlaybackBar QToolButton#PlaybackLoop { padding: 0; }
 QWidget#PlaybackBar QLabel {
     color: @sub;
-    font-family: "MonoLisa", "Geist Mono", monospace;
-    font-size: 11px;
+    font-family: @font-mono;
+    font-size: @fs-micro;
     font-weight: 400;
 }
 QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
-QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: "Noto Sans", sans-serif; }
-QLabel#VideoExportStatus { color: @sub; font-size: 11px; padding-right: 8px; }
+/* Start, End and Duration read as three equal caption/value pairs. */
+QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: @font-ui; font-weight: 500; padding: 0 6px; }
+QWidget#PlaybackBar QLabel#TrimDuration { color: @fg; padding: 0 6px; }
+QLabel#VideoExportStatus { color: @sub; font-size: @fs-micro; padding-right: 8px; }
 QWidget#PlaybackBar QLineEdit {
     background: transparent;
     color: @fg;
     border: none;
-    border-radius: 5px;
-    padding: 0 4px;
-    font-family: "MonoLisa", monospace;
-    font-size: 11px;
+    border-radius: 6px;
+    padding: 0 6px;
+    font-family: @font-mono;
+    font-size: @fs-micro;
 }
 QWidget#PlaybackBar QLineEdit:hover { background: @bar-hover; }
 QWidget#PlaybackBar QLineEdit:focus { background: @bar-active; color: @fg; }
 QWidget#VideoPreview { background: @raise1; border: none; border-radius: 8px; }
-QWidget#VideoPreview QLabel { color: @fg; font-family: "MonoLisa", monospace; font-size: 10px; }
+QWidget#VideoPreview QLabel { color: @fg; font-family: @font-mono; font-size: @fs-micro; }
 QWidget#PlaybackBar QSlider::groove:horizontal {
-    height: 3px;
+    height: 4px;
     background: @bar-active;
-    border-radius: 1px;
+    border-radius: 2px;
 }
 QWidget#PlaybackBar QSlider::sub-page:horizontal {
     background: @sub;
-    border-radius: 1px;
+    border-radius: 2px;
 }
 QWidget#PlaybackBar QSlider::handle:horizontal {
     width: 8px;
-    margin: -3px 0;
+    margin: -2px 0;   /* 8px square knob on the 4px groove */
     border-radius: 3px;
     background: @sub;
 }
@@ -165,8 +167,8 @@ QWidget#Toast {
 }
 QLabel#ToastText {
     color: @fg;
-    font-family: "Noto Sans", sans-serif;
-    font-size: 12px;
+    font-family: @font-ui;
+    font-size: @fs-small;
 }
 
 QWidget#DragPill {
@@ -174,12 +176,12 @@ QWidget#DragPill {
     border: none;
     border-radius: 9px;
 }
-QWidget#DragPill:hover { background-color: @bar-hover; }
+QWidget#DragPill:hover, QWidget#DragPill:focus { background-color: @bar-hover; }
 QWidget#DragPill:disabled { background-color: transparent; }
 QLabel#DragPillText {
     color: @fg;
-    font-family: "Noto Sans", sans-serif;
-    font-size: 12px;
+    font-family: @font-ui;
+    font-size: @fs-small;
     font-weight: 500;
 }
 QLabel#DragPillText:disabled { color: @faint; }
@@ -189,7 +191,7 @@ QToolButton#Save { color: @fg; }
 QToolButton#ZoomFit, QToolButton#ZoomActual {
     background-color: transparent;
     padding: 0 8px;
-    font-size: 11px;
+    font-size: @fs-micro;
 }
 QToolButton#ZoomFit:hover, QToolButton#ZoomActual:hover { background-color: @raise2; color: @fg; }
 
@@ -217,14 +219,14 @@ QWidget#Toolbar QToolButton:checked:hover, QWidget#ToolRail QToolButton:checked:
 }
 QLabel#DragPillText { font-weight: 500; }
 
-/* Labelled bar actions carry 14px so the text is not dwarfed by an 18px icon. */
+/* Labelled bar actions sit on the small step, the largest the 22px chrome carries. */
 QWidget#Toolbar QToolButton, QWidget#ViewControls QToolButton,
-QLabel#DragPillText { font-size: 14px; font-weight: 500; }
+QLabel#DragPillText { font-size: @fs-small; font-weight: 500; }
 
-/* The footer uses the user's local MonoLisa for a softer, distinctive rhythm. */
+/* The footer runs in the user's system fixed font for a softer, distinctive rhythm. */
 QWidget#ViewControls QToolButton, QLabel#DragPillText {
-    font-family: "MonoLisa", "Geist Mono", monospace;
-    font-size: 12px;
+    font-family: @font-mono;
+    font-size: @fs-small;
     font-weight: 400;
 }
 QLineEdit#ColorHex {
@@ -232,15 +234,15 @@ QLineEdit#ColorHex {
     color: @fg;
     border: none;
     border-radius: 6px;
-    padding: 0 10px;
-    font-family: "MonoLisa", monospace;
-    font-size: 12px;
+    padding: 0 8px;
+    font-family: @font-mono;
+    font-size: @fs-small;
     selection-background-color: @raise3;
 }
 QLineEdit#ColorHex:focus { background-color: @raise3; }
 QWidget#ColorPopover QToolButton {
     border-radius: 6px;
-    font-size: 12px;
+    font-size: @fs-small;
     font-weight: 500;
 }
 QWidget#ColorPopover QToolButton#Custom,
@@ -253,10 +255,10 @@ QWidget#ColorPopover QToolButton:focus { background-color: @raise3; }
 QWidget#ColorPopover QToolButton:checked { background-color: @raise3; }
 
 /* Crop shares the floating annotation controls' compact geometry. */
-QWidget#CropBar { background: @raise1; border: none; border-radius: 11px; }
+QWidget#CropBar { background: @raise1; border: none; border-radius: 12px; }
 QWidget#CropBar QToolButton {
     color: @sub; padding: 0 8px; border-radius: 8px;
-    font-size: 11px; font-weight: 500;
+    font-size: @fs-micro; font-weight: 500;
 }
 QWidget#CropBar QToolButton:hover, QWidget#CropBar QToolButton:focus {
     background: @raise2; color: @fg;
@@ -265,10 +267,13 @@ QWidget#CropBar QToolButton#CropApply { background: @chip-on; color: @chip-on-fg
 QWidget#CropBar QToolButton#CropApply:hover, QWidget#CropBar QToolButton#CropApply:focus {
     background: @fg; color: @bg;
 }
-QWidget#CropBar QLabel { color: @sub; font-family: "MonoLisa", "Geist Mono", monospace; font-size: 11px; padding: 0 6px; }
-QWidget#CropBar QToolButton#CropRatio { padding-right: 15px; }
-QMenu#CropRatioMenu { background: @raise1; color: @sub; border: none; border-radius: 11px; padding: 4px; font-size: 12px; font-weight: 500; }
-QMenu#CropRatioMenu::item { padding: 3px 10px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
+QWidget#CropBar QLabel { color: @sub; font-family: @font-mono; font-size: @fs-micro; padding: 0 6px; }
+QMenu#CropRatioMenu { background: @raise1; color: @sub; border: none; border-radius: 10px; padding: 4px; font-size: @fs-small; font-weight: 500; }
+QMenu#CropRatioMenu::item { padding: 2px 8px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
 QMenu#CropRatioMenu::item:checked { background: @raise2; color: @fg; }
 QMenu#CropRatioMenu::item:selected { background: @raise3; color: @fg; }
 QMenu#CropRatioMenu::indicator { image: none; width: 0; height: 0; }
+/* The one labelled chrome action: its text steps up to sit with the 18px icon. */
+QWidget#Toolbar QToolButton#SendToShelf { font-size: @fs-body; }
+/* Rates are technical values like the timecodes beside them. */
+QWidget#PlaybackBar QToolButton#PlaybackSpeed, QMenu#PlaybackRateMenu { font-family: @font-mono; font-weight: 400; }

@@ -27,13 +27,13 @@ Takes an image or video from a file (images also support stdin), lets you annota
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
 
-The interface uses Vis-style grayscale surfaces, Noto Sans typography, rounded
+The interface uses Vis-style grayscale surfaces, bundled Outfit typography (SIL OFL) on an 11/13px scale, rounded
 controls, and grouped monochrome tool icons with tooltips (tool name + hotkey).
 Tools sit to the left of the canvas without a surrounding panel. The flat top bar
 holds undo/redo, stroke controls and output actions, with compact 6px state fills
 matching Vis. **Fit** and the live zoom percentage (click for 100%) sit at the
-bottom left; **Drag out** stays centered at the bottom. The footer uses MonoLisa
-with a monospace fallback. The window title includes
+bottom left; **Drag out** stays centered at the bottom. The footer and timecodes use
+your system's fixed-width font. The window title includes
 the filename and dimensions.
 Save and Copy are icon-only with tooltips; the labeled **To shelf** action
 keeps its card-plus icon, and Drag out has its own grip icon. Checked controls
@@ -79,7 +79,14 @@ to open **Copy current frame** (`Ctrl+Shift+C`), including annotations and redac
 Normal Copy still delivers the video. A pending seek finishes before its frame is
 copied. In narrow windows the trim fields get their own row; hold the speaker
 button for volume. Keyboard users can open these menus with **Alt+Down**.
-**Drag out** and quiet export preparation status remain at the bottom.
+**Drag out** and a quiet export status remain at the bottom. Editing and playback
+do not start an export. For an edited video, click **Prepare drag** once, then
+drag the ready file out. Save, Copy and Shelf prepare the video when requested;
+they reuse the result until you make another edit.
+H.264 export uses a hardware encoder after a real capability check and retries
+with the CPU encoder if necessary. Pure trim/crop exports skip the empty
+annotation layer. Playback only materializes CPU images for tools that need
+their pixels, or when copying a frame.
 
 **Toolbar controls:**
 

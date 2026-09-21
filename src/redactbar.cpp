@@ -11,7 +11,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
     setObjectName("RedactBar");
     setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(4, 3, 4, 3);
+    lay->setContentsMargins(4, 4, 4, 4);
     lay->setSpacing(2);
     auto *group = new QButtonGroup(this);
     group->setExclusive(true);
