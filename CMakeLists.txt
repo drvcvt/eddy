@@ -29,6 +29,8 @@ endif()
 
 add_library(eddy_core STATIC
     src/canvas.cpp
+    src/cropcontroller.cpp
+    src/cropbar.cpp
     src/loupe.cpp
     src/colorpopover.cpp
     src/redactbar.cpp
@@ -140,3 +142,5 @@ eddy_test(test_theme)
 eddy_test(test_selectionhandles)
 eddy_test(test_videotimeline)
 eddy_test(test_videopreviewprovider)
+
+eddy_test(test_crop)

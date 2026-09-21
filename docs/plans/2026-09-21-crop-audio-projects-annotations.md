@@ -1,7 +1,13 @@
 # Crop, Audio, fortsetzbare Bearbeitung und Annotation-Hilfen
 
 Datum: 2026-09-21. Geprüfte Basis: `4d57ac5` auf `main`.
-Status: **Plan zur Durchsicht, noch keine Produktimplementierung.**
+Status: **Crop implementiert; Audio, Fortsetzen und Annotation-Hilfen bleiben geplant.**
+
+Crop besitzt einen sichtbaren Werkzeug-Button, acht Griffe und eine native
+Kontextleiste. Bild-/Videoausgabe und Frame-Copy teilen den Ausschnitt. Der
+Medien-Probe liefert orientierte Displaymaße; eine separate `MediaGeometry`-Klasse
+ist dafür nicht erforderlich. Normale Rotationen und Sample Aspect Ratio werden
+getestet, weitere Displaymatrizen sperren Crop mit einem Hinweis.
 
 Der Nutzer hat die Funktionsgruppen 1, 2, 5 und 6 bejaht und ausdrücklich zuerst
 einen Verhaltens-, UI- und Implementierungsplan verlangt. Die heutige Oberfläche
@@ -129,8 +135,8 @@ Decoder- oder Crop-Funktion.
   Inhaltsgrenze; die Kamera behält trotzdem ihren zusätzlichen Pan-Bereich.
 - Für Bilder gilt 1-px-Präzision. Für das vorhandene 4:2:0-Videoziel werden
   Breite/Höhe und Ursprung auf ein gültiges gerades Raster eingegrenzt.
-  Seitenverhältnisse verwenden passende ganzzahlige Vielfache. Die tatsächliche
-  Größe steht schon am Rahmen; kein überraschendes Nachrunden erst beim Export.
+  Seitenverhältnisse werden auf dieses Pixelraster gerundet. Die tatsächliche
+  Größe steht in der Kontextleiste; kein überraschendes Nachrunden erst beim Export.
   Unveränderte Videos behalten den bestehenden direkten Dateipfad.
 - Bildexport und Frame-Copy rendern exakt den aktiven Quellausschnitt auf eine
   gleich große Zielabbildung, einschließlich angeschnittener Texte, Pfeile und

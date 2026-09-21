@@ -92,4 +92,15 @@ private:
     qint64 m_beforeIn, m_beforeOut, m_afterIn, m_afterOut;
     Apply m_apply;
 };
+class SetCropCommand : public QUndoCommand {
+public:
+    using Apply = std::function<void(QRect)>;
+    SetCropCommand(QRect before, QRect after, Apply apply)
+        : QUndoCommand(QStringLiteral("Crop")), m_before(before), m_after(after), m_apply(std::move(apply)) {}
+    void undo() override { m_apply(m_before); }
+    void redo() override { m_apply(m_after); }
+private:
+    QRect m_before, m_after;
+    Apply m_apply;
+};
 }

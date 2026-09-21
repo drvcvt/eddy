@@ -15,6 +15,7 @@ struct VideoInfo {
     QSize size;
     qint64 durationMs = 0;
     double fps = 0.0;
+    bool cropSupported = true;
 };
 
 struct MediaDocument {

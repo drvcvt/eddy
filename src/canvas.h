@@ -8,6 +8,7 @@ class QResizeEvent;
 class QKeyEvent;
 namespace eddy {
 class Loupe;
+class CropController;
 class Canvas : public QGraphicsView {
     Q_OBJECT
 public:
@@ -17,6 +18,11 @@ public:
     void zoomBy(double factor);
     void resetZoom();
     void fitMedia();
+    void setContentRect(QRectF rect);
+    QRectF contentRect() const;
+    void setCropController(CropController *crop);
+    bool fitted() const { return m_fitted; }
+    void restoreView(const QTransform &transform, QPointF center, bool fitted);
     void setSpacePan(bool on);
     void cancelPan();
     bool spacePanActive() const { return m_spacePan; }
@@ -37,6 +43,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseDoubleClickEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
+    void drawForeground(QPainter *painter, const QRectF &rect) override;
 private:
     bool isPointerTool() const {
         return m_tools->tool() == ToolType::Move || m_tools->tool() == ToolType::Text;
@@ -46,6 +53,9 @@ private:
     void updateCursor();
     void updateNavigationBounds();
     ToolController *m_tools;
+    CropController *m_crop = nullptr;
+    QRectF m_contentRect;
+    bool m_fitted = false;
     double m_zoom = 1.0;            // visual (animated) scale
     double m_targetZoom = 1.0;      // logical target
     bool m_dragging = false;        // middle-button pan in progress
