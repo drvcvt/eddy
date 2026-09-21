@@ -112,7 +112,7 @@ function(eddy_test name)
     add_executable(${name} tests/${name}.cpp)
     target_link_libraries(${name} PRIVATE eddy_core Qt6::Test)
     add_test(NAME ${name} COMMAND ${name} -o -,txt -o ${name}.txt,txt)
-    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_STYLE_OVERRIDE=Fusion")
 endfunction()
 
 eddy_test(test_canvas)
