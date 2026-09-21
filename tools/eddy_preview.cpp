@@ -9,6 +9,8 @@
 #include "colorpopover.h"
 #include "mediaio.h"
 #include "videotimeline.h"
+#include "cropcontroller.h"
+#include "toolcontroller.h"
 #include <QApplication>
 #include <QGraphicsScene>
 #include <QImage>
@@ -22,6 +24,7 @@
 #include <QVideoFrame>
 #include <QToolButton>
 #include <QHelpEvent>
+#include <QMenu>
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <memory>
@@ -147,6 +150,15 @@ int main(int argc, char **argv) {
     if (mode.contains(QStringLiteral("copyframe"))) {
         window->copyVideoFrame();
         return QApplication::clipboard()->image().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
+    }
+    if (mode.contains(QStringLiteral("crop"))) {
+        window->findChild<eddy::ToolController *>()->setTool(eddy::ToolType::Crop);
+        auto *crop = window->findChild<eddy::CropController *>();
+        window->findChild<QMenu *>("CropRatioMenu")->actions()[2]->trigger();
+        crop->press(crop->rect().topLeft(), 1, {});
+        crop->move(crop->rect().topLeft() + QPointF(120, 80), {});
+        crop->release();
+        app.processEvents();
     }
     QPixmap pm = window->grab();
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");

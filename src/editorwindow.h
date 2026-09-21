@@ -22,6 +22,8 @@ class SpotlightBar; class SpotlightItem;
 class DragPill;
 class VideoTimeline;
 class VideoPreviewProvider;
+class CropController;
+class CropBar;
 enum class RedactMode;
 
 enum class SaveRoute { ExplicitOutput, BoltsnapCard, ConfigDirectory, Shelf };
@@ -101,6 +103,17 @@ private:
     void doUndo();
     void doRedo();
     void toggleTheme();
+    void setupCrop();
+    void finishCrop();
+    void setCropRect(QRect rect);
+    void positionCropBar();
+    CropController *m_crop = nullptr;
+    CropBar *m_cropBar = nullptr;
+    QRect m_cropRect;
+    QTransform m_beforeCropView;
+    QPointF m_beforeCropCenter;
+    bool m_beforeCropFit = false;
+    QList<QGraphicsItem *> m_beforeCropSelection;
     MediaDocument m_media;
     QImage m_bg; Config m_cfg; CliOptions m_cli; bool m_shown = false;
     QGraphicsScene *m_scene; QUndoStack *m_undo;
