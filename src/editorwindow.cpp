@@ -713,6 +713,9 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_speedButton->setAccessibleName(m_speedButton->toolTip());
     m_speedButton->setPopupMode(QToolButton::InstantPopup);
     auto *rates = new QMenu(m_speedButton);
+    rates->setObjectName(QStringLiteral("PlaybackRateMenu"));
+    rates->setWindowFlag(Qt::FramelessWindowHint);
+    rates->setAttribute(Qt::WA_TranslucentBackground);
     auto *rateGroup = new QActionGroup(rates);
     for (qreal rate : {0.25, 0.5, 1.0, 1.5, 2.0}) {
         auto *action = rates->addAction(QStringLiteral("%1×").arg(rate));
