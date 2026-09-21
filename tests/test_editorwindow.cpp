@@ -41,9 +41,11 @@
 #include <QVideoFrameFormat>
 #include <QVideoSink>
 #include <QSettings>
+#include <QScopeGuard>
 #include <QApplication>
 #include <QHelpEvent>
 #include <QLineEdit>
+#include <QFontDatabase>
 #include <QMenu>
 #include <QUndoStack>
 #include <cstring>
@@ -876,7 +878,18 @@ private slots:
         QVERIFY(text->textInteractionFlags().testFlag(Qt::TextEditable));
         QCOMPARE(window.findChild<QUndoStack *>()->count(), undo);
     }
+    void narrowVideoKeepsControlsInsideWindow_data() {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("dark") << true;
+        QTest::newRow("light") << false;
+    }
     void narrowVideoKeepsControlsInsideWindow() {
+        QFETCH(bool, dark);
+        QVERIFY2(!QFontDatabase::families().isEmpty(),
+                 "Offscreen layout tests need system fonts; set QT_QPA_FONTDIR");
+        const QString oldStyle = qApp->styleSheet();
+        const auto restoreStyle = qScopeGuard([&] { qApp->setStyleSheet(oldStyle); });
+        qApp->setStyleSheet(theme::styleSheet(dark));
         MediaDocument doc; doc.kind = MediaKind::Video;
         doc.path = "/tmp/nonexistent-video-layout.mp4";
         doc.video = {QSize(640, 360), 36000000, 25};
@@ -885,15 +898,48 @@ private slots:
         window.resize(520, 620); window.show();
         QCoreApplication::processEvents();
         QCOMPARE(window.width(), 520);
-        for (const auto *name : {"PlaybackPlay", "PlaybackLoop", "PlaybackSpeed", "PlaybackMute", "TrimInTime", "TrimOutTime"}) {
+        for (const auto *name : {"PlaybackPlay", "PlaybackLoop", "PlaybackSpeed", "PlaybackMute",
+                                 "TrimSetIn", "TrimInTime", "TrimSetOut", "TrimOutTime",
+                                 "TrimDurationCaption", "TrimDuration", "TrimReset"}) {
             const auto *control = window.findChild<QWidget *>(name);
             QVERIFY(control && control->isVisible());
             QVERIFY2(window.rect().contains(QRect(control->mapTo(&window, QPoint()), control->size())), name);
         }
         QVERIFY(!window.findChild<QSlider *>("PlaybackVolume")->isVisible());
+        for (const auto *name : {"TrimInTime", "TrimOutTime"}) {
+            auto *field = window.findChild<QLineEdit *>(name);
+            field->setCursorPosition(0);
+            const qreal start = field->inputMethodQuery(Qt::ImCursorRectangle).toRectF().x();
+            field->setCursorPosition(field->text().size());
+            const qreal end = field->inputMethodQuery(Qt::ImCursorRectangle).toRectF().x();
+            // A field that scrolls horizontally hides leading digits before
+            // the first trim. All digits must fit using the styled font.
+            QVERIFY2(end - start >= field->fontMetrics().horizontalAdvance(field->text()) - 1, name);
+        }
         window.resize(1200, 680);
+        QTRY_VERIFY_WITH_TIMEOUT(window.findChild<QSlider *>("PlaybackVolume")->isVisible(), 1000);
+    }
+    void videoMenusOpenFromKeyboardWithoutRunningPrimaryAction() {
+        MediaDocument doc; doc.kind = MediaKind::Video;
+        doc.path = "/tmp/nonexistent-video-menu.mp4";
+        doc.video = {QSize(640, 360), 10000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.resize(520, 620); window.show();
         QCoreApplication::processEvents();
-        QVERIFY(window.findChild<QSlider *>("PlaybackVolume")->isVisible());
+        for (const auto *name : {"PlaybackMute", "Copy", "PlaybackSpeed"}) {
+            auto *button = window.findChild<QToolButton *>(name);
+            QVERIFY(button && button->menu());
+            auto *menu = button->menu();
+            QSignalSpy opened(menu, &QMenu::aboutToShow);
+            QSignalSpy clicked(button, &QToolButton::clicked);
+            connect(menu, &QMenu::aboutToShow, menu, [menu] {
+                QTimer::singleShot(0, menu, &QMenu::close);
+            });
+            QTest::keyClick(button, Qt::Key_Down, Qt::AltModifier);
+            QCOMPARE(opened.count(), 1);
+            QCOMPARE(clicked.count(), 0);
+        }
     }
     void missingVideoFrameDoesNotReplaceClipboard() {
         MediaDocument doc; doc.kind = MediaKind::Video;
@@ -1007,7 +1053,7 @@ private slots:
         QTest::keyClick(field, Qt::Key_Escape);
         QCOMPARE(field->text(), QStringLiteral("0:01.250"));
         QCOMPARE(undo->count(), 1);
-        QCOMPARE(window.findChild<QLabel *>("TrimDuration")->text(), QStringLiteral("· 0:08.750"));
+        QCOMPARE(window.findChild<QLabel *>("TrimDuration")->text(), QStringLiteral("0:08.750"));
         undo->undo();
         QCOMPARE(timeline->trimIn(), 0);
     }

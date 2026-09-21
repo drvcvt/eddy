@@ -49,7 +49,14 @@ jobs:
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build -C Release --parallel 3 --output-on-failure
+          QT_QPA_FONTDIR: 'C:\Windows\Fonts'
+        run: |
+          ctest --test-dir build -C Release --parallel 3 --output-on-failure
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            Get-ChildItem build -Filter 'test_*.txt' | ForEach-Object { Get-Content $_.FullName }
+          }
+          exit $testExit
       - name: Stage experimental Windows preview
         shell: pwsh
         run: |
