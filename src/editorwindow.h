@@ -11,7 +11,7 @@
 #include <QVideoFrame>
 #include <functional>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
-class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
+class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel; class QLineEdit;
 class QTimer;
 class QPropertyAnimation;
@@ -94,6 +94,7 @@ private:
     void saveVideo();
     void ensureVideoPlayer();
     bool updateVideoBackground();
+    void showVideoStill();
     void togglePlayback();
     void handlePlaybackEnd();
     void scheduleVideoLoad();
@@ -124,6 +125,7 @@ private:
     QMediaPlayer *m_player = nullptr;
     QAudioOutput *m_audioOutput = nullptr;
     QGraphicsVideoItem *m_videoItem = nullptr;
+    QGraphicsPixmapItem *m_videoStill = nullptr;
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
     QToolButton *m_loopButton = nullptr;

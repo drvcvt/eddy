@@ -1,4 +1,5 @@
 #include "videotimeline.h"
+#include "theme.h"
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -232,7 +233,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     handle(inX, Drag::In);
     handle(outX, Drag::Out);
 
-    QFont boundaryFont = font(); boundaryFont.setPixelSize(10);
+    QFont boundaryFont = font(); boundaryFont.setPixelSize(theme::kFsMicro);
     const QFontMetricsF boundaryMetrics(boundaryFont);
     const QString start = tr("Start"), end = tr("End");
     auto labelRect = [&](qreal x, const QString &text, bool before) {
@@ -247,7 +248,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         startLabel.moveRight(qMin(startLabel.right(), endLabel.left() - 8));
     }
     painter.setPen(ink(0.6));
-    QFont ruler = font(); ruler.setPixelSize(9); painter.setFont(ruler);
+    QFont ruler = font(); ruler.setPixelSize(theme::kFsMicro); painter.setFont(ruler);
     const qreal rawStep = qMax<qreal>(1, (m_viewEnd - m_viewStart) * 70.0 / track.width());
     const qreal base = std::pow(10.0, std::floor(std::log10(rawStep)));
     const qint64 step = qMax<qint64>(1, qRound64(base * (rawStep / base <= 2 ? 2 : rawStep / base <= 5 ? 5 : 10)));

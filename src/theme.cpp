@@ -5,6 +5,10 @@
 #include <QPixmap>
 #include <QSvgRenderer>
 #include <QFile>
+#include <QIconEngine>
+#include <QFontDatabase>
+#include <QFontInfo>
+#include <QToolButton>
 
 // Force the AUTORCC static-library resources to register at start-up.
 // Without this call a static lib's qrc initialiser can be discarded by the
@@ -54,6 +58,17 @@ QString styleSheet(bool dark) {
     QFile file(QStringLiteral(":/eddy.qss"));
     if (!file.open(QIODevice::ReadOnly)) return {};
     QString qss = QString::fromUtf8(file.readAll());
+    // Outfit ships in the binary so every platform gets the same UI face.
+    static const int outfit = QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/Outfit.ttf"));
+    Q_UNUSED(outfit);
+    // One type scale for the whole app; the QSS never names a family or a px size.
+    qss.replace("@font-ui", "\"Outfit\", sans-serif");
+    // Mono is the user's own fixed font, as the desktop (qt6ct, GNOME, KDE, Windows) reports it.
+    qss.replace("@font-mono", QStringLiteral("\"%1\", monospace")
+        .arg(QFontDatabase::systemFont(QFontDatabase::FixedFont).family()));
+    qss.replace("@fs-micro", QString::number(kFsMicro) + "px");
+    qss.replace("@fs-small", QString::number(kFsSmall) + "px");
+    qss.replace("@fs-body", QString::number(kFsBody) + "px");
     // The dark bar is translucent, so its state fills are pre-blended: stacking
     // two translucent layers smears the rounded corners into mush.
     const QList<QPair<QString, QString>> tokens = dark
@@ -73,38 +88,74 @@ QString styleSheet(bool dark) {
     return qss;
 }
 
-QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active, int size) {
-    auto render = [&](const QColor &c) {
-        QSvgRenderer r(svgPath);
-        if (!r.isValid()) {
-            qWarning("tintedIcon: invalid SVG '%s'", qPrintable(svgPath));
-            return QPixmap();
-        }
-        const int s = size * 2;                 // 2x logical, HiDPI-crisp
-        const qreal inset = size / 11.0;        // room for the round caps at the edges
-        QPixmap pm(s, s);
+namespace {
+// Rasterises the SVG at the exact device size of each paint. A pre-rendered 2x
+// pixmap gets smooth-scaled on 1x and fractional displays, which is what made
+// the icons softer than the text beside them.
+class TintedIconEngine : public QIconEngine {
+public:
+    TintedIconEngine(const QString &path, const QColor &rest, const QColor &active)
+        : m_path(path), m_rest(rest), m_active(active),
+          m_hover(QApplication::palette().color(QPalette::WindowText)),
+          m_disabled(QApplication::palette().color(QPalette::Disabled, QPalette::ButtonText)) {}
+    QIconEngine *clone() const override { return new TintedIconEngine(*this); }
+    QPixmap scaledPixmap(const QSize &size, QIcon::Mode mode, QIcon::State state, qreal scale) override {
+        const QSize device = (QSizeF(size) * scale).toSize();
+        QPixmap pm(device);
         pm.fill(Qt::transparent);
+        QSvgRenderer renderer(m_path);
+        // Room for the round caps, snapped to whole device pixels so the glyph
+        // box never starts between two of them.
+        const int inset = qRound(device.width() / 11.0);
         QPainter p(&pm);
-        r.render(&p, QRectF(inset, inset, s - 2 * inset, s - 2 * inset));
+        p.setRenderHint(QPainter::Antialiasing);
+        renderer.render(&p, QRectF(pm.rect()).adjusted(inset, inset, -inset, -inset));
         p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-        p.fillRect(pm.rect(), c);
+        p.fillRect(pm.rect(), state == QIcon::On ? m_active
+                              : mode == QIcon::Active ? m_hover
+                              : mode == QIcon::Disabled ? m_disabled : m_rest);
         p.end();
-        pm.setDevicePixelRatio(2.0);
+        pm.setDevicePixelRatio(scale);
         return pm;
-    };
-    const QPixmap restPm = render(rest);
-    if (restPm.isNull()) return {};             // invalid path -> null icon (caller-detectable)
-    const QPixmap activePm = render(active);
-    QIcon icon;
-    icon.addPixmap(restPm,   QIcon::Normal,   QIcon::Off);
-    icon.addPixmap(activePm, QIcon::Normal,   QIcon::On);
-    icon.addPixmap(render(QApplication::palette().color(QPalette::WindowText)),
-                   QIcon::Active, QIcon::Off);
-    icon.addPixmap(activePm, QIcon::Active, QIcon::On);
-    icon.addPixmap(render(QApplication::palette().color(QPalette::Disabled, QPalette::ButtonText)),
-                   QIcon::Disabled, QIcon::Off);
-    icon.addPixmap(activePm, QIcon::Selected, QIcon::On);
-    return icon;
+    }
+    QPixmap pixmap(const QSize &size, QIcon::Mode mode, QIcon::State state) override {
+        return scaledPixmap(size, mode, state, 1.0);
+    }
+    void paint(QPainter *painter, const QRect &rect, QIcon::Mode mode, QIcon::State state) override {
+        const qreal scale = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        painter->drawPixmap(rect, scaledPixmap(rect.size(), mode, state, scale));
+    }
+private:
+    QString m_path;
+    QColor m_rest, m_active, m_hover, m_disabled;
+};
+} // namespace
+
+QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active, int) {
+    if (!QSvgRenderer(svgPath).isValid()) {
+        qWarning("tintedIcon: invalid SVG '%s'", qPrintable(svgPath));
+        return {};                              // invalid path -> null icon (caller-detectable)
+    }
+    return QIcon(new TintedIconEngine(svgPath, rest, active));
+}
+
+void setMenuArrow(QToolButton *button) {
+    button->ensurePolished();
+    const int size = QFontInfo(button->font()).pixelSize();
+    const QColor rest = QApplication::palette().color(QPalette::PlaceholderText);   // @sub, like the label
+    button->setIcon(tintedIcon(QStringLiteral(":/icons/menu-arrow.svg"), rest, rest, size));
+    button->setIconSize(QSize(size, size));
+    button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    button->setLayoutDirection(Qt::RightToLeft);   // icon trails the label
+    setMenuLabel(button, button->text());
+}
+
+void setMenuLabel(QToolButton *button, const QString &text) {
+    button->setText(text);
+    button->setMinimumWidth(0);
+    button->setMaximumWidth(QWIDGETSIZE_MAX);
+    button->setFixedWidth(button->sizeHint().width()
+                          - 2 * button->fontMetrics().horizontalAdvance(QLatin1Char(' ')));
 }
 
 } // namespace eddy::theme

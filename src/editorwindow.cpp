@@ -457,7 +457,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     auto *viewControls = new QWidget(this);
     viewControls->setObjectName(QStringLiteral("ViewControls"));
     auto *fl = new QGridLayout(viewControls);
-    fl->setContentsMargins(6, 3, 6, 3);
+    fl->setContentsMargins(4, 4, 4, 4);
     fl->setSpacing(2);
     auto *zoomControls = new QHBoxLayout;
     zoomControls->setSpacing(2);
@@ -585,7 +585,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     trimControls->setObjectName(QStringLiteral("TrimControls"));
     auto *trim = new QHBoxLayout(trimControls);
     trim->setContentsMargins(0, 0, 0, 0);
-    trim->setSpacing(4);
+    trim->setSpacing(0);   // captions and values bring their own 6px padding
 
     m_playButton = new QToolButton(bar);
     const QColor iconColor = palette().color(QPalette::ButtonText);
@@ -625,7 +625,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     auto *audioMenu = new QMenu(m_muteButton);
     auto *audioWidget = new QWidget(audioMenu);
     auto *audioLayout = new QHBoxLayout(audioWidget);
-    audioLayout->setContentsMargins(8, 6, 8, 6);
+    audioLayout->setContentsMargins(8, 8, 8, 8);
     auto *popupVolume = new QSlider(Qt::Horizontal, audioWidget);
     popupVolume->setRange(0, 100);
     popupVolume->setValue(100);
@@ -692,15 +692,15 @@ QWidget *EditorWindow::createPlaybackBar() {
 
     trim->addWidget(setIn);
     trim->addWidget(m_trimInLabel);
-    trim->addSpacing(8);
+    trim->addSpacing(12);
     trim->addWidget(setOut);
     trim->addWidget(m_trimOutLabel);
-    trim->addSpacing(8);
+    trim->addSpacing(12);
     auto *durationCaption = new QLabel(tr("Duration"), trimControls);
     durationCaption->setObjectName(QStringLiteral("TrimDurationCaption"));
     trim->addWidget(durationCaption);
     trim->addWidget(m_trimDurationLabel);
-    trim->addSpacing(4);
+    trim->addSpacing(6);
     trim->addWidget(reset);
     trim->addStretch(1);
     playback->addWidget(trimControls);
@@ -717,7 +717,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_speedButton = new QToolButton(bar);
     m_speedButton->setObjectName(QStringLiteral("PlaybackSpeed"));
     m_speedButton->setText(QStringLiteral("1×"));
-    m_speedButton->setFixedSize(38, theme::kBarButton.height());
+    m_speedButton->setFixedHeight(theme::kBarButton.height());
     m_speedButton->setToolTip(tr("Preview speed"));
     m_speedButton->setAccessibleName(m_speedButton->toolTip());
     m_speedButton->setPopupMode(QToolButton::InstantPopup);
@@ -738,6 +738,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         });
     }
     m_speedButton->setMenu(rates);
+    theme::setMenuArrow(m_speedButton);
     playback->addWidget(m_loopButton);
     playback->addWidget(m_speedButton);
     playback->addWidget(m_muteButton);
@@ -751,7 +752,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_videoPreview->setAttribute(Qt::WA_StyledBackground);
     m_videoPreview->setAttribute(Qt::WA_TransparentForMouseEvents);
     auto *previewLayout = new QVBoxLayout(m_videoPreview);
-    previewLayout->setContentsMargins(4, 4, 4, 3);
+    previewLayout->setContentsMargins(4, 4, 4, 4);
     previewLayout->setSpacing(2);
     m_previewImage = new QLabel(m_videoPreview);
     m_previewImage->setFixedSize(192, 108);
@@ -1066,6 +1067,12 @@ bool EditorWindow::updateVideoBackground() {
     return true;
 }
 
+void EditorWindow::showVideoStill() {
+    if (!m_lastVideoFrame.isValid() || !updateVideoBackground()) return;
+    m_videoStill->setPixmap(QPixmap::fromImage(m_bg));
+    m_videoStill->show();
+}
+
 void EditorWindow::ensureVideoPlayer() {
     if (!isVideo() || m_player) return;
     if (!m_videoItem) {
@@ -1080,6 +1087,12 @@ void EditorWindow::ensureVideoPlayer() {
         }
         m_videoItem = videoItem;
         m_backgroundItem = m_videoItem;
+        // Keep paused frames independent of the backend's video surface. Making
+        // the still a background child also excludes it from annotation exports.
+        m_videoStill = new QGraphicsPixmapItem(videoItem);
+        m_videoStill->setZValue(-1000);
+        m_videoStill->setAcceptedMouseButtons(Qt::NoButton);
+        m_videoStill->setTransformationMode(Qt::SmoothTransformation);
         connect(videoItem->videoSink(), &QVideoSink::videoFrameChanged, this,
                 [this](const QVideoFrame &frame) {
             if (!frame.isValid()) return;
@@ -1090,6 +1103,10 @@ void EditorWindow::ensureVideoPlayer() {
                 for (QGraphicsItem *item : m_scene->items())
                     if (dynamic_cast<RedactItem *>(item)) { needsPixels = true; break; }
             if (needsPixels) updateVideoBackground();
+            if (m_player->playbackState() == QMediaPlayer::PlayingState)
+                m_videoStill->hide();
+            else
+                showVideoStill();
             // GStreamer's buffer PTS may include a stream offset (e.g. H.264
             // reordering delay), while QMediaPlayer positions start at zero.
             // Loading primes the initial still. Anchor that first frame before
@@ -1114,6 +1131,7 @@ void EditorWindow::ensureVideoPlayer() {
     m_player->setAudioOutput(m_audioOutput);
     m_player->setVideoOutput(m_videoItem);
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state){
+        if (state != QMediaPlayer::PlayingState) showVideoStill();
         if (m_playButton) {
             const QColor color = palette().color(QPalette::ButtonText);
             m_playButton->setIcon(theme::tintedIcon(
@@ -1123,12 +1141,21 @@ void EditorWindow::ensureVideoPlayer() {
         }
     });
     connect(m_player, &QMediaPlayer::playbackRateChanged, this, [this](qreal rate) {
-        m_speedButton->setText(QStringLiteral("%1×").arg(rate));
+        theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate));
         for (auto *action : m_speedButton->menu()->actions())
             action->setChecked(qFuzzyCompare(action->data().toDouble(), rate));
     });
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
         if (status == QMediaPlayer::EndOfMedia) handlePlaybackEnd();
+        if (status == QMediaPlayer::LoadedMedia) {
+            // Retry after loading for backends that cannot preroll during setSource.
+            // Queue it so a pending user play/seek request takes precedence.
+            QTimer::singleShot(0, this, [this] {
+                if (!m_hasVideoFrame && !m_hasSentVideoSeek
+                    && m_player->playbackState() == QMediaPlayer::StoppedState)
+                    m_player->pause();
+            });
+        }
     });
     connect(m_player, &QMediaPlayer::durationChanged, this, [this](qint64 duration){
         if (!m_timeline) return;
@@ -1400,6 +1427,7 @@ void EditorWindow::toggleTheme() {
             reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), color, color));
         if (m_loopButton)
             m_loopButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/loop.svg"), color, color));
+        if (m_speedButton) theme::setMenuArrow(m_speedButton);
     }
     m_textBar->refreshTheme();
     m_dragPill->refreshTheme();
@@ -1505,7 +1533,7 @@ void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
         if (!field) continue;
         if (!field->hasFocus() || !field->isModified())
             field->setText(formatPreciseTime(field == m_trimInLabel ? inMs : outMs));
-        field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs)) + 12);
+        field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs)) + 16);
     }
     if (m_trimDurationLabel)
         m_trimDurationLabel->setText(formatPreciseTime(outMs - inMs));

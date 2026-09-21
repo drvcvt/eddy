@@ -50,7 +50,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
 
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(6, 3, 6, 3);
+    lay->setContentsMargins(4, 4, 4, 4);   // same left axis as the tool rail
     lay->setSpacing(2);
     m_toolRail = new QWidget(this);
     m_toolRail->setObjectName(QStringLiteral("ToolRail"));
@@ -177,6 +177,8 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     lay->addWidget(copy);
 
     auto *shelf = mkBtn(false, false); shelf->setObjectName("SendToShelf");
+    // Same icon box as Save and Copy so the row's glyphs start and end on one
+    // line; the label takes the body step so the 15px ink is not larger than it.
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
                                      iconRest, iconHover));
     shelf->setIconSize(QSize(theme::kIconSize, theme::kIconSize));

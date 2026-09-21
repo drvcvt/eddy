@@ -20,7 +20,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("SpotlightBar"));
     setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 3, 4, 3);
+    layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(2);
 
     auto *shapeGroup = new QButtonGroup(this);
