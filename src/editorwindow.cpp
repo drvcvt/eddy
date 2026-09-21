@@ -1054,15 +1054,13 @@ void EditorWindow::ensureVideoPlayer() {
                 [this](const QVideoFrame &frame) {
             QImage image = frame.toImage();
             if (image.isNull()) return;
-            // toImage already applies the surface transformation. Add the
-            // frame's presentation transform, then match the video's fitted rect.
-#if QT_VERSION >= QT_VERSION_CHECK(6, 7, 0)
+            // Qt < 6.8 includes rotation/mirroring in toImage(). Newer Qt
+            // applies the surface transform there, but not the presentation one.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
             const int rotation = int(frame.rotation());
-#else
-            const int rotation = int(frame.rotationAngle());
-#endif
             if (rotation) image = image.transformed(QTransform().rotate(rotation));
             if (frame.mirrored()) image = image.transformed(QTransform().scale(-1, 1));
+#endif
             if (image.size() != m_media.nativeSize())
                 image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
             m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
