@@ -1,4 +1,6 @@
 #include "videoexporter.h"
+#include "exportsettings.h"
+#include <algorithm>
 #include "exporter.h"
 #include "mediaio.h"
 #include "camerapath.h"
@@ -182,13 +184,16 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const StudioRenderer renderer(req.overlay.size(), view, req.studio,
                                   overlayVisible ? req.overlay : QImage());
     const QSize size = renderer.outputSize();
+    const int fps = std::clamp(req.maxFps, 1, 60);
+    const QSize finalSize = exportSize(size, req.maxShortSide);
+    const bool gif = QFileInfo(req.outputPath).suffix().compare(QLatin1String("gif"), Qt::CaseInsensitive) == 0;
     QStringList seek;
     if (req.trimInMs > 0) seek = {"-ss", QString::number(req.trimInMs / 1000.0, 'f', 3)};
     QStringList length;
     if (trimmed) length = {"-t", QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3)};
 
-    QString filter = QStringLiteral("[0:v]fps=60,scale=%1:%2,setsar=1[base];")
-        .arg(req.overlay.width()).arg(req.overlay.height());
+    QString filter = QStringLiteral("[0:v]fps=%3,scale=%1:%2,setsar=1[base];")
+        .arg(req.overlay.width()).arg(req.overlay.height()).arg(fps);
     const QString blurred = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
                                               req.overlay.size());
     filter += blurred + QStringLiteral("format=bgra[v]");
@@ -199,31 +204,41 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
         + QStringList{"-i", req.inputPath} + length
         + QStringList{"-filter_complex", filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "-"};
     job.outputSize = size;
-    job.expectedFrames = qRound64((endMs - req.trimInMs) * 60 / 1000.0);
+    job.expectedFrames = qRound64((endMs - req.trimInMs) * fps / 1000.0);
     job.render = [&](qint64 index, const QImage &frame, QImage &out) {
-        renderer.render(frame, camera.rectAt(index * 1000.0 / 60), out);
+        renderer.render(frame, camera.rectAt(index * 1000.0 / fps), out);
     };
     job.stallTimeoutMs = req.stallTimeoutMs;
     job.progress = req.progress;
     job.cancelled = req.cancelled;
 
     const QString ext = QFileInfo(req.outputPath).suffix().toLower();
-    const QString hardware = ext != "webm" && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
+    const QString hardware = ext != "webm" && !gif && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
         ? hardwareEncoder(ffmpeg) : QString();
     QStringList encoders;
     if (!hardware.isEmpty()) encoders.append(hardware);
     encoders.append(QString());   // the CPU encoder also takes what the hardware one refuses
+    const QString shrink = finalSize == size ? QString()
+        : QStringLiteral("scale=%1:%2:flags=lanczos,").arg(finalSize.width()).arg(finalSize.height());
     DeliverResult r;
     for (const QString &encoder : encoders) {
         const QStringList device = deviceArgs(encoder);
-        // Qt draws RGB; the BT.709 matrix also tags the output, so players do not guess.
-        job.encodeArgs = QStringList{"-hide_banner", "-loglevel", "error", "-y"} + device
+        const QStringList input = QStringList{"-hide_banner", "-loglevel", "error", "-y"} + device
             + QStringList{"-f", "rawvideo", "-pix_fmt", "bgra", "-s",
-                          QStringLiteral("%1x%2").arg(size.width()).arg(size.height()), "-r", "60", "-i", "-"}
-            + seek + length + QStringList{"-i", req.inputPath, "-map", "0:v", "-map", "1:a?",
-                "-vf", QStringLiteral("scale=out_color_matrix=bt709:out_range=tv,format=")
+                          QStringLiteral("%1x%2").arg(size.width()).arg(size.height()),
+                          "-r", QString::number(fps), "-i", "-"};
+        if (gif) {
+            // One palette for the file; GIF has no sound.
+            job.encodeArgs = input + QStringList{"-map", "0:v", "-vf", shrink + QStringLiteral(
+                "split[ga][gb];[ga]palettegen=stats_mode=diff[gp];"
+                "[gb][gp]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"), "-an", output};
+        } else {
+            // Qt draws RGB; the BT.709 matrix also tags the output, so players do not guess.
+            job.encodeArgs = input + seek + length + QStringList{"-i", req.inputPath, "-map", "0:v", "-map", "1:a?",
+                "-vf", shrink + QStringLiteral("scale=out_color_matrix=bt709:out_range=tv,format=")
                            + (device.isEmpty() ? QStringLiteral("yuv420p") : QStringLiteral("nv12,hwupload"))}
-            + encoderCodecArgs(encoder, cpuCodecs, trimmed) + QStringList{"-shortest", output};
+                + encoderCodecArgs(encoder, cpuCodecs, trimmed) + QStringList{"-shortest", output};
+        }
         job.timeoutMs = req.timeoutMs < 0 ? -1 : qMax(0, req.timeoutMs - int(elapsed.elapsed()));
         r = runRenderPipeline(job);
         if (r.ok || r.error.contains(QStringLiteral("cancelled")) || r.error.contains(QStringLiteral("timed out")))
@@ -327,8 +342,11 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     }
 
     const QString ext = QFileInfo(req.outputPath).suffix().toLower();
+    const bool gif = ext == QStringLiteral("gif");
     QStringList codecArgs;
-    if (ext == QStringLiteral("webm")) {
+    if (gif) {
+        codecArgs = {QStringLiteral("-an")};
+    } else if (ext == QStringLiteral("webm")) {
         codecArgs = {
             QStringLiteral("-c:v"), QStringLiteral("libvpx-vp9"),
             QStringLiteral("-deadline"), QStringLiteral("good"),
@@ -357,7 +375,8 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     // Drop surplus frames before the filters: -fpsmax alone still scales,
     // blurs and overlays every frame of a 240 fps recording.
     const VideoInfo source = probeVideoFile(req.inputPath).info;
-    const bool highFps = source.fps > 60.0;
+    const int maxFps = std::clamp(req.maxFps, 1, 60);
+    const bool highFps = source.fps > maxFps;
     const qint64 outputMs = trimmed ? req.trimOutMs - req.trimInMs
                                     : source.durationMs - req.trimInMs;
     if (render) {
@@ -366,7 +385,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         return rendered.ok ? finishOutput(replaceInput, actualOutput, req.outputPath) : rendered;
     }
     QString filter = QStringLiteral("[0:v]%1scale=%2:%3,setsar=1[base];")
-        .arg(highFps ? QStringLiteral("fps=60,") : QString())
+        .arg(highFps ? QStringLiteral("fps=%1,").arg(maxFps) : QString())
         .arg(req.overlay.width()).arg(req.overlay.height());
     const QString current = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
                                               req.overlay.size());
@@ -392,6 +411,13 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
             .arg(studio.content.x()).arg(studio.content.y())
             .arg(background).arg(background + 1);
     }
+    const QSize framedSize = req.studio.active() ? studio.output : contentSize;
+    const QSize finalSize = exportSize(framedSize, req.maxShortSide);
+    if (finalSize != framedSize)
+        filter += QStringLiteral(",scale=%1:%2:flags=lanczos").arg(finalSize.width()).arg(finalSize.height());
+    if (gif)   // one palette for the whole file
+        filter += QStringLiteral(",split[ga][gb];[ga]palettegen=stats_mode=diff[gp];"
+                                 "[gb][gp]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle");
 
     QStringList args = {
         QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
@@ -411,11 +437,9 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     if (req.studio.active())
         args += {QStringLiteral("-i"), studioBackground.fileName(), QStringLiteral("-i"), studioMask.fileName()};
     const QStringList inputs = args;
-    const QStringList maps = {
-        QStringLiteral("-map"), QStringLiteral("[v]"),
-        QStringLiteral("-map"), QStringLiteral("0:a?"),
-        QStringLiteral("-threads:v"), QStringLiteral("2"),
-    };
+    QStringList maps = {QStringLiteral("-map"), QStringLiteral("[v]")};
+    if (!gif) maps += {QStringLiteral("-map"), QStringLiteral("0:a?")};
+    maps += {QStringLiteral("-threads:v"), QStringLiteral("2")};
     QStringList outputs;
     if (trimmed) {
         outputs += {
@@ -425,12 +449,12 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     }
     outputs += {
         QStringLiteral("-avoid_negative_ts"), QStringLiteral("make_zero"),
-        QStringLiteral("-fpsmax"), QStringLiteral("60"),
+        QStringLiteral("-fpsmax"), QString::number(maxFps),
         QStringLiteral("-shortest"),
         actualOutput,
     };
 
-    const QString hardware = ext != "webm" && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
+    const QString hardware = ext != "webm" && !gif && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
         ? hardwareEncoder(ffmpeg) : QString();
     QStringList encoders;
     if (!hardware.isEmpty()) encoders.append(hardware);
