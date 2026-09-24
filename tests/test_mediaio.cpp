@@ -107,6 +107,7 @@ private slots:
         QVERIFY(!withoutSound.info.hasAudio);
         QVERIFY(withSound.info.hasAudio);
         QCOMPARE(withSound.info.size, QSize(64, 48));
+        QVERIFY(qAbs(withSound.info.audioOffsetMs) <= 30);
     }
     void formatsTimesLikeThePlaybackBar() {
         QCOMPARE(formatTime(1999), QStringLiteral("0:01"));

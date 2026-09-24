@@ -19,6 +19,8 @@ struct VideoInfo {
     double fps = 0.0;
     bool cropSupported = true;
     bool hasAudio = false;
+    // Where the first audio stream starts on the video's time axis.
+    qint64 audioOffsetMs = 0;
 };
 
 // "m:ss" or "h:mm:ss", and with milliseconds; the playback bar's clocks.

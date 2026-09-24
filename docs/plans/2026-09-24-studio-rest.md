@@ -374,6 +374,52 @@ Videos, wo möglich).
 zählt "No audio" als Edit. `SetOutputAudioCommand`.
 **Test.** ffprobe: kein Audiostream; mit Ton bleibt er; Undo.
 
+### Umsetzungsplan W7 (vor dem Bau, 24.09.)
+
+Grundlage: 21.09.-Plan Abschnitt 4. Reihenfolge G1, G2, G3, je ein Commit mit Tests.
+
+**G1.** `VideoInfo` bekommt `audioOffsetMs` (Start des ersten Audiostreams minus Start des
+Videostreams, per ffprobe `stream=start_time`). Neu `src/audiowaveform.{h,cpp}`:
+`AudioWaveformProvider` (QObject) startet einen ffmpeg-Prozess
+`-i src -map 0:a:0 -ac 2 -ar 16000 -f f32le -`, liest stdout asynchron im GUI-Thread
+(`readyRead`, Stücke bis 256 KiB, Ausrichtung auf ganze Frames) und füllt 10-ms-Bins
+(Peak = maximaler Betrag über beide Kanäle, RMS aus Quadratsumme; kein Mono-Downmix, also bleibt
+gegenphasiges Stereo sichtbar). Höchstens eine Million Grund-Bins, sonst gröbere Bins. Eine
+Aggregationsstufe je Faktor 16 für das Zeichnen. Der Versatz verschiebt die Bins; vor dem Ton
+ist Stille, nicht "unbekannt". Zustand `Loading`/`Ready`/`Failed`, `changed()` höchstens alle
+100 ms, Stillstands-Timeout 30 s, Destruktor/`cancel()` beendet den Prozess. Der Prozess läuft
+mit `nice 10` (`setChildProcessModifier`). API: `summary(fromMs, toMs)` liefert
+{peak, rms, known} für einen Pixelbereich.
+Bewusst weggelassen (YAGNI, ffmpeg dekodiert Audio weit schneller als Echtzeit): priorisierter
+Bereichsauftrag, Festplatten-Cache, Trackwahl (angezeigt wird die erste Tonspur, die auch der
+Player nimmt).
+Test `test_audiowaveform`: Klicks bei 1,0 s und 2,5 s liegen im richtigen Bin, Stille ist
+bekannt und leer, gegenphasiges Stereo hat Pegel, positiver Versatz (0,5 s `-itsoffset`)
+verschiebt den Klick, Abbruch beendet den Prozess, Datei ohne Ton scheitert sauber.
+
+**G2.** `VideoTimeline::setWaveform(const AudioWaveformProvider *)` und
+`setWaveformVisible(bool)`: 28-px-Spur direkt unter dem Filmstreifen, Zoom- und Masken-Spur
+rücken nach unten (E8). `waveformRect()` wie die anderen Spuren; Höhe +32. Zeichnen pro
+Pixel über `summary()` in editierter Zeit (mit Fragmenten gestaucht), symmetrische graue
+Hüllkurve mit hellerem RMS-Kern, feste Skala; unbekannt: gestrichelte Mittellinie; Fehler:
+kleiner Text "Waveform unavailable". Klick/Ziehen auf der Spur scrubbt wie der Filmstreifen
+(fällt in den vorhandenen Seek-Zweig), die Trim-Griffe greifen auch dort. Kontextmenü
+"Show waveform" (abhakbar, nur mit Ton), Ansichtswert, kein Dokumentedit. Editor legt den
+Provider nur bei `hasAudio` an.
+Test: Timeline mit synthetischem Provider (Pixel in der Spur dunkler bei Pegel, unbekannt
+anders als Stille), Spur verschiebt die Zoom-Spur, Klick in der Spur seekt; Editor ohne Ton
+ohne Spur.
+
+**G3.** `StudioDocument::audio` (Standard an, JSON `"audio"` optional) statt eigener
+`SetOutputAudioCommand`: Undo, Projekt und Kept Edits laufen so über den vorhandenen
+`SetStudioDocumentCommand`. Speaker-Menü: abhakbare Aktion "Include audio in output" unter
+dem Regler (nur bei Ton aktiv), Label "No audio" neben dem Speaker, wenn aus.
+`hasVideoEdits()` zählt `!audio`. `VideoExportRequest::includeAudio`: Render-Pfad und
+Filtergraph lassen die Audio-Map weg und setzen `-an`. Stream-Copy für "nur ohne Ton" entfällt
+vorerst (der Plan sagt "kann"); das Ergebnis ist gleich, nur der Encode dauert.
+Test: Exporter ohne Ton hat per ffprobe keinen Audiostream, mit Ton einen (beide Pfade);
+Editor: Aktion schaltet, Undo stellt zurück, Label sichtbar; Codec-Roundtrip.
+
 ### H1 Nummerierte Schritte (P7)
 
 **Phase 1.** 21.09.-Plan 6 "Nummerierte Schritte": Werkzeug Step (`N`), Kreis mit Nummer in der
