@@ -107,6 +107,9 @@ private:
     class StepItem *selectedStep() const;
     void refreshStepBar();
     void renumberSteps();
+    QList<QGraphicsItem *> alignableSelection() const;
+    void refreshSelectionBar();
+    void moveSelection(const QVector<QPointF> &deltas, const QString &name);
     void updateSelectedText(const std::function<void(TextItem *)> &change);
     SpotlightItem *selectedSpotlight() const;
     void refreshSpotlightBar();
@@ -339,6 +342,7 @@ private:
     RedactBar *m_redactBar = nullptr;
     TextBar *m_textBar = nullptr;
     class StepBar *m_stepBar = nullptr;
+    class SelectionBar *m_selectionBar = nullptr;
     SpotlightBar *m_spotlightBar = nullptr;
     Toast *m_toast = nullptr;
     DragPill *m_dragPill = nullptr;

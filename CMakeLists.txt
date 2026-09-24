@@ -72,6 +72,7 @@ add_library(eddy_core STATIC
     src/zoomsuggest.cpp
     src/stepbar.cpp
     src/snapping.cpp
+    src/selectionbar.cpp
     src/audiowaveform.cpp
     src/studiorenderer.cpp
     src/renderexport.cpp

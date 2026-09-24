@@ -2,6 +2,11 @@
 #include <QGraphicsScene>
 #include <QUndoStack>
 #include "canvas.h"
+#include "editorwindow.h"
+#include "selectionbar.h"
+#include "items/arrowitem.h"
+#include "items/stepitem.h"
+#include <QToolButton>
 #include "snapping.h"
 #include "toolcontroller.h"
 #include "items/rectitem.h"
@@ -110,6 +115,56 @@ private slots:
         scene.clearSelection();
         drag(b, QPointF(0, -67), Qt::NoModifier);
         QCOMPARE(b->pos().y(), 53.0);
+    }
+    void theSelectionBarAlignsAndSpacesInOneStep() {
+        Config cfg; cfg.animations = false;
+        MediaDocument doc;
+        doc.image = QImage(600, 400, QImage::Format_RGB32);
+        doc.image.fill(Qt::white);
+        EditorWindow w(doc, cfg, {});
+        w.resize(900, 640);
+        w.show();
+        auto *scene = w.findChild<QGraphicsScene *>();
+        auto *undo = w.findChild<QUndoStack *>();
+        RectItem *rect = box(*scene, QPointF(20, 20));
+        auto *step = new StepItem(1);
+        step->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        step->setPos(250, 100);
+        scene->addItem(step);
+        auto *arrow = new ArrowItem(QPointF(0, 0), QPointF(60, 30));
+        arrow->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        arrow->setPos(400, 250);
+        scene->addItem(arrow);
+        auto *bar = w.findChild<SelectionBar *>();
+        rect->setSelected(true);
+        QVERIFY(!bar->isVisible());
+        step->setSelected(true);
+        QTRY_VERIFY(bar->isVisible());
+        arrow->setSelected(true);
+        auto button = [&](const QString &tip) {
+            for (auto *b : bar->findChildren<QToolButton *>())
+                if (b->toolTip().startsWith(tip)) return b;
+            return static_cast<QToolButton *>(nullptr);
+        };
+        const int steps = undo->count();
+        button(QStringLiteral("Align left edges"))->click();
+        for (QGraphicsItem *item : QList<QGraphicsItem *>{rect, step, arrow})
+            QCOMPARE(alignmentBounds(item).left(), 20.0);
+        QCOMPARE(undo->count(), steps + 1);
+        undo->undo();
+        QCOMPARE(alignmentBounds(step).left(), 230.0);
+        // Across: 20..460 holds 40 + 40 + 60 of items, so two gaps of 150.
+        button(QStringLiteral("Space evenly across"))->click();
+        QCOMPARE(alignmentBounds(step).left(), 20.0 + 40 + 150);
+        QCOMPARE(alignmentBounds(arrow).left(), 400.0);
+        QCOMPARE(undo->count(), steps + 1);
+        // A second click changes nothing and adds no step.
+        button(QStringLiteral("Space evenly across"))->click();
+        QCOMPARE(undo->count(), steps + 1);
+        // Overlapping across, there is no room to share.
+        step->setPos(40, 100);
+        arrow->setPos(30, 250);
+        QTRY_VERIFY(!button(QStringLiteral("Space evenly across"))->isEnabled());
     }
 };
 
