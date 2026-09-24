@@ -1,4 +1,5 @@
 #include "toolcontroller.h"
+#include <algorithm>
 #include "undocommands.h"
 #include "items/arrowitem.h"
 #include "items/rectitem.h"
@@ -135,12 +136,27 @@ void ToolController::finish(const QPointF &p, Qt::KeyboardModifiers modifiers) {
     finalizeFade();                  // settle prior fade before push() can discard the redo branch
     QGraphicsItem *committed = m_active;
     m_scene->removeItem(m_active);
-    if (dynamic_cast<SpotlightItem *>(m_active)) {
-        SpotlightItem *old = nullptr;
-        for (QGraphicsItem *item : m_scene->items())
-            if ((old = dynamic_cast<SpotlightItem *>(item))) break;
+    if (auto *spot = dynamic_cast<SpotlightItem *>(m_active)) {
+        // One spotlight at a time: a new one replaces what shows at the
+        // playhead; others in their own stretches stay, and the new one gets
+        // the free stretch from the playhead on (decision E6).
+        QList<SpotlightItem *> replaced;
+        qint64 nextStart = m_duration;
+        bool others = false;
+        for (QGraphicsItem *item : m_scene->items()) {
+            auto *old = dynamic_cast<SpotlightItem *>(item);
+            if (!old) continue;
+            const auto w = old->timeWindow();
+            if (m_playhead < 0 || !w || (m_playhead >= w->first && m_playhead < w->second)) {
+                replaced.append(old);
+            } else {
+                others = true;
+                if (w->first > m_playhead) nextStart = std::min(nextStart, w->first);
+            }
+        }
+        if (others) spot->setTimeWindow(std::pair{m_playhead, nextStart});
         m_undo->beginMacro(QStringLiteral("Replace Spotlight"));
-        if (old) m_undo->push(new RemoveItemCommand(m_scene, old));
+        for (SpotlightItem *old : replaced) m_undo->push(new RemoveItemCommand(m_scene, old));
         m_undo->push(new AddItemCommand(m_scene, m_active));
         m_undo->endMacro();
     } else {

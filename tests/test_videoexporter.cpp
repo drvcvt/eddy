@@ -726,6 +726,50 @@ private slots:
         QCOMPARE(qRound(probeVideoFile(follows.outputPath).info.fps), 60);   // it moves, so it renders
         QVERIFY2(centre(follows.outputPath).blue() > 200, qPrintable(centre(follows.outputPath).name()));
     }
+    void timeWindowsLimitBlurAndOverlays() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        // Sharp one-pixel stripes, so a blur shows as lost contrast.
+        const QString input = dir.filePath(QStringLiteral("stripes.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "nullsrc=s=64x48:r=25:d=3,format=gray,geq=lum='if(mod(X\\,2)\\,235\\,16)'",
+            "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv444p", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        QImage red(64, 48, QImage::Format_ARGB32_Premultiplied);
+        red.fill(Qt::transparent);
+        QPainter(&red).fillRect(40, 4, 20, 16, Qt::red);
+        auto frameAt = [&](const QString &file, double seconds) {
+            const QString frame = dir.filePath(QStringLiteral("f.png"));
+            runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", QString::number(seconds), "-i", file,
+                                                  "-frames:v", "1", frame});
+            return QImage(frame).convertToFormat(QImage::Format_RGB32);
+        };
+        for (bool render : {false, true}) {
+            // Trimmed from 0.5 s: windows stay in source time, 1 to 2 s.
+            VideoExportRequest request{input, dir.filePath(render ? QStringLiteral("r.mp4") : QStringLiteral("g.mp4")),
+                                       overlay, 500, 3000};
+            request.timedBlurs = {{QRect(0, 24, 32, 24), 1000, 2000}};
+            request.timedOverlays = {{red, 1000, 2000}};
+            if (render) request.zooms = {{1, 0, 100, 1.1, ZoomSegment::Target::Point, QPointF(32, 24),
+                                          ZoomSegment::Motion::Instant}};
+            const DeliverResult result = writeVideoWithOverlay(request);
+            QVERIFY2(result.ok, qPrintable(result.error));
+            const QRect blurred(4, 28, 24, 16);
+            const QImage before = frameAt(request.outputPath, 0.2), inside = frameAt(request.outputPath, 1.0),
+                         after = frameAt(request.outputPath, 2.0);   // output time: source 0.7, 1.5, 2.5 s
+            QVERIFY2(horizontalContrast(before, blurred) > 3 * horizontalContrast(inside, blurred),
+                     qPrintable(QStringLiteral("render %1: %2 vs %3").arg(render).arg(horizontalContrast(before, blurred))
+                                    .arg(horizontalContrast(inside, blurred))));
+            QVERIFY(horizontalContrast(after, blurred) > 3 * horizontalContrast(inside, blurred));
+            auto isRed = [](const QImage &image) {
+                const QColor c = image.pixelColor(50, 12);
+                return c.red() > 180 && c.green() < 90;
+            };
+            QVERIFY2(!isRed(before) && isRed(inside) && !isRed(after), qPrintable(QStringLiteral("render %1").arg(render)));
+        }
+    }
     void rejectsABaseViewOutsideTheCrop() {
         QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
         VideoExportRequest request{QStringLiteral("in.mp4"), QStringLiteral("out.mp4"), overlay};

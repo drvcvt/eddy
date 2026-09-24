@@ -46,6 +46,8 @@ static QList<QGraphicsItem *> everything(const QImage &bg) {
     auto *spot = new SpotlightItem(QRectF(260, 180, 100, 80), QSizeF(bg.size()));
     spot->setSpotlightShape(SpotlightShape::Ellipse);
     spot->setIntensity(3);
+    spot->setTimeWindow(std::pair{qint64(1000), qint64(2500)});
+    blur->setTimeWindow(std::pair{qint64(0), qint64(800)});
     QList<QGraphicsItem *> items{spot, blur, ocr, arrow, rect, ellipse, highlight, pen, text};
     for (auto *item : items) item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
     return items;
@@ -77,6 +79,9 @@ private slots:
         const auto *text = dynamic_cast<TextItem *>(loaded->last());
         QVERIFY(text);
         QVERIFY(text->state() == dynamic_cast<TextItem *>(original.last())->state());
+        QCOMPARE(dynamic_cast<SpotlightItem *>(loaded->at(0))->timeWindow(), (AnnotationItem::TimeWindow{{1000, 2500}}));
+        QCOMPARE(dynamic_cast<RedactItem *>(loaded->at(1))->timeWindow(), (AnnotationItem::TimeWindow{{0, 800}}));
+        QVERIFY(!dynamic_cast<RedactItem *>(loaded->at(2))->timeWindow());
         const auto *ocr = dynamic_cast<RedactItem *>(loaded->at(2));
         QVERIFY(ocr && !ocr->isDetecting());
         QCOMPARE(ocr->textRects().size(), 2);
@@ -141,6 +146,8 @@ private slots:
         bad = rect; bad["width"] = 1e308 * 10;   // becomes null in JSON, still rejected
         QVERIFY(reject(bad));
         bad = rect; bad["color"] = "not a colour";
+        QVERIFY(reject(bad));
+        bad = rect; bad["window"] = QJsonArray{0, 500};   // only redactions and spotlights have one
         QVERIFY(reject(bad));
         QJsonArray points;
         for (int i = 0; i < 20001; ++i) points.append(QJsonArray{i % 100, i % 50});

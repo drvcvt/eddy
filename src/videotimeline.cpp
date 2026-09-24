@@ -44,7 +44,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
             return;
         }
         QMenu menu(this);
-        if (m_laneVisible && pos.y() >= zoomLaneRect().top() - 2) {
+        if (inZoomLane(pos)) {
             const qint64 time = timeForX(pos.x());
             menu.addAction(tr("Add zoom here"), this, [this, time] { emit zoomAddRequested(time); });
             menu.addSeparator();
@@ -207,14 +207,15 @@ void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
 }
 
 QRectF VideoTimeline::trackRect() const {
-    return QRectF(6, 18, qMax(1, width() - 12), height() - 22 - (m_laneVisible ? 32 : 0));
+    return QRectF(6, 18, qMax(1, width() - 12),
+                  height() - 22 - (m_laneVisible ? 32 : 0) - (m_masks.isEmpty() ? 0 : 24));
 }
 
 void VideoTimeline::setZoomLaneVisible(bool visible) {
     if (visible == m_laneVisible) return;
     cancelInteraction();
     m_laneVisible = visible;
-    setFixedHeight(visible ? 84 : 52);
+    updateHeight();
     update();
 }
 
@@ -230,6 +231,73 @@ void VideoTimeline::setSelectedZoom(quint32 id) {
     if (zoomlane::indexOf(m_zooms, id) < 0) id = 0;
     if (id == m_selectedZoom) return;
     m_selectedZoom = id;
+    update();
+}
+
+void VideoTimeline::updateHeight() {
+    setFixedHeight(52 + (m_laneVisible ? 32 : 0) + (m_masks.isEmpty() ? 0 : 24));
+}
+
+bool VideoTimeline::inZoomLane(QPointF pos) const {
+    const QRectF lane = zoomLaneRect();
+    return !lane.isEmpty() && pos.y() >= lane.top() - 2 && pos.y() <= lane.bottom() + 2;
+}
+
+void VideoTimeline::setMasks(const QVector<MaskBlock> &masks) {
+    if (maskDragging() || masks == m_masks) return;   // the drag owns the list until it ends
+    const bool shown = !m_masks.isEmpty();
+    m_masks = masks;
+    if (shown != !m_masks.isEmpty()) updateHeight();
+    update();
+}
+
+QRectF VideoTimeline::maskLaneRect() const {
+    if (m_masks.isEmpty()) return {};
+    const QRectF track = trackRect();
+    const qreal top = (m_laneVisible ? zoomLaneRect().bottom() : track.bottom()) + 4;
+    return QRectF(track.left(), top, track.width(), 20);
+}
+
+int VideoTimeline::maskAt(QPointF pos, Drag *part) const {
+    *part = Drag::None;
+    const QRectF lane = maskLaneRect();
+    if (lane.isEmpty() || pos.y() < lane.top() - 2 || pos.y() > lane.bottom() + 2) return -1;
+    // The last drawn is on top.
+    for (int i = m_masks.size() - 1; i >= 0; --i) {
+        const qreal x0 = xForTime(m_masks[i].fromMs), x1 = xForTime(m_masks[i].toMs);
+        const qreal d0 = qAbs(pos.x() - x0), d1 = qAbs(pos.x() - x1);
+        if (qMin(d0, d1) <= 6) *part = d0 <= d1 ? Drag::MaskStart : Drag::MaskEnd;
+        else if (pos.x() > x0 && pos.x() < x1) *part = Drag::MaskMove;
+        else continue;
+        return i;
+    }
+    return -1;
+}
+
+void VideoTimeline::moveMaskDrag(qreal x) {
+    if (!m_zoomMoved && qAbs(x - m_dragX) < 3) return;
+    m_zoomMoved = true;
+    if (m_dragMask < 0 || m_dragMask >= m_masks.size()) return;
+    MaskBlock &mask = m_masks[m_dragMask];
+    const qint64 reach = qRound64(6.0 * (m_viewEnd - m_viewStart) / trackRect().width());
+    QVector<qint64> anchors{m_position, m_in, m_out, 0, m_duration};
+    for (int i = 0; i < m_masks.size(); ++i)
+        if (i != m_dragMask) anchors << m_masks[i].fromMs << m_masks[i].toMs;
+    const qint64 time = timeForX(x) - m_grabOffset;
+    constexpr qint64 kMin = 100;
+    if (m_drag == Drag::MaskMove) {
+        const qint64 length = m_maskBefore.toMs - m_maskBefore.fromMs;
+        qint64 start = zoomlane::snap(time, anchors, reach);
+        const qint64 byEnd = zoomlane::snap(time + length, anchors, reach) - length;
+        if (byEnd != time && (start == time || qAbs(byEnd - time) < qAbs(start - time))) start = byEnd;
+        mask.fromMs = qBound<qint64>(0, start, m_duration - length);
+        mask.toMs = mask.fromMs + length;
+    } else if (m_drag == Drag::MaskStart) {
+        mask.fromMs = qBound<qint64>(0, zoomlane::snap(time, anchors, reach), mask.toMs - kMin);
+    } else {
+        mask.toMs = qBound<qint64>(mask.fromMs + kMin, zoomlane::snap(time, anchors, reach), m_duration);
+    }
+    emit maskWindowPreviewed(mask.key, mask.fromMs, mask.toMs);
     update();
 }
 
@@ -452,10 +520,45 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.setPen(Qt::NoPen);
     }
 
+    if (!m_masks.isEmpty()) {
+        const QRectF lane = maskLaneRect();
+        QPainterPath laneShape;
+        laneShape.addRoundedRect(lane, 6, 6);
+        painter.save();
+        painter.setClipPath(laneShape);
+        painter.fillRect(lane, ink(0.07));
+        QFont label = font();
+        label.setPixelSize(theme::kFsMicro);
+        painter.setFont(label);
+        for (const MaskBlock &mask : std::as_const(m_masks)) {
+            const qreal x0 = xForTime(mask.fromMs), x1 = xForTime(mask.toMs);
+            if (x1 < lane.left() || x0 > lane.right()) continue;
+            const QRectF block(x0, lane.top(), qMax<qreal>(2, x1 - x0), lane.height());
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(ink(mask.selected ? 0.22 : 0.15));
+            painter.drawRoundedRect(block, 4, 4);
+            const qreal left = qMax(x0, lane.left()) + 8;
+            const qreal room = qMin(x1, lane.right()) - 8 - left;
+            if (room >= QFontMetricsF(label).horizontalAdvance(mask.label)) {
+                painter.setPen(ink(mask.selected ? 0.9 : 0.7));
+                painter.drawText(QRectF(left, lane.top(), room, lane.height()), Qt::AlignVCenter, mask.label);
+            }
+            if (mask.selected) {
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(ink(0.7));
+                for (qreal x : {x0 + 3, x1 - 5})
+                    painter.drawRoundedRect(QRectF(x, lane.center().y() - 5, 2, 10), 1, 1);
+            }
+        }
+        painter.restore();
+        painter.setPen(Qt::NoPen);
+    }
+
     const qreal playX = xForTime(m_position);
     painter.setBrush(ink(0.86));
     if (playX >= track.left() && playX <= track.right()) {
-        const qreal playBottom = m_laneVisible ? zoomLaneRect().bottom() : track.bottom() + 3;
+        const qreal playBottom = !m_masks.isEmpty() ? maskLaneRect().bottom()
+            : m_laneVisible ? zoomLaneRect().bottom() : track.bottom() + 3;
         painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, playBottom - track.top()), 1, 1);
         painter.drawRoundedRect(QRectF(playX - 3, track.top() - 4, 6, 5), 2, 2);
     }
@@ -554,7 +657,27 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
         event->accept();
         return;
     }
-    if (m_laneVisible && event->position().y() >= zoomLaneRect().top() - 2) {
+    {
+        Drag part = Drag::None;
+        const int mask = maskAt(event->position(), &part);
+        if (mask >= 0) {
+            emit maskSelected(m_masks[mask].key);
+            m_drag = part;
+            m_dragMask = mask;
+            m_maskBefore = m_masks[mask];
+            m_zoomMoved = false;
+            m_dragX = m_pointerX = event->position().x();
+            m_grabOffset = timeForX(m_dragX) - (part == Drag::MaskEnd ? m_masks[mask].toMs : m_masks[mask].fromMs);
+            m_edgePan.start();
+            event->accept();
+            return;
+        }
+        if (!maskLaneRect().isEmpty() && event->position().y() >= maskLaneRect().top() - 2) {
+            event->accept();   // the empty mask lane does nothing
+            return;
+        }
+    }
+    if (inZoomLane(event->position())) {
         Drag part = Drag::None;
         const quint32 id = zoomAt(event->position(), &part);
         if (!id) {
@@ -605,7 +728,15 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
             emit hoverLeft();
             return;
         }
-        if (m_laneVisible && event->position().y() >= zoomLaneRect().top() - 2) {
+        Drag maskPart = Drag::None;
+        if (maskAt(event->position(), &maskPart) >= 0
+            || (!maskLaneRect().isEmpty() && event->position().y() >= maskLaneRect().top() - 2)) {
+            setCursor(maskPart == Drag::MaskStart || maskPart == Drag::MaskEnd ? Qt::SizeHorCursor
+                                                                             : Qt::PointingHandCursor);
+            emit hoverLeft();
+            return;
+        }
+        if (inZoomLane(event->position())) {
             Drag part = Drag::None;
             zoomAt(event->position(), &part);
             setCursor(part == Drag::ZoomStart || part == Drag::ZoomEnd ? Qt::SizeHorCursor
@@ -635,6 +766,7 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     m_pointerX = x;
     m_modifiers = modifiers;
     if (zoomDragging()) { moveZoomDrag(x); return; }
+    if (maskDragging()) { moveMaskDrag(x); return; }
     const bool fine = modifiers.testFlag(Qt::ShiftModifier);
     if (fine != m_fine) {
         m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
@@ -662,6 +794,17 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
 
 void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton || m_drag == Drag::None) return;
+    if (maskDragging()) {
+        moveMaskDrag(event->position().x());
+        m_drag = Drag::None;
+        m_edgePan.stop();
+        const MaskBlock &mask = m_masks[m_dragMask];
+        if (mask.fromMs != m_maskBefore.fromMs || mask.toMs != m_maskBefore.toMs)
+            emit maskWindowEdited(mask.key, mask.fromMs, mask.toMs, m_maskBefore.fromMs, m_maskBefore.toMs);
+        update();
+        event->accept();
+        return;
+    }
     if (zoomDragging()) {
         moveZoomDrag(event->position().x());
         m_drag = Drag::None;
@@ -693,6 +836,14 @@ void VideoTimeline::leaveEvent(QEvent *event) {
 
 void VideoTimeline::cancelInteraction() {
     if (!interacting()) return;
+    if (maskDragging()) {
+        m_drag = Drag::None;
+        m_edgePan.stop();
+        m_masks[m_dragMask] = m_maskBefore;
+        emit maskWindowPreviewed(m_maskBefore.key, m_maskBefore.fromMs, m_maskBefore.toMs);
+        update();
+        return;
+    }
     if (zoomDragging()) {
         m_drag = Drag::None;
         m_edgePan.stop();

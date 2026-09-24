@@ -15,6 +15,10 @@
 #include "studiostyle.h"
 #include "recoverystore.h"
 #include "resumedialog.h"
+#include "items/redactitem.h"
+#include "items/spotlightitem.h"
+#include <QUndoStack>
+#include <QUndoCommand>
 #include <QLockFile>
 #include <QTemporaryDir>
 #include <QApplication>
@@ -248,6 +252,31 @@ int main(int argc, char **argv) {
         emit timeline->cutClicked(1);
         QEventLoop settle;
         QTimer::singleShot(200, &settle, &QEventLoop::quit);
+        settle.exec();
+        pm = window->grab();
+    }
+    if (mode.contains(QStringLiteral("masks"))) {
+        // A blur from the playhead and a timed spotlight, the blur selected.
+        auto *scene = window->findChild<QGraphicsScene *>();
+        auto *timeline = window->findChild<eddy::VideoTimeline *>();
+        const qint64 d = timeline->duration();
+        auto *spot = new eddy::SpotlightItem(QRectF(900, 300, 500, 300), QSizeF(window->cameraBase().size()));
+        spot->setTimeWindow(std::pair{d / 10, d * 4 / 10});
+        spot->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene->addItem(spot);
+        auto *blur = new eddy::RedactItem(eddy::RedactMode::Blur, QImage(), QRectF(200, 200, 400, 200));
+        blur->setTimeWindow(std::pair{d / 2, d * 9 / 10});
+        blur->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene->addItem(blur);
+        timeline->setPosition(d * 6 / 10);
+        emit timeline->seekRequested(d * 6 / 10);   // the player follows, as a click would
+        QEventLoop seek;
+        QTimer::singleShot(800, &seek, &QEventLoop::quit);
+        seek.exec();
+        window->findChild<QUndoStack *>()->push(new QUndoCommand);   // refreshes the lane
+        emit timeline->maskSelected(quintptr(blur));
+        QEventLoop settle;
+        QTimer::singleShot(250, &settle, &QEventLoop::quit);
         settle.exec();
         pm = window->grab();
     }

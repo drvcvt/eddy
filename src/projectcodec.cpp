@@ -118,11 +118,13 @@ QJsonArray itemsToJson(const QList<QGraphicsItem *> &itemsInStackingOrder) {
             for (const QRectF &r : redact->textRects()) rects.append(rectJson(r));
             o["textRects"] = rects;
             o["detecting"] = redact->isDetecting();
+            if (const auto w = redact->timeWindow()) o["window"] = QJsonArray{w->first, w->second};
         } else if (auto *spot = dynamic_cast<SpotlightItem *>(item)) {
             o["type"] = "spotlight";
             o["rect"] = rectJson(spot->rect());
             o["shape"] = spot->spotlightShape() == SpotlightShape::Ellipse ? "ellipse" : "rounded";
             o["intensity"] = spot->intensity();
+            if (const auto w = spot->timeWindow()) o["window"] = QJsonArray{w->first, w->second};
         } else if (dynamic_cast<EllipseItem *>(item)) {
             o["type"] = "ellipse";
             o["rect"] = rectJson(a->rect());
@@ -248,6 +250,19 @@ std::optional<QList<QGraphicsItem *>> itemsFromJson(const QJsonArray &items, con
             a->setStrokeColor(color);
             a->setStrokeWidth(width);
             item = a;
+        }
+        if (o.contains(QLatin1String("window"))) {
+            const QJsonArray w = o.value("window").toArray();
+            double from = 0, to = 0;
+            auto *timed = dynamic_cast<AnnotationItem *>(item);
+            if (!timed || (!dynamic_cast<RedactItem *>(item) && !dynamic_cast<SpotlightItem *>(item))
+                || w.size() != 2 || !r.number(w[0], 0, 1e12, &from, "window") || !r.number(w[1], 0, 1e12, &to, "window")
+                || to <= from) {
+                r.fail(QStringLiteral("window must be [from, to] on a redaction or spotlight"));
+                delete item;
+                return give(false);
+            }
+            timed->setTimeWindow(std::pair{qint64(from), qint64(to)});
         }
         item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
         item->setZValue(z);

@@ -13,6 +13,9 @@
 #include "exportsettings.h"
 #include "fragmentbar.h"
 #include "videotimeline.h"
+#include "redactbar.h"
+#include "items/redactitem.h"
+#include <QGraphicsScene>
 
 using namespace eddy;
 
@@ -155,6 +158,49 @@ private slots:
                                 "-of", "csv=p=0", cli.output.filePath});
         QVERIFY(probe.waitForFinished(10000));
         QCOMPARE(probe.readAllStandardOutput().trimmed(), QByteArray("h264"));
+    }
+    void fromPlayheadLimitsARedactionAndShowsItOnTheMaskLane() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        w.resize(900, 640);
+        w.show();
+        auto *scene = w.findChild<QGraphicsScene *>();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *undo = w.findChild<QUndoStack *>();
+        auto *redact = new RedactItem(RedactMode::Blacken, QImage(160, 90, QImage::Format_ARGB32_Premultiplied),
+                                      QRectF(10, 10, 40, 30));
+        redact->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene->addItem(redact);
+        redact->setSelected(true);
+        auto *bar = w.findChild<RedactBar *>();
+        QTRY_VERIFY(bar->isVisible());
+        QToolButton *fromPlayhead = nullptr, *wholeClip = nullptr;
+        for (auto *b : bar->findChildren<QToolButton *>(QStringLiteral("TimeScope"))) {
+            if (b->text() == QStringLiteral("From playhead")) fromPlayhead = b;
+            if (b->text() == QStringLiteral("Whole clip")) wholeClip = b;
+        }
+        QVERIFY(fromPlayhead && wholeClip && fromPlayhead->isVisible());
+        QVERIFY(wholeClip->isChecked());
+        timeline->setPosition(2000);
+        const int steps = undo->count();
+        fromPlayhead->click();
+        QCOMPARE(redact->timeWindow(), (AnnotationItem::TimeWindow{{2000, 4000}}));
+        QCOMPARE(undo->count(), steps + 1);
+        QVERIFY(!timeline->maskLaneRect().isEmpty());
+        QVERIFY(redact->isVisible());
+        // Outside its window the redaction is not shown.
+        undo->undo();
+        QVERIFY(timeline->maskLaneRect().isEmpty());
+        timeline->setPosition(500);
+        undo->redo();
+        QVERIFY(!redact->isVisible());
+        // Its block on the mask lane brings it back into view.
+        emit timeline->maskSelected(quintptr(redact));
+        QCOMPARE(timeline->position(), 2000);
+        QVERIFY(redact->isVisible() && redact->isSelected());
+        wholeClip->click();
+        QVERIFY(!redact->timeWindow());
     }
 };
 

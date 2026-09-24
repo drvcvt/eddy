@@ -69,10 +69,19 @@ static bool hasVisiblePixels(const QImage &image) {
 
 // Blurred patches over `current`, each a boxblurred crop overlaid in place.
 // Returns the label of the result.
-static QString appendBlurFilters(QString &filter, QString current, const QVector<QRect> &rects, QSize bounds) {
+// Timed ones show only in their stretch, with `t` counted from the input's
+// first frame at `originMs`.
+static QString appendBlurFilters(QString &filter, QString current, const QVector<QRect> &rects, QSize bounds,
+                                 const QVector<VideoExportRequest::TimedBlur> &timed = {}, double originMs = 0) {
     constexpr int videoBlurRadius = 12;
     int blurIndex = 0;
-    for (const QRect &requested : rects) {
+    QVector<QPair<QRect, QString>> all;
+    for (const QRect &rect : rects) all.append({rect, QString()});
+    for (const auto &blur : timed)
+        all.append({blur.rect, QStringLiteral(":enable='between(t\\,%1\\,%2)'")
+                                   .arg((blur.fromMs - originMs) / 1000.0, 0, 'f', 3)
+                                   .arg((blur.toMs - originMs) / 1000.0, 0, 'f', 3)});
+    for (const auto &[requested, enable] : all) {
         const QRect rect = requested.intersected(QRect(QPoint(), bounds));
         if (rect.isEmpty()) continue;
         const QString base = QStringLiteral("[blurbase%1]").arg(blurIndex);
@@ -86,8 +95,8 @@ static QString appendBlurFilters(QString &filter, QString current, const QVector
             "chroma_radius=min(%5\\,(min(cw\\,ch)-1)/2):chroma_power=2")
             .arg(rect.width()).arg(rect.height()).arg(rect.x()).arg(rect.y())
             .arg(videoBlurRadius) + blurred + QStringLiteral(";");
-        filter += base + blurred + QStringLiteral("overlay=%1:%2:format=auto")
-            .arg(rect.x()).arg(rect.y()) + next + QStringLiteral(";");
+        filter += base + blurred + QStringLiteral("overlay=%1:%2:format=auto%3")
+            .arg(rect.x()).arg(rect.y()).arg(enable) + next + QStringLiteral(";");
         current = next;
         ++blurIndex;
     }
@@ -220,8 +229,9 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
                             CameraFrame{QRectF(content),
                                         view == content ? 0.0 : double(view.width()) / view.height(),
                                         QRectF(view).center(), req.cursorTrack.get(), req.baseFollowsCursor});
-    const StudioRenderer renderer(req.overlay.size(), view, req.studio,
-                                  overlayVisible ? req.overlay : QImage());
+    StudioRenderer renderer(req.overlay.size(), view, req.studio,
+                            overlayVisible ? req.overlay : QImage());
+    renderer.setTimedOverlays(req.timedOverlays);
     const QSize size = renderer.outputSize();
     const int fps = std::clamp(req.maxFps, 1, 60);
     const QSize finalSize = exportSize(size, req.maxShortSide);
@@ -234,7 +244,7 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     QString filter = QStringLiteral("[0:v]fps=%3,scale=%1:%2,setsar=1[base];")
         .arg(req.overlay.width()).arg(req.overlay.height()).arg(fps);
     const QString blurred = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
-                                              req.overlay.size());
+                                              req.overlay.size(), req.timedBlurs, req.trimInMs);
     if (pieces)   // sped-up pieces change the rate, so fps comes again after them
         filter += blurred + QStringLiteral("null[pre];") + fragmentVideo(time.pieces(), req.trimInMs, QStringLiteral("[pre]"))
                   + QStringLiteral(",fps=%1,format=bgra[v]").arg(fps);
@@ -250,7 +260,8 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     job.outputSize = size;
     job.expectedFrames = qRound64(time.outputDurationMs() * fps / 1000.0);
     job.render = [&](qint64 index, const QImage &frame, QImage &out) {
-        renderer.render(frame, camera.rectAt(index * 1000.0 / fps), out);
+        const double outMs = index * 1000.0 / fps;
+        renderer.render(frame, camera.rectAt(outMs), out, time.toSource(outMs));
     };
     job.stallTimeoutMs = req.stallTimeoutMs;
     job.progress = req.progress;
@@ -356,6 +367,20 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         overlayTmp.close();
     }
     const QString overlayPath = overlayTmp.fileName();
+    // Timed overlays are stills too, one input each.
+    std::vector<std::unique_ptr<QTemporaryFile>> timedFiles;
+    if (!render) {
+        for (const TimedOverlay &timed : req.timedOverlays) {
+            auto file = std::make_unique<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/eddy-timed-XXXXXX.png"));
+            const QByteArray png = encodePng(timed.image);
+            if (!file->open() || png.isEmpty() || file->write(png) != png.size()) {
+                r.error = QStringLiteral("cannot write a temporary overlay");
+                return r;
+            }
+            file->close();
+            timedFiles.push_back(std::move(file));
+        }
+    }
 
     // Studio framing: an opaque background still and a coverage mask, merged
     // with the video padded to the output size.
@@ -448,9 +473,16 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         .arg(highFps ? QStringLiteral("fps=%1,").arg(maxFps) : QString())
         .arg(req.overlay.width()).arg(req.overlay.height());
     const QString current = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
-                                              req.overlay.size());
+                                              req.overlay.size(), req.timedBlurs, req.trimInMs);
     filter += current + (overlayVisible ? QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1")
                                        : QStringLiteral("null"));
+    // Timed overlays follow the static one, each only inside its stretch.
+    const int firstTimed = overlayVisible ? 2 : 1;
+    for (int i = 0; i < timedFiles.size(); ++i)
+        filter += QStringLiteral("[tov%1];[tov%1][%2:v]overlay=0:0:format=auto:shortest=1:enable='between(t\\,%3\\,%4)'")
+                      .arg(i).arg(firstTimed + i)
+                      .arg((req.timedOverlays[i].fromMs - req.trimInMs) / 1000.0, 0, 'f', 3)
+                      .arg((req.timedOverlays[i].toMs - req.trimInMs) / 1000.0, 0, 'f', 3);
     // Pieces come after blur and annotations, which live in source time, and
     // before crop and framing (studio plan 4.3).
     if (pieces)
@@ -467,7 +499,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         // frames that framesync repeats, so the video keeps the frame timing.
         // Chroma planes take the mask at half size. Qt's PNGs carry a DPI that
         // ffmpeg reads as a 3780:3780 aspect, which mergeplanes rejects.
-        const int background = overlayVisible ? 2 : 1;
+        const int background = firstTimed + int(timedFiles.size());
         filter += QStringLiteral(",pad=%1:%2:%3:%4,format=yuv420p[padded];"
                                  "[%5:v]setsar=1,format=yuv420p[studiobg];"
                                  "[%6:v]setsar=1,format=gray,split=3[my][mu][mv];"
@@ -504,6 +536,8 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     args += {QStringLiteral("-i"), req.inputPath};
     if (overlayVisible)
         args += {QStringLiteral("-loop"), QStringLiteral("1"), QStringLiteral("-i"), overlayPath};
+    for (const auto &file : timedFiles)
+        args += {QStringLiteral("-loop"), QStringLiteral("1"), QStringLiteral("-i"), file->fileName()};
     if (req.studio.active())
         args += {QStringLiteral("-i"), studioBackground.fileName(), QStringLiteral("-i"), studioMask.fileName()};
     const QStringList inputs = args;

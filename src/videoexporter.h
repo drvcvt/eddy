@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include "cursortrack.h"
+#include "studiorenderer.h"
 #include "exporter.h"
 #include "studiodocument.h"
 #include "studiostyle.h"
@@ -42,6 +43,14 @@ struct VideoExportRequest {
     // Boltsnap's pointer track: Cursor zooms follow it, and the base view does
     // when `baseFollowsCursor` (studio plan 6.2 and 6.5).
     std::shared_ptr<const CursorTrack> cursorTrack;
+    // Redactions and spotlights limited to a stretch of the source (studio
+    // plan 6.7); times are source ms.
+    struct TimedBlur {
+        QRect rect;
+        qint64 fromMs = 0, toMs = 0;
+    };
+    QVector<TimedBlur> timedBlurs;
+    QVector<TimedOverlay> timedOverlays;
     bool baseFollowsCursor = false;
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.

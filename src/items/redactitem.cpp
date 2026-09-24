@@ -19,6 +19,7 @@ RedactItem *RedactItem::clone() const {
     copy->setDetecting(m_detecting);
     copy->setStrokeColor(m_stroke);
     copy->setStrokeWidth(m_width);
+    copy->setTimeWindow(m_window);
     return copy;
 }
 

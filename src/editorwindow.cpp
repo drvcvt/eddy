@@ -404,6 +404,14 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionTextBar);
     connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionSpotlightBar);
     connect(m_redactBar, &RedactBar::modeChosen, this, &EditorWindow::onRedactModeChosen);
+    connect(m_redactBar, &RedactBar::timeScopeChosen, this, [this](bool fromPlayhead) {
+        setTimeScope(selectedRedact(), fromPlayhead);
+    });
+    connect(m_spotlightBar, &SpotlightBar::timeScopeChosen, this, [this](bool fromPlayhead) {
+        setTimeScope(selectedSpotlight(), fromPlayhead);
+    });
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshMasks);
+    connect(m_undo, &QUndoStack::indexChanged, this, &EditorWindow::refreshMasks);
     connect(m_textBar, &TextBar::sizeChosen, this, [this](qreal size){
         updateSelectedText([size](TextItem *text){ QFont f=text->font(); f.setPointSizeF(size); text->setFont(f); });
     });
@@ -991,6 +999,41 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);
     connect(m_timeline, &VideoTimeline::zoomSelected, this, &EditorWindow::selectZoom);
     connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::selectFragment);
+    auto itemFor = [this](quintptr key) -> AnnotationItem * {
+        for (QGraphicsItem *item : m_scene->items())
+            if (quintptr(item) == key) return dynamic_cast<AnnotationItem *>(item);
+        return nullptr;
+    };
+    // The mask lane selects an item, going to its window when it is not showing.
+    connect(m_timeline, &VideoTimeline::maskSelected, this, [this, itemFor](quintptr key) {
+        AnnotationItem *item = itemFor(key);
+        if (!item || !item->timeWindow()) return;
+        const auto window = *item->timeWindow();
+        if (m_timeline->position() < window.first || m_timeline->position() >= window.second) {
+            if (m_player) m_player->pause();
+            m_timeline->setPosition(window.first);
+            requestVideoSeek(window.first);
+            flushVideoSeek();
+        }
+        applyTimeWindows(window.first > m_timeline->position() ? window.first : m_timeline->position());
+        m_scene->clearSelection();
+        item->setVisible(true);
+        item->setSelected(true);
+    });
+    connect(m_timeline, &VideoTimeline::maskWindowPreviewed, this,
+            [this, itemFor](quintptr key, qint64 from, qint64 to) {
+        if (AnnotationItem *item = itemFor(key)) item->setTimeWindow(std::pair{from, to});
+    });
+    connect(m_timeline, &VideoTimeline::maskWindowEdited, this,
+            [this, itemFor](quintptr key, qint64 from, qint64 to, qint64 beforeFrom, qint64 beforeTo) {
+        AnnotationItem *item = itemFor(key);
+        if (!item) return;
+        m_undo->push(new SetTimeWindowCommand(item, std::pair{beforeFrom, beforeTo}, std::pair{from, to}, [this] {
+            refreshMasks();
+            applyTimeWindows(m_timeline->position());
+            onVideoContentChanged();
+        }));
+    });
     connect(m_timeline, &VideoTimeline::zoomsPreviewed, this, [this](const QVector<ZoomSegment> &zooms) {
         m_studio.zooms = zooms;   // the drag's own preview; the edit is one undo step at release
         if (!m_cameraRebuild->isActive()) m_cameraRebuild->start();
@@ -1274,6 +1317,7 @@ void EditorWindow::ensureVideoPlayer() {
                     : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
                 finishVideoSeek();
             updateCamera();
+            if (m_presentedStart >= 0) applyTimeWindows(m_presentedStart);
             if (m_presentedStart >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState)
                 followPlaybackPieces(m_presentedStart);
             if (m_miniMap && m_miniMap->isVisible() && updateVideoBackground())
@@ -1415,6 +1459,7 @@ void EditorWindow::refreshSpotlightBar() {
     SpotlightItem *spotlight = selectedSpotlight();
     if (!spotlight) { m_spotlightBar->hide(); return; }
     m_spotlightBar->setValues(spotlight->spotlightShape(), spotlight->intensity());
+    m_spotlightBar->setTimeScope(isVideo(), spotlight->timeWindow().has_value());
     m_spotlightBar->adjustSize();
     m_spotlightBar->show();
     m_spotlightBar->raise();
@@ -1436,6 +1481,7 @@ void EditorWindow::refreshRedactBar() {
     RedactItem *r = selectedRedact();
     if (!r) { m_redactBar->hide(); return; }
     m_redactBar->setMode(r->mode());
+    m_redactBar->setTimeScope(isVideo(), r->timeWindow().has_value());
     m_redactBar->adjustSize();
     m_redactBar->show();
     m_redactBar->raise();
@@ -2012,12 +2058,15 @@ void EditorWindow::positionZoomUi() {
 QImage EditorWindow::renderAnnotationOverlay() {
     const auto selection = m_scene->selectedItems();
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the video
-    QList<RedactItem *> visibleBlurItems;
+    QList<QGraphicsItem *> hiddenForOverlay;
     for (QGraphicsItem *item : m_scene->items()) {
         auto *redact = dynamic_cast<RedactItem *>(item);
-        if (redact && RedactItem::isBlur(redact->mode()) && redact->isVisible()) {
-            visibleBlurItems.append(redact);
-            redact->hide();
+        auto *annotation = dynamic_cast<AnnotationItem *>(item);
+        // Blur is ffmpeg's; timed items get overlays of their own.
+        const bool timed = annotation && annotation->timeWindow();
+        if ((timed || (redact && RedactItem::isBlur(redact->mode()))) && item->isVisible()) {
+            hiddenForOverlay.append(item);
+            item->hide();
         }
     }
     const bool hadBackground = m_backgroundItem != nullptr;
@@ -2027,13 +2076,83 @@ QImage EditorWindow::renderAnnotationOverlay() {
     if (hadBackground) m_backgroundItem->setVisible(false);
     QImage overlay = renderToImage(*m_scene, m_media.nativeSize());
     if (hadBackground) m_backgroundItem->setVisible(wasVisible);
-    for (RedactItem *redact : visibleBlurItems) redact->show();
+    for (QGraphicsItem *item : hiddenForOverlay) item->show();
     for (QGraphicsItem *item : selection) item->setSelected(true);
     QTimer::singleShot(50, this, [this, renderGeneration]{
         if (renderGeneration == m_videoOverlayRenderGeneration)
             m_renderingVideoOverlay = false;
     });
     return overlay;
+}
+
+// One overlay per timed spotlight or blackened redaction, each shown alone
+// (studio plan 6.7); timed blur goes to ffmpeg as timed blur regions.
+QVector<TimedOverlay> EditorWindow::renderTimedOverlays() {
+    QVector<AnnotationItem *> timed;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *annotation = dynamic_cast<AnnotationItem *>(item);
+        auto *redact = dynamic_cast<RedactItem *>(item);
+        if (annotation && annotation->timeWindow() && !(redact && RedactItem::isBlur(redact->mode())))
+            timed.append(annotation);
+    }
+    QVector<TimedOverlay> out;
+    if (timed.isEmpty()) return out;
+    const auto selection = m_scene->selectedItems();
+    m_scene->clearSelection();
+    QHash<QGraphicsItem *, bool> visible;
+    for (QGraphicsItem *item : m_scene->items()) visible.insert(item, item->isVisible());
+    for (AnnotationItem *item : timed) {
+        for (QGraphicsItem *other : m_scene->items()) other->setVisible(other == item);
+        out.append({renderToImage(*m_scene, m_media.nativeSize()), item->timeWindow()->first, item->timeWindow()->second});
+    }
+    for (auto it = visible.cbegin(); it != visible.cend(); ++it) it.key()->setVisible(it.value());
+    for (QGraphicsItem *item : selection) item->setSelected(true);
+    return out;
+}
+
+// Timed items show only inside their window, like the export (studio plan 5).
+void EditorWindow::applyTimeWindows(qint64 sourceMs) {
+    if (!isVideo()) return;
+    m_tools->setVideoTime(sourceMs, m_media.video.durationMs);
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *annotation = dynamic_cast<AnnotationItem *>(item);
+        if (!annotation || (!dynamic_cast<RedactItem *>(item) && !dynamic_cast<SpotlightItem *>(item))) continue;
+        const auto window = annotation->timeWindow();
+        const bool shows = !window || (sourceMs >= window->first && sourceMs < window->second);
+        if (item->isVisible() == shows) continue;
+        if (!shows && item->isSelected()) item->setSelected(false);
+        item->setVisible(shows);
+    }
+}
+
+void EditorWindow::refreshMasks() {
+    if (!m_timeline) return;
+    QVector<VideoTimeline::MaskBlock> masks;
+    for (QGraphicsItem *item : m_scene->items(Qt::AscendingOrder)) {
+        auto *annotation = dynamic_cast<AnnotationItem *>(item);
+        if (!annotation || !annotation->timeWindow()) continue;
+        QString label = tr("Spotlight");
+        if (auto *redact = dynamic_cast<RedactItem *>(item))
+            label = RedactItem::isBlur(redact->mode()) ? tr("Blur") : tr("Black");
+        masks.append({quintptr(item), annotation->timeWindow()->first, annotation->timeWindow()->second,
+                      label, item->isSelected()});
+    }
+    m_timeline->setMasks(masks);
+}
+
+void EditorWindow::setTimeScope(AnnotationItem *item, bool fromPlayhead) {
+    if (!item || !m_timeline) return;
+    const AnnotationItem::TimeWindow after = fromPlayhead
+        ? AnnotationItem::TimeWindow(std::pair{m_timeline->position(), m_media.video.durationMs})
+        : AnnotationItem::TimeWindow();
+    if (after == item->timeWindow()) return;
+    m_undo->push(new SetTimeWindowCommand(item, item->timeWindow(), after, [this] {
+        refreshMasks();
+        applyTimeWindows(m_timeline->position());
+        refreshRedactBar();
+        refreshSpotlightBar();
+        onVideoContentChanged();
+    }));
 }
 
 bool EditorWindow::hasVideoAnnotations() const {
@@ -2248,8 +2367,15 @@ void EditorWindow::startVideoExportCache() {
         }, Qt::QueuedConnection);
     };
     for (QGraphicsItem *item : m_scene->items())
-        if (auto *redact = dynamic_cast<RedactItem *>(item))
-            request.blurRects += redact->blurRectsInScene();
+        if (auto *redact = dynamic_cast<RedactItem *>(item)) {
+            if (const auto window = redact->timeWindow()) {
+                for (const QRect &rect : redact->blurRectsInScene())
+                    request.timedBlurs.append({rect, window->first, window->second});
+            } else {
+                request.blurRects += redact->blurRectsInScene();
+            }
+        }
+    request.timedOverlays = renderTimedOverlays();
     m_videoExportInProgress = true;
     if (m_dragPill) m_dragPill->setEnabled(false);
     if (m_exportStatus) {
@@ -2783,6 +2909,7 @@ bool EditorWindow::applyProject(const ProjectSnapshot &project, const QString &m
     setStudioDocument(project.studio);
     for (QGraphicsItem *item : *items) m_scene->addItem(item);
     m_undo->clear();   // a reopened project starts without history (21.09. plan 5)
+    refreshMasks();
     m_projectPath = manifestPath;
     m_projectAssetInfo = {true, {}, project.asset, project.sha256, project.assetSize};
     m_projectSourceName = project.sourceName;
