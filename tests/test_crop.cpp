@@ -183,7 +183,10 @@ private slots:
         crop->press({0, 0}, 1, {}); crop->move({20, 20}, {}); crop->release();
         const auto rect = crop->pixels();
         crop->accept();
+        // The copy may wait for a seek to settle; never read the previous row's image.
+        QApplication::clipboard()->clear();
         window.copyVideoFrame();
+        QTRY_VERIFY(!QApplication::clipboard()->image().isNull());
         const QImage copied = QApplication::clipboard()->image();
         QCOMPARE(copied.size(), rect.size());
         QImage overlay(display, QImage::Format_ARGB32_Premultiplied); overlay.fill(Qt::transparent);
