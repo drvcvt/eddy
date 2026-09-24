@@ -55,11 +55,16 @@ static std::optional<StudioPreset> presetFrom(const QJsonObject &json, QString *
     return StudioPreset{name, doc->style, doc->motion};
 }
 
+// Readable where it can be; a name that had to change gets a short hash of
+// itself, so two names never share one file.
 static QString fileNameFor(const QString &name) {
     QString safe = name;
-    safe.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9 _.-]")), QStringLiteral("_"));
+    safe.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N} _.-]")), QStringLiteral("_"));
     safe = safe.trimmed();
     if (safe.isEmpty() || safe.startsWith(QLatin1Char('.'))) safe.prepend(QStringLiteral("preset"));
+    if (safe != name)
+        safe += QLatin1Char('-') + QString::fromLatin1(
+            QCryptographicHash::hash(name.toUtf8(), QCryptographicHash::Sha256).toHex().left(8));
     return safe + QStringLiteral(".json");
 }
 
@@ -101,9 +106,10 @@ QByteArray exportStudioPreset(const StudioPreset &preset, QString *error) {
     if (preset.style.background == StudioStyle::Background::Image) {
         QFile file(preset.style.imagePath);
         QByteArray bytes;
-        QString type = QFileInfo(preset.style.imagePath).suffix().toLower() == QLatin1String("png")
-            ? QStringLiteral("png") : QStringLiteral("jpeg");
         if (file.open(QIODevice::ReadOnly)) bytes = file.readAll();
+        // The type comes from the bytes; anything but PNG and JPEG is re-encoded below.
+        QBuffer probe(&bytes);
+        QString type = QString::fromLatin1(QImageReader::imageFormat(&probe));
         QImage image = QImage::fromData(bytes);
         if (image.isNull()) {
             if (error) *error = QStringLiteral("cannot read the background image");

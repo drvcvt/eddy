@@ -180,7 +180,8 @@ struct Reader {
             return false;
         const QJsonValue follows = keep.value(QLatin1String("followCursor"));
         if (!follows.isUndefined() && !follows.isBool()) return fail(QStringLiteral("followCursor must be true or false"));
-        d->keepFollowsCursor = follows.toBool(true);
+        // Files from before cursor following keep the centre they were saved with.
+        d->keepFollowsCursor = follows.toBool(!keep.contains(QLatin1String("center")));
         return true;
     }
 };

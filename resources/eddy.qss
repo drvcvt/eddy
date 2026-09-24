@@ -345,7 +345,7 @@ QDialog#ResumeDialog QListWidget { background: @raise1; border: none; outline: 0
 QDialog#ResumeDialog QListWidget::item { padding: 6px 8px; border-radius: 8px; }
 QDialog#ResumeDialog QListWidget::item:selected { background: @raise3; color: @fg; }
 QDialog#ResumeDialog QLabel#ResumeEmpty { color: @sub; font-size: @fs-small; }
-QDialog#ResumeDialog QToolButton { color: @sub; border: none; border-radius: 8px; padding: 0 10px; font-size: @fs-small; font-weight: 500; }
+QDialog#ResumeDialog QToolButton { color: @sub; border: none; border-radius: 8px; padding: 0 12px; font-size: @fs-small; font-weight: 500; }
 QDialog#ResumeDialog QToolButton:hover, QDialog#ResumeDialog QToolButton:focus { background: @raise2; color: @fg; }
 QDialog#ResumeDialog QToolButton#ResumeOpen { background: @fg; color: @bg; font-weight: 600; }
 /* Export popover at Save: segmented rows (Q7 B2), the choice a step brighter. */

@@ -684,6 +684,11 @@ void EditorWindow::closeEvent(QCloseEvent *e) {
         e->ignore();
         return;
     }
+    if (m_recoveryWriting) {
+        m_closeAfterRecovery = true;
+        e->ignore();
+        return;
+    }
     flushRecovery();
     QWidget::closeEvent(e);
 }
@@ -1319,7 +1324,9 @@ void EditorWindow::ensureVideoPlayer() {
                     : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
                 finishVideoSeek();
             updateCamera();
-            if (m_presentedStart >= 0) applyTimeWindows(m_presentedStart);
+            // Paused, the playhead is what was asked for; a frame may start a little before it.
+            if (m_player->playbackState() != QMediaPlayer::PlayingState) applyTimeWindows(m_timeline->position());
+            else if (m_presentedStart >= 0) applyTimeWindows(m_presentedStart);
             if (m_presentedStart >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState)
                 followPlaybackPieces(m_presentedStart);
             if (m_miniMap && m_miniMap->isVisible() && updateVideoBackground())
@@ -1934,9 +1941,14 @@ QRectF EditorWindow::currentCamera() const {
         if (const auto pointer = m_cursorTrack->positionAt(at)) resting.point = *pointer;
         return m_cameraPath.targetRect(resting);
     }
+    return m_cameraPath.rectAt(cameraTime());
+}
+
+// Output time of what the canvas shows: the presented frame while playing.
+double EditorWindow::cameraTime() const {
+    const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
     const qint64 source = playing && m_presentedStart >= 0 ? m_presentedStart : m_timeline->position();
-    const double out = source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(double(source));
-    return m_cameraPath.rectAt(out);
+    return source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(double(source));
 }
 
 void EditorWindow::updateCamera() {
@@ -2040,7 +2052,9 @@ void EditorWindow::moveCameraTarget(QPointF delta) {
     } else if (m_studio.keepZoomedIn) {
         const QRectF content(cameraContent());
         const QSizeF view = QRectF(cameraBase()).size();
-        const QPointF c = m_studio.keepCenter + delta;
+        // A following base is taken from where it is now, not where it once was placed.
+        const bool following = m_studio.keepFollowsCursor && m_cursorTrack;
+        const QPointF c = (following ? m_cameraPath.homeAt(cameraTime()) : m_studio.keepCenter) + delta;
         m_studio.keepFollowsCursor = false;   // placed by hand now (E10)
         m_studio.keepCenter = QPointF(
             qBound(content.left() + view.width() / 2, c.x(), content.right() - view.width() / 2),
@@ -2208,7 +2222,8 @@ void EditorWindow::refreshMasks() {
 void EditorWindow::setTimeScope(AnnotationItem *item, bool fromPlayhead) {
     if (!item || !m_timeline) return;
     const AnnotationItem::TimeWindow after = fromPlayhead
-        ? AnnotationItem::TimeWindow(std::pair{m_timeline->position(), m_media.video.durationMs})
+        ? AnnotationItem::TimeWindow(std::pair{AnnotationItem::windowStart(m_timeline->position(), m_media.video.durationMs),
+                                               m_media.video.durationMs})
         : AnnotationItem::TimeWindow();
     if (after == item->timeWindow()) return;
     m_undo->push(new SetTimeWindowCommand(item, item->timeWindow(), after, [this] {
@@ -3072,7 +3087,7 @@ bool EditorWindow::gestureRunning() const {
 void EditorWindow::writeRecovery() {
     if (!m_recoveryPending || m_recoveryPaused) return;
     if (gestureRunning() || m_recoveryWriting) {
-        m_recoveryIdle->start(1000);
+        m_recoveryIdle->start();
         return;
     }
     m_recoveryIdle->stop();
@@ -3086,14 +3101,10 @@ void EditorWindow::writeRecovery() {
             m_toast->showMessage(tr("Kept edits are full (2 GB), this one is not kept"), 4000);
             return;
         }
-        m_recoveryId = store.create();
-        if (m_recoveryId.isEmpty()) {
+        if (!claimRecovery()) {
             m_recoveryPaused = true;
             return;
         }
-        m_recoveryLock = std::make_unique<QLockFile>(store.lockFileFor(m_recoveryId));
-        m_recoveryLock->setStaleLockTime(0);
-        m_recoveryLock->tryLock(0);
     }
     m_recoveryPending = false;
     m_recoveryWriting = true;
@@ -3105,13 +3116,34 @@ void EditorWindow::writeRecovery() {
         if (!error.isEmpty()) {
             std::fprintf(stderr, "eddy: cannot keep this edit: %s\n", qPrintable(error));
             m_toast->showMessage(tr("This edit could not be kept"));
-            return;
+            if (m_recoveryAsset.name.isEmpty()) dropRecovery();   // a first snapshot leaves nothing behind
+        } else {
+            m_recoveryAsset = asset;
+            RecoveryStore().touch(id, source, QFileInfo(source.isEmpty() ? QStringLiteral("image.png") : source).fileName());
+            emit recoveryWritten(RecoveryStore().manifestFor(id));
+            if (m_recoveryPending && !m_closeAfterRecovery) m_recoveryIdle->start();
         }
-        m_recoveryAsset = asset;
-        RecoveryStore().touch(id, source, QFileInfo(source.isEmpty() ? QStringLiteral("image.png") : source).fileName());
-        emit recoveryWritten(RecoveryStore().manifestFor(id));
-        if (m_recoveryPending) m_recoveryIdle->start();
+        if (m_closeAfterRecovery) {
+            m_closeAfterRecovery = false;
+            close();
+        }
     });
+}
+
+bool EditorWindow::claimRecovery() {
+    const RecoveryStore store;
+    m_recoveryId = store.create();
+    if (m_recoveryId.isEmpty()) return false;
+    m_recoveryLock = std::make_unique<QLockFile>(store.lockFileFor(m_recoveryId));
+    m_recoveryLock->setStaleLockTime(0);
+    m_recoveryLock->tryLock(0);
+    return true;
+}
+
+void EditorWindow::dropRecovery() {
+    m_recoveryLock.reset();
+    RecoveryStore().discard(m_recoveryId);
+    m_recoveryId.clear();
 }
 
 void EditorWindow::adoptRecovery(const QString &id) {
@@ -3141,11 +3173,13 @@ void EditorWindow::flushRecovery() {
         constexpr qint64 kQuickCopy = 100ll * 1024 * 1024;
         if (!m_media.path.isEmpty() && QFileInfo(m_media.path).size() > kQuickCopy) return;
         if (store.usedBytes() > RecoveryStore::kBudgetBytes) return;
-        m_recoveryId = store.create();
-        if (m_recoveryId.isEmpty()) return;
+        if (!claimRecovery()) return;
         const QString assets = projectAssetsDir(store.manifestFor(m_recoveryId));
         asset = m_media.path.isEmpty() ? storeImageAsset(m_media.image, assets) : storeAsset(m_media.path, assets);
-        if (!asset.ok) return;
+        if (!asset.ok) {
+            dropRecovery();
+            return;
+        }
     }
     ProjectSnapshot project = projectSnapshot();
     project.asset = asset.name;
@@ -3154,6 +3188,8 @@ void EditorWindow::flushRecovery() {
     if (writeProject(store.manifestFor(m_recoveryId), project).ok) {
         m_recoveryPending = false;
         store.touch(m_recoveryId, source, QFileInfo(source.isEmpty() ? QStringLiteral("image.png") : source).fileName());
+    } else if (m_recoveryAsset.name.isEmpty()) {
+        dropRecovery();
     }
 }
 

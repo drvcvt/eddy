@@ -33,7 +33,30 @@ private slots:
         QCOMPARE(presets[0], second);
         QCOMPARE(presets[1], dusk());
         // A slash in the name never becomes a path.
-        QVERIFY(QFileInfo::exists(QDir(studioPresetsDir(config)).filePath(QStringLiteral("Dusk _ wide.json"))));
+        QCOMPARE(QDir(studioPresetsDir(config)).entryList(QDir::Files).size(), 2);
+        QVERIFY(QDir(studioPresetsDir(config)).entryList(QDir::Dirs | QDir::NoDotAndDotDot).isEmpty());
+        // Names that clean up alike stay two presets.
+        for (const char *name : {"Blue/Dark", "Blue_Dark", "\u9752", "\u8d64"}) {
+            StudioPreset p = second;
+            p.name = QString::fromUtf8(name);
+            QVERIFY(saveStudioPreset(config, p).ok);
+        }
+        QCOMPARE(loadStudioPresets(config).size(), 6);
+    }
+    void anOddImageTypeIsReencoded() {
+        QTemporaryDir dir;
+        QImage image(16, 16, QImage::Format_RGB32);
+        image.fill(Qt::red);
+        const QString misnamed = dir.filePath(QStringLiteral("bg.png"));
+        QVERIFY(image.save(misnamed, "BMP"));
+        StudioPreset p = dusk();
+        p.style.background = StudioStyle::Background::Image;
+        p.style.imagePath = misnamed;
+        QString error;
+        const QJsonObject json = QJsonDocument::fromJson(exportStudioPreset(p, &error)).object();
+        const QJsonObject embedded = json.value("style").toObject().value("image").toObject();
+        QCOMPARE(embedded.value("type").toString(), QStringLiteral("jpeg"));
+        QVERIFY(QByteArray::fromBase64(embedded.value("data").toString().toLatin1()).startsWith("\xff\xd8"));
     }
     void anExportedPresetCarriesItsImage() {
         QTemporaryDir dir, data;

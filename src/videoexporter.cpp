@@ -271,7 +271,7 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
             const double moved = std::max({QLineF(a.topLeft(), b.topLeft()).length(),
                                            QLineF(a.bottomRight(), b.bottomRight()).length()})
                                  * size.width() / std::max(1.0, a.width());
-            if (moved > 0.5) {
+            if (moved > 0.5 && !camera.cutWithin(outMs - shutter / 2, outMs + shutter / 2)) {
                 QVector<QRectF> cameras;
                 for (int i = 0; i < 6; ++i) cameras.append(camera.rectAt(outMs - shutter / 2 + shutter * i / 5));
                 renderer.renderBlurred(frame, cameras, out, sourceMs);

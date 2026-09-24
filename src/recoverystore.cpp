@@ -51,7 +51,20 @@ static qint64 folderBytes(const QString &dir) {
     return bytes;
 }
 
+// A folder without an entry that nobody holds is left from a crash or a
+// failed first snapshot: it can never be resumed, so it goes.
+static void removeOrphans(const RecoveryStore &store) {
+    for (const QFileInfo &dir : QDir(store.root()).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        if (QFileInfo::exists(QDir(dir.absoluteFilePath()).filePath(QStringLiteral("entry.json")))) continue;
+        QLockFile lock(store.lockFileFor(dir.fileName()));
+        if (!lock.tryLock(0)) continue;
+        lock.unlock();
+        QDir(dir.absoluteFilePath()).removeRecursively();
+    }
+}
+
 QVector<RecoveryStore::Entry> RecoveryStore::entries() const {
+    removeOrphans(*this);
     QVector<Entry> out;
     for (const QFileInfo &dir : QDir(m_root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
         QFile file(QDir(dir.absoluteFilePath()).filePath(QStringLiteral("entry.json")));
@@ -82,6 +95,7 @@ bool RecoveryStore::discard(const QString &id) const {
 }
 
 qint64 RecoveryStore::usedBytes() const {
+    removeOrphans(*this);
     return folderBytes(m_root);
 }
 

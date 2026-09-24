@@ -19,6 +19,7 @@ public:
     QString text() const;
 
 private:
+    void present(const QString &text, int ms);
     QLabel *m_label;
     QToolButton *m_action;
     std::function<void()> m_run;

@@ -46,6 +46,17 @@ private slots:
         QVERIFY(store.touch(id, "/pics/a.png", "a.png"));
         QVERIFY(store.entries().isEmpty());   // nothing to resume yet
     }
+    void aFolderLeftWithoutAnEntryGoesUnlessHeld() {
+        QTemporaryDir dir;
+        RecoveryStore store(dir.path());
+        const QString writing = store.create(), left = store.create();
+        QLockFile held(store.lockFileFor(writing));
+        QVERIFY(held.tryLock(0));
+        for (const QString &id : {writing, left}) write(store.manifestFor(id), QByteArray(1000, 'x'));
+        QVERIFY(store.usedBytes() >= 1000);
+        QVERIFY(QFileInfo::exists(store.manifestFor(writing)));   // its first snapshot is still running
+        QVERIFY(!QFileInfo::exists(QFileInfo(store.manifestFor(left)).path()));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestRecoveryStore)

@@ -133,7 +133,8 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
             tx = home.x();
             ty = home.y();
         }
-        m_samples.append({float(x), float(y), float(ls), float(vx), float(vy), float(vls), jump});
+        m_samples.append({float(x), float(y), float(ls), float(vx), float(vy), float(vls),
+                          float(home.x()), float(home.y()), jump});
     }
 }
 
@@ -142,6 +143,20 @@ QRectF CameraPath::rectFor(double x, double y, double logScale) const {
     return QRectF(QPointF(clampCentre(x, size.width() / 2, m_content.left(), m_content.right()) - size.width() / 2,
                           clampCentre(y, size.height() / 2, m_content.top(), m_content.bottom()) - size.height() / 2),
                   size);
+}
+
+QPointF CameraPath::homeAt(double outMs) const {
+    if (m_samples.isEmpty()) return m_base.center();
+    const int i = std::clamp(int(std::floor(std::max(0.0, outMs) * kRate / 1000.0 + 1e-9)), 0, int(m_samples.size()) - 1);
+    return QPointF(m_samples[i].homeX, m_samples[i].homeY);
+}
+
+bool CameraPath::cutWithin(double fromMs, double toMs) const {
+    const int first = int(std::floor(std::max(0.0, fromMs) * kRate / 1000.0 + 1e-9)) + 1;
+    const int last = std::min(int(std::floor(std::max(0.0, toMs) * kRate / 1000.0 + 1e-9)), int(m_samples.size()) - 1);
+    for (int i = first; i <= last; ++i)
+        if (m_samples[i].jump) return true;
+    return false;
 }
 
 QRectF CameraPath::rectAt(double outMs) const {

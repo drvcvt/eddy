@@ -166,6 +166,18 @@ private slots:
         QVERIFY(rejects(json));
     }
 
+    void olderFilesKeepTheirPlacedCentre() {
+        QJsonObject json = studioToJson(everything());
+        json["keepZoomedIn"] = QJsonObject{{"on", true}, {"center", QJsonArray{1500, 300}}};
+        QString error;
+        auto doc = studioFromJson(json, kDuration, kSource, &error);
+        QVERIFY2(doc, qPrintable(error));
+        QVERIFY(!doc->keepFollowsCursor);   // saved before following existed: stays where it was
+        json["keepZoomedIn"] = QJsonObject{{"on", true}};
+        doc = studioFromJson(json, kDuration, kSource, &error);
+        QVERIFY(doc && doc->keepFollowsCursor);
+    }
+
     void rejectsOversizedLists() {
         QJsonObject json = studioToJson(StudioDocument());
         QJsonArray zooms;

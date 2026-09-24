@@ -475,6 +475,19 @@ einem Commit (Join ins Leere, Wiedergabe über einen Schnitt am Ende, Trim ganz 
 Format bei `-o`, Restore ohne Verschmelzen, springende Ansicht, Asset-Kopie bei jedem
 Speichern, zweites ffprobe, Textvergleich statt Zustand, doppelte Uhr). `ctest` 46/46.
 
+Review W4 bis W6 (`/code-review high` über `abd91f9..b9dded4`): zehn Funde, alle behoben in
+einem Commit. Schließen wartet auf einen laufenden Snapshot und hält danach die letzte
+Änderung fest; ein gescheiterter erster Snapshot und Ordner ohne Eintrag ohne Halter werden
+entfernt; das Leerlauf-Intervall bleibt beim Aufschieben erhalten. "From playhead" am Ende gibt
+ein Fenster von mindestens 100 ms (`AnnotationItem::kMinWindowMs`), sonst wäre die Datei nicht
+mehr lesbar. Pausiert gilt für Zeitfenster der Abspielkopf, nicht der Frame-Start (ohne Test:
+braucht echten Player). Eine normale Meldung verdrängt das Resume-Angebot samt Knopf. Motion
+Blur mittelt nicht über harte Instant-Schnitte (`CameraPath::cutWithin`). Ein folgender
+Ausschnitt wird von seiner aktuellen Mitte aus verschoben (`CameraPath::homeAt`). Ältere
+Dateien ohne `followCursor` mit gesetzter Mitte folgen nicht. Preset-Dateinamen bekommen
+bei verlustigem Säubern einen Hash, der Bildtyp kommt aus den Bytes. Dazu `padding: 0 12px`
+im Resume-Dialog (Raster-Test aus W5). `ctest` 49/49.
+
 | Welle | ID | Punkt | Commit |
 | --- | --- | --- | --- |
 | W1 | C1 | Export-Popover und Presets | `3b40865` |

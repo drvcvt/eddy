@@ -36,14 +36,18 @@ void Toast::showAction(const QString &text, const QString &action, std::function
     m_action->setText(action);
     m_action->show();
     setAttribute(Qt::WA_TransparentForMouseEvents, false);
-    showMessage(text, ms);
+    present(text, ms);
 }
 
+// A plain message replaces an offer along with its button.
 void Toast::showMessage(const QString &text, int ms) {
-    if (!m_run) {
-        m_action->hide();
-        setAttribute(Qt::WA_TransparentForMouseEvents, true);   // never blocks the canvas
-    }
+    m_run = {};
+    m_action->hide();
+    setAttribute(Qt::WA_TransparentForMouseEvents, true);   // never blocks the canvas
+    present(text, ms);
+}
+
+void Toast::present(const QString &text, int ms) {
     m_label->setText(text);
     adjustSize();
     if (QWidget *p = parentWidget()) {
