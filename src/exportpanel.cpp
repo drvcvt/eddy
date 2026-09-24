@@ -75,6 +75,27 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     footer->addWidget(m_save);
     grid->setRowMinimumHeight(m_row++, 2);
     grid->addLayout(footer, m_row++, 0, 1, 2);
+    // Projects keep the original and every layer editable (21.09. plan 5).
+    auto *projects = new QHBoxLayout;
+    projects->setSpacing(4);
+    auto projectButton = [&](const QString &text, const QString &name, const QString &tip) {
+        auto *b = new QToolButton(this);
+        b->setObjectName(name);
+        b->setText(text);
+        b->setToolTip(tip);
+        b->setAccessibleName(text);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setFixedHeight(theme::kFloatButton.height());
+        projects->addWidget(b);
+        return b;
+    };
+    connect(projectButton(tr("Save project…"), QStringLiteral("ProjectSave"),
+                          tr("Keep the original and every layer editable\tCtrl+Shift+S")),
+            &QToolButton::clicked, this, &ExportPanel::projectSaveRequested);
+    connect(projectButton(tr("Open project…"), QStringLiteral("ProjectOpen"), tr("Open an Eddy project\tCtrl+O")),
+            &QToolButton::clicked, this, &ExportPanel::projectOpenRequested);
+    projects->addStretch(1);
+    grid->addLayout(projects, m_row++, 0, 1, 2);
     sync();
 }
 
@@ -83,6 +104,7 @@ QButtonGroup *ExportPanel::addRow(const QString &label, const QStringList &choic
     auto *caption = new QLabel(label, this);
     caption->setObjectName(QStringLiteral("ExportLabel"));
     grid->addWidget(caption, m_row, 0);
+    m_videoOnly << caption;
     // A groove on raise2 holding 20 px segments; the choice is a step brighter.
     auto *groove = new QWidget(this);
     groove->setObjectName(QStringLiteral("ExportSegments"));
@@ -103,12 +125,20 @@ QButtonGroup *ExportPanel::addRow(const QString &label, const QStringList &choic
         row->addWidget(b);
     }
     grid->addWidget(groove, m_row++, 1, Qt::AlignLeft);
+    m_videoOnly << groove;
     return group;
 }
 
 void ExportPanel::setSettings(const ExportSettings &settings) {
     m_settings = settings;
     sync();
+}
+
+void ExportPanel::setVideo(bool video) {
+    m_video = video;
+    for (QWidget *w : std::as_const(m_videoOnly)) w->setVisible(video);
+    sync();
+    adjustSize();
 }
 
 void ExportPanel::setOutput(QSize framed, qint64 durationMs, const QString &sourcePath) {
@@ -136,8 +166,9 @@ void ExportPanel::sync() {
     const QSize out = exportSize(m_framed, m_settings.shortSide);
     // A gap, not a glyph, between size and time.
     m_summary->setText(m_framed.isEmpty() ? QString()
-        : QStringLiteral("%1 × %2   %3").arg(out.width()).arg(out.height()).arg(formatTime(m_durationMs)));
-    const QString suffix = exportSuffix(m_settings, m_sourcePath);
+        : m_video ? QStringLiteral("%1 × %2   %3").arg(out.width()).arg(out.height()).arg(formatTime(m_durationMs))
+                  : QStringLiteral("%1 × %2").arg(m_framed.width()).arg(m_framed.height()));
+    const QString suffix = m_video ? exportSuffix(m_settings, m_sourcePath) : QStringLiteral("png");
     m_save->setText(tr("Save %1").arg(suffix == QLatin1String("webm") ? QStringLiteral("WebM") : suffix.toUpper()));
     m_save->setAccessibleName(m_save->text());
 }

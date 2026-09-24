@@ -14,6 +14,8 @@ class ExportPanel : public QWidget {
 public:
     explicit ExportPanel(QWidget *parent = nullptr);
     void setSettings(const ExportSettings &settings);
+    // Images have no format rows; the size, Save and the project actions stay.
+    void setVideo(bool video);
     ExportSettings settings() const { return m_settings; }
     // The framed output before any shrinking, the output duration and the
     // source path for Original's container.
@@ -21,6 +23,8 @@ public:
 signals:
     void settingsChanged(const ExportSettings &settings);
     void saveRequested();
+    void projectSaveRequested();
+    void projectOpenRequested();
 private:
     QButtonGroup *addRow(const QString &label, const QStringList &choices);
     void sync();
@@ -31,6 +35,8 @@ private:
     QButtonGroup *m_preset = nullptr, *m_format = nullptr, *m_size = nullptr, *m_fps = nullptr;
     QLabel *m_summary = nullptr;
     QToolButton *m_save = nullptr;
+    QList<QWidget *> m_videoOnly;
+    bool m_video = true;
     int m_row = 0;
 };
 

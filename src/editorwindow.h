@@ -10,6 +10,7 @@
 #include "camerapath.h"
 #include "timemap.h"
 #include "exportsettings.h"
+#include "projectcodec.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
@@ -39,6 +40,10 @@ enum class RedactMode;
 
 enum class SaveRoute { ExplicitOutput, BoltsnapCard, ConfigDirectory, Shelf };
 SaveRoute saveRoute(const CliOptions &cli, const Config &cfg);
+class EditorWindow;
+// Opens `manifestPath` in a new editor window, or explains why not.
+EditorWindow *openProjectWindow(const QString &manifestPath, const Config &cfg, const CliOptions &cli,
+                                QString *error);
 
 class EditorWindow : public QWidget {
     Q_OBJECT
@@ -58,6 +63,15 @@ public:
     // The unzoomed view: the crop, narrowed by "keep zoomed in".
     QRect cameraBase() const;
     void openStudio();
+    // Projects (21.09. plan 5): the whole editable document with its original.
+    ProjectSnapshot projectSnapshot() const;
+    bool applyProject(const ProjectSnapshot &project, const QString &manifestPath, QString *error);
+    QString projectPath() const { return m_projectPath; }
+    // `path` skips the dialog; saving runs in the background.
+    void saveProject(bool saveAs = false, const QString &path = {});
+signals:
+    void projectSaved(const QString &path);
+public:
 public slots:
     void save();   // to file/save-dir per cli/config
     void copy();   // to clipboard
@@ -149,6 +163,11 @@ private:
     void moveCameraTarget(QPointF delta);
     void finishCameraGesture(bool cancelled);
     void openExportPanel();
+    void openProjectDialog();
+    QString m_projectPath;
+    QString m_projectAsset;
+    QString m_projectSourceName;
+    bool m_projectSaving = false;
     bool shelfTakes() const;
     ExportSettings m_exportSettings;  // video only; remembered in the config
     ExportPanel *m_exportPanel = nullptr;

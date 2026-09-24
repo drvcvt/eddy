@@ -339,6 +339,14 @@ QWidget#ExportPanel QToolButton#ExportSegment {
 }
 QWidget#ExportPanel QToolButton#ExportSegment:hover { color: @fg; }
 QWidget#ExportPanel QToolButton#ExportSegment:checked { background-color: @segment-on; color: @fg; }
+QWidget#ExportPanel QToolButton#ProjectSave, QWidget#ExportPanel QToolButton#ProjectOpen {
+    color: @sub; background: transparent; border: none; border-radius: 8px;
+    padding: 0 8px; font-size: @fs-small; font-weight: 500;
+}
+QWidget#ExportPanel QToolButton#ProjectSave:hover, QWidget#ExportPanel QToolButton#ProjectOpen:hover,
+QWidget#ExportPanel QToolButton#ProjectSave:focus, QWidget#ExportPanel QToolButton#ProjectOpen:focus {
+    background: @raise2; color: @fg;
+}
 QWidget#ExportPanel QToolButton#ExportSave {
     background: @fg; color: @bg; border: none; border-radius: 8px;
     padding: 0 12px; font-size: @fs-small; font-weight: 600;
