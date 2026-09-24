@@ -69,7 +69,6 @@ QMenu#PlaybackRateMenu::item:selected { background-color: @raise3; color: @fg; }
 /* The filled row marks the current rate, without a separate radio-button gutter. */
 QMenu#PlaybackRateMenu::indicator { image: none; width: 0; height: 0; }
 
-QToolButton#SendToShelf, QToolButton#Studio { padding: 0 8px; }
 /* Studio being on is a document state, not the primary action: one step up. */
 QToolButton#Studio:checked, QToolButton#Studio:checked:hover { background-color: @raise3; color: @fg; }
 

@@ -2,6 +2,9 @@
 #include <QSignalSpy>
 #include <QToolButton>
 #include <QMenu>
+#include <QApplication>
+#include <QScopeGuard>
+#include "theme.h"
 #include "toolbar.h"
 using namespace eddy;
 class TestToolbar : public QObject {
@@ -101,6 +104,47 @@ private slots:
         QVERIFY(!shelf->icon().isNull());
         shelf->click();
         QCOMPARE(spy.count(), 1);
+    }
+    void labelledButtonsCentreTheirIconOnTheCapitals() {
+        // Measured on the rendered pixels (mt-ui-style): the glyph's ink sits on
+        // the middle of the capitals, 8 px from the label, 8 px from the edges.
+        qApp->setStyleSheet(theme::styleSheet(true));
+        const auto restoreSheet = qScopeGuard([] { qApp->setStyleSheet({}); });
+        Toolbar bar;
+        bar.resize(900, 30);
+        bar.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&bar));
+        for (const char *name : {"Studio", "SendToShelf"}) {
+            auto *button = bar.findChild<QToolButton *>(QLatin1String(name));
+            const QImage image = bar.grab(button->geometry()).toImage().convertToFormat(QImage::Format_RGB32);
+            const int background = qGray(image.pixel(1, 1));
+            auto ink = [&](int x, int y) { return qAbs(qGray(image.pixel(x, y)) - background) > 60; };
+            // Ink columns in runs: the glyph first, then the first capital.
+            QList<QPair<int, int>> runs;
+            int start = -1;
+            for (int x = 0; x <= image.width(); ++x) {
+                bool any = false;
+                for (int y = 0; x < image.width() && y < image.height(); ++y) any = any || ink(x, y);
+                if (any && start < 0) start = x;
+                if (!any && start >= 0) { runs.append({start, x - 1}); start = -1; }
+            }
+            QVERIFY2(runs.size() >= 3, name);
+            auto rows = [&](QPair<int, int> run) {
+                int top = image.height(), bottom = -1;
+                for (int x = run.first; x <= run.second; ++x)
+                    for (int y = 0; y < image.height(); ++y)
+                        if (ink(x, y)) { top = qMin(top, y); bottom = qMax(bottom, y); }
+                return (top + bottom) / 2.0;
+            };
+            const QString where = QString::fromLatin1(name);
+            QVERIFY2(qAbs(rows(runs[0]) - rows(runs[1])) <= 0.5,
+                     qPrintable(where + QStringLiteral(": glyph %1, capital %2").arg(rows(runs[0])).arg(rows(runs[1]))));
+            QVERIFY2(qAbs(runs[1].first - runs[0].second - 1 - 8) <= 1,
+                     qPrintable(where + QStringLiteral(": gap %1").arg(runs[1].first - runs[0].second - 1)));
+            QCOMPARE(runs.first().first, 8);
+            QVERIFY2(qAbs(image.width() - 1 - runs.last().second - 8) <= 1,
+                     qPrintable(where + QStringLiteral(": right edge %1").arg(image.width() - 1 - runs.last().second)));
+        }
     }
     void themeActionIsATrailingIcon() {
         Toolbar tb;
