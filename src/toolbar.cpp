@@ -33,7 +33,7 @@ void Toolbar::enableVideoFrameCopy() {
     copy->setMenu(menu);
     copy->setPopupMode(QToolButton::DelayedPopup);
     copy->setFocusPolicy(Qt::StrongFocus);
-    copy->setToolTip(tr("Copy video · Ctrl+C\nCopy frame · Ctrl+Shift+C · hold for menu"));
+    copy->setToolTip(tr("Copy video\tCtrl+C\nCopy frame\tCtrl+Shift+C\nHold for the menu"));
     copy->setAccessibleName(tr("Copy video; hold or press Alt+Down for frame copy"));
 }
 
@@ -132,14 +132,14 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     m_undoBtn = mkBtn(false, true); m_undoBtn->setObjectName("Undo");
     m_undoBtn->setIcon(theme::tintedIcon(":/icons/undo.svg", iconRest, iconHover));
     m_undoBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_undoBtn->setToolTip("Undo \xC2\xB7 Ctrl+Z"); m_undoBtn->setEnabled(false);
+    m_undoBtn->setToolTip("Undo\tCtrl+Z"); m_undoBtn->setEnabled(false);
     connect(m_undoBtn, &QToolButton::clicked, this, [this]{ emit undoRequested(); });
     lay->addWidget(m_undoBtn);
 
     m_redoBtn = mkBtn(false, true); m_redoBtn->setObjectName("Redo");
     m_redoBtn->setIcon(theme::tintedIcon(":/icons/redo.svg", iconRest, iconHover));
     m_redoBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_redoBtn->setToolTip("Redo \xC2\xB7 Ctrl+Shift+Z"); m_redoBtn->setEnabled(false);
+    m_redoBtn->setToolTip("Redo\tCtrl+Shift+Z"); m_redoBtn->setEnabled(false);
     connect(m_redoBtn, &QToolButton::clicked, this, [this]{ emit redoRequested(); });
     lay->addWidget(m_redoBtn);
 
@@ -161,7 +161,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
                                      iconRest, iconOn));
         b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         b->setObjectName(QString::fromLatin1(t.id));
-        b->setToolTip(*t.key ? QString("%1 \xC2\xB7 %2").arg(t.name, t.key)
+        b->setToolTip(*t.key ? QString("%1\t%2").arg(t.name, t.key)
                              : QString::fromLatin1(t.name));
         b->setAccessibleName(QString::fromLatin1(t.name));
         group->addButton(b);
@@ -173,9 +173,9 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     auto *wgroup = new QButtonGroup(this); wgroup->setExclusive(true);
     struct W { const char *id; const char *icon; const char *tip; double w; };
     const QVector<W> widths = {
-        {"WidthS", "width-thin", "Thin line · 2 px", 2.0},
-        {"WidthM", "width-medium", "Medium line · 4 px", 4.0},
-        {"WidthL", "width-thick", "Thick line · 8 px", 8.0},
+        {"WidthS", "width-thin", "Thin line\t2 px", 2.0},
+        {"WidthM", "width-medium", "Medium line\t4 px", 4.0},
+        {"WidthL", "width-thick", "Thick line\t8 px", 8.0},
     };
     for (const W &x : widths) {
         auto *b = mkBtn(true, true);
@@ -241,7 +241,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
                                     iconRest, iconHover));
     save->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    save->setToolTip("Save \xC2\xB7 Enter");
+    save->setToolTip("Save\tEnter");
     connect(save, &QToolButton::clicked, this, [this]{ emit saveRequested(); });
     lay->addWidget(save);
 
@@ -249,7 +249,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     copy->setIcon(theme::tintedIcon(QStringLiteral(":/icons/copy.svg"),
                                     iconRest, iconHover));
     copy->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    copy->setToolTip("Copy to clipboard \xC2\xB7 Ctrl+C");
+    copy->setToolTip("Copy to clipboard\tCtrl+C");
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
 

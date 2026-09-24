@@ -56,5 +56,10 @@ void setMenuArrow(QToolButton *button);
 // lands between label and chevron, so menu buttons are sized without it.
 void setMenuLabel(QToolButton *button, const QString &text);
 
+// Tooltips put a shortcut after a tab ("Save\tEnter") and further hints on
+// their own lines. The compact tooltip shows the shortcut as a quieter
+// right-hand column instead of a separator glyph.
+QString tooltipHtml(const QString &tip);
+
 } // namespace theme
 } // namespace eddy
