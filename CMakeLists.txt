@@ -55,6 +55,8 @@ add_library(eddy_core STATIC
     src/studiodocument.cpp
     src/timemap.cpp
     src/camerapath.cpp
+    src/studiorenderer.cpp
+    src/renderexport.cpp
     src/studiopopover.cpp
     src/videoexporter.cpp
     src/waylanddrag.cpp
@@ -137,6 +139,8 @@ eddy_test(test_studiostyle)
 eddy_test(test_studiodocument)
 eddy_test(test_timemap)
 eddy_test(test_camerapath)
+eddy_test(test_studiorenderer)
+eddy_test(test_renderexport)
 eddy_test(test_exporter)
 eddy_test(test_boltsnapipc)
 eddy_test(test_videoexporter)

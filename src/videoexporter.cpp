@@ -1,6 +1,10 @@
 #include "videoexporter.h"
 #include "exporter.h"
 #include "mediaio.h"
+#include "camerapath.h"
+#include "renderexport.h"
+#include "studiorenderer.h"
+#include "timemap.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -61,6 +65,58 @@ static bool hasVisiblePixels(const QImage &image) {
     return false;
 }
 
+// Blurred patches over `current`, each a boxblurred crop overlaid in place.
+// Returns the label of the result.
+static QString appendBlurFilters(QString &filter, QString current, const QVector<QRect> &rects, QSize bounds) {
+    constexpr int videoBlurRadius = 12;
+    int blurIndex = 0;
+    for (const QRect &requested : rects) {
+        const QRect rect = requested.intersected(QRect(QPoint(), bounds));
+        if (rect.isEmpty()) continue;
+        const QString base = QStringLiteral("[blurbase%1]").arg(blurIndex);
+        const QString crop = QStringLiteral("[blurcrop%1]").arg(blurIndex);
+        const QString blurred = QStringLiteral("[blurpatch%1]").arg(blurIndex);
+        const QString next = QStringLiteral("[blurvideo%1]").arg(blurIndex);
+        filter += current + QStringLiteral("split=2") + base + crop + QStringLiteral(";");
+        filter += crop + QStringLiteral(
+            "crop=%1:%2:%3:%4,boxblur="
+            "luma_radius=min(%5\\,(min(w\\,h)-1)/2):luma_power=2:"
+            "chroma_radius=min(%5\\,(min(cw\\,ch)-1)/2):chroma_power=2")
+            .arg(rect.width()).arg(rect.height()).arg(rect.x()).arg(rect.y())
+            .arg(videoBlurRadius) + blurred + QStringLiteral(";");
+        filter += base + blurred + QStringLiteral("overlay=%1:%2:format=auto")
+            .arg(rect.x()).arg(rect.y()) + next + QStringLiteral(";");
+        current = next;
+        ++blurIndex;
+    }
+    return current;
+}
+
+// Codec arguments for `encoder`; empty means the CPU arguments as given.
+static QStringList encoderCodecArgs(const QString &encoder, const QStringList &cpuArgs, bool trimmed) {
+    if (encoder.isEmpty()) return cpuArgs;
+    QStringList codecs = {"-c:v", encoder, "-bf", "0",
+        encoder.endsWith("_vaapi") ? "-global_quality" : "-qp", "18",
+        "-c:a", trimmed ? "aac" : "copy", "-movflags", "+faststart"};
+    if (deviceArgs(encoder).isEmpty()) codecs += {"-pix_fmt", "yuv420p"};
+    if (trimmed) codecs += {"-b:a", "192k"};
+    return codecs;
+}
+
+// The rename that puts an output written next to its own input in place.
+static DeliverResult finishOutput(bool replaceInput, const QString &written, const QString &output) {
+    if (replaceInput) {
+        auto renamed = replaceFileAtomically(written, output);
+        if (!renamed.ok) {
+            QFile::remove(written);
+            return renamed;
+        }
+    }
+    DeliverResult r;
+    r.ok = true;
+    return r;
+}
+
 static QString sameDirTempTemplate(const QString &outputPath) {
     const QFileInfo out(outputPath);
     const QString suffix = out.suffix().isEmpty() ? QStringLiteral("mp4") : out.suffix();
@@ -108,7 +164,73 @@ DeliverResult replaceFileAtomically(const QString &from, const QString &to) {
     return r;
 }
 
-DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
+// The frame-rendered export: ffmpeg decodes (orientation, sample aspect, blur,
+// 60 fps), Qt draws the camera's view and the Studio frame, ffmpeg encodes and
+// takes the audio straight from the source (studio plan 4.2).
+static DeliverResult writeRendered(const VideoExportRequest &req, const QString &ffmpeg,
+                                   const QString &output, const QStringList &cpuCodecs,
+                                   const VideoInfo &source, bool overlayVisible,
+                                   const QElapsedTimer &elapsed) {
+    const bool trimmed = req.trimOutMs >= 0;
+    const qint64 endMs = trimmed ? req.trimOutMs : source.durationMs;
+    const QRect content = req.cropRect.isNull() ? req.overlay.rect() : req.cropRect;
+    const CameraPath camera(req.zooms, TimeMap(source.durationMs, req.trimInMs, endMs, {}),
+                            CameraFrame{QRectF(content), 0, {}});
+    const StudioRenderer renderer(req.overlay.size(), content, req.studio,
+                                  overlayVisible ? req.overlay : QImage());
+    const QSize size = renderer.outputSize();
+    QStringList seek;
+    if (req.trimInMs > 0) seek = {"-ss", QString::number(req.trimInMs / 1000.0, 'f', 3)};
+    QStringList length;
+    if (trimmed) length = {"-t", QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3)};
+
+    QString filter = QStringLiteral("[0:v]fps=60,scale=%1:%2,setsar=1[base];")
+        .arg(req.overlay.width()).arg(req.overlay.height());
+    const QString blurred = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
+                                              req.overlay.size());
+    filter += blurred + QStringLiteral("format=bgra[v]");
+    RenderPipeline job;
+    job.ffmpeg = ffmpeg;
+    job.sourceSize = req.overlay.size();
+    job.decodeArgs = QStringList{"-hide_banner", "-loglevel", "error", "-nostdin"} + seek
+        + QStringList{"-i", req.inputPath} + length
+        + QStringList{"-filter_complex", filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "-"};
+    job.outputSize = size;
+    job.expectedFrames = qRound64((endMs - req.trimInMs) * 60 / 1000.0);
+    job.render = [&](qint64 index, const QImage &frame, QImage &out) {
+        renderer.render(frame, camera.rectAt(index * 1000.0 / 60), out);
+    };
+    job.stallTimeoutMs = req.stallTimeoutMs;
+    job.progress = req.progress;
+    job.cancelled = req.cancelled;
+
+    const QString ext = QFileInfo(req.outputPath).suffix().toLower();
+    const QString hardware = ext != "webm" && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
+        ? hardwareEncoder(ffmpeg) : QString();
+    QStringList encoders;
+    if (!hardware.isEmpty()) encoders.append(hardware);
+    encoders.append(QString());   // the CPU encoder also takes what the hardware one refuses
+    DeliverResult r;
+    for (const QString &encoder : encoders) {
+        const QStringList device = deviceArgs(encoder);
+        // Qt draws RGB; the BT.709 matrix also tags the output, so players do not guess.
+        job.encodeArgs = QStringList{"-hide_banner", "-loglevel", "error", "-y"} + device
+            + QStringList{"-f", "rawvideo", "-pix_fmt", "bgra", "-s",
+                          QStringLiteral("%1x%2").arg(size.width()).arg(size.height()), "-r", "60", "-i", "-"}
+            + seek + length + QStringList{"-i", req.inputPath, "-map", "0:v", "-map", "1:a?",
+                "-vf", QStringLiteral("scale=out_color_matrix=bt709:out_range=tv,format=")
+                           + (device.isEmpty() ? QStringLiteral("yuv420p") : QStringLiteral("nv12,hwupload"))}
+            + encoderCodecArgs(encoder, cpuCodecs, trimmed) + QStringList{"-shortest", output};
+        job.timeoutMs = req.timeoutMs < 0 ? -1 : qMax(0, req.timeoutMs - int(elapsed.elapsed()));
+        r = runRenderPipeline(job);
+        if (r.ok || r.error.contains(QStringLiteral("cancelled")) || r.error.contains(QStringLiteral("timed out")))
+            return r;
+        if (!encoder.isEmpty()) r.error += QStringLiteral(" with ") + encoder;
+    }
+    return r;
+}
+
+static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     QElapsedTimer elapsed;
     elapsed.start();
     DeliverResult r;
@@ -144,7 +266,7 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
 
     const bool overlayVisible = hasVisiblePixels(req.overlay);
     QTemporaryFile overlayTmp(QDir::tempPath() + QStringLiteral("/eddy-overlay-XXXXXX.png"));
-    if (overlayVisible) {
+    if (overlayVisible && !render) {
         if (!overlayTmp.open()) {
             r.error = QStringLiteral("cannot create temporary overlay");
             return r;
@@ -164,7 +286,7 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     const StudioLayout studio = studioLayout(contentSize, req.studio);
     QTemporaryFile studioBackground(QDir::tempPath() + QStringLiteral("/eddy-studio-bg-XXXXXX.png"));
     QTemporaryFile studioMask(QDir::tempPath() + QStringLiteral("/eddy-studio-mask-XXXXXX.png"));
-    if (req.studio.active()) {
+    if (req.studio.active() && !render) {
         const std::pair<QTemporaryFile *, QImage> stills[] = {
             {&studioBackground, renderStudioBackground(contentSize, req.studio)},
             {&studioMask, renderStudioFrameMask(contentSize, req.studio)}};
@@ -218,7 +340,6 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
             codecArgs += {QStringLiteral("-b:a"), QStringLiteral("192k")};
     }
 
-    constexpr int videoBlurRadius = 12;
     // ffmpeg autorotates before the filter graph. Normalize sample aspect ratio
     // to the same display-pixel coordinate system used by the editor.
     // Drop surplus frames before the filters: -fpsmax alone still scales,
@@ -227,30 +348,16 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     const bool highFps = source.fps > 60.0;
     const qint64 outputMs = trimmed ? req.trimOutMs - req.trimInMs
                                     : source.durationMs - req.trimInMs;
+    if (render) {
+        const DeliverResult rendered = writeRendered(req, ffmpeg, actualOutput, codecArgs, source,
+                                                     overlayVisible, elapsed);
+        return rendered.ok ? finishOutput(replaceInput, actualOutput, req.outputPath) : rendered;
+    }
     QString filter = QStringLiteral("[0:v]%1scale=%2:%3,setsar=1[base];")
         .arg(highFps ? QStringLiteral("fps=60,") : QString())
         .arg(req.overlay.width()).arg(req.overlay.height());
-    QString current = QStringLiteral("[base]");
-    int blurIndex = 0;
-    for (const QRect &requested : req.blurRects) {
-        const QRect rect = requested.intersected(req.overlay.rect());
-        if (rect.isEmpty()) continue;
-        const QString base = QStringLiteral("[blurbase%1]").arg(blurIndex);
-        const QString crop = QStringLiteral("[blurcrop%1]").arg(blurIndex);
-        const QString blurred = QStringLiteral("[blurpatch%1]").arg(blurIndex);
-        const QString next = QStringLiteral("[blurvideo%1]").arg(blurIndex);
-        filter += current + QStringLiteral("split=2") + base + crop + QStringLiteral(";");
-        filter += crop + QStringLiteral(
-            "crop=%1:%2:%3:%4,boxblur="
-            "luma_radius=min(%5\\,(min(w\\,h)-1)/2):luma_power=2:"
-            "chroma_radius=min(%5\\,(min(cw\\,ch)-1)/2):chroma_power=2")
-            .arg(rect.width()).arg(rect.height()).arg(rect.x()).arg(rect.y())
-            .arg(videoBlurRadius) + blurred + QStringLiteral(";");
-        filter += base + blurred + QStringLiteral("overlay=%1:%2:format=auto")
-            .arg(rect.x()).arg(rect.y()) + next + QStringLiteral(";");
-        current = next;
-        ++blurIndex;
-    }
+    const QString current = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
+                                              req.overlay.size());
     filter += current + (overlayVisible ? QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1")
                                        : QStringLiteral("null"));
     if (!crop.isNull())
@@ -321,14 +428,7 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
             return r;
         }
         const QStringList device = deviceArgs(encoder);
-        QStringList codecs = codecArgs;
-        if (!encoder.isEmpty()) {
-            codecs = {"-c:v", encoder, "-bf", "0",
-                encoder.endsWith("_vaapi") ? "-global_quality" : "-qp", "18",
-                "-c:a", trimmed ? "aac" : "copy", "-movflags", "+faststart"};
-            if (device.isEmpty()) codecs += {"-pix_fmt", "yuv420p"};
-            if (trimmed) codecs += {"-b:a", "192k"};
-        }
+        const QStringList codecs = encoderCodecArgs(encoder, codecArgs, trimmed);
         QProcess p;
         p.start(ffmpeg, device + inputs + QStringList{"-filter_complex", filter
             + (device.isEmpty() ? QString() : QStringLiteral(",format=nv12,hwupload"))
@@ -391,17 +491,15 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         if (r.error.isEmpty()) r.error = QStringLiteral("ffmpeg failed");
     }
     if (!r.error.isEmpty()) return r;
+    return finishOutput(replaceInput, actualOutput, req.outputPath);
+}
 
-    if (replaceInput) {
-        auto renamed = replaceFileAtomically(actualOutput, req.outputPath);
-        if (!renamed.ok) {
-            QFile::remove(actualOutput);
-            return renamed;
-        }
-    }
+DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
+    return writeVideo(req, !req.zooms.isEmpty());
+}
 
-    r.ok = true;
-    return r;
+DeliverResult writeVideoRendered(const VideoExportRequest &req) {
+    return writeVideo(req, true);
 }
 
 }
