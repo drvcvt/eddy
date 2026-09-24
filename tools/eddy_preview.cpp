@@ -214,6 +214,19 @@ int main(int argc, char **argv) {
             painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
         }
     }
+    if (mode.contains(QStringLiteral("fragments"))) {
+        // A cut and a 2x fragment; the cut is selected, so its bar says Restore.
+        eddy::StudioDocument doc = window->studioDocument();
+        auto *timeline = window->findChild<eddy::VideoTimeline *>();
+        const qint64 d = timeline->duration();
+        doc.fragments = {{0, 1.0, false}, {d * 3 / 10, 1.0, true}, {d / 2, 2.0, false}, {d * 8 / 10, 1.0, false}};
+        window->setStudioDocument(doc);
+        emit timeline->cutClicked(1);
+        QEventLoop settle;
+        QTimer::singleShot(200, &settle, &QEventLoop::quit);
+        settle.exec();
+        pm = window->grab();
+    }
     if (mode.contains(QStringLiteral("export"))) {
         QTimer::singleShot(300, [&] {
             auto *menu = window->findChild<QMenu *>(QStringLiteral("ExportMenu"));

@@ -291,6 +291,20 @@ qint64 VideoTimeline::timeForX(qreal x) const {
     return source(m_viewStart + fraction * (m_viewEnd - m_viewStart));
 }
 
+// Ticks count edited time at even x, so a cut or a fast fragment never
+// bunches them up; the labels are the output's own clock.
+QVector<QPair<qreal, qint64>> VideoTimeline::rulerTicks() const {
+    QVector<QPair<qreal, qint64>> ticks;
+    const QRectF track = trackRect();
+    if (m_viewEnd <= m_viewStart) return ticks;
+    const qreal rawStep = qMax<qreal>(1, (m_viewEnd - m_viewStart) * 70.0 / track.width());
+    const qreal base = std::pow(10.0, std::floor(std::log10(rawStep)));
+    const qint64 step = qMax<qint64>(1, qRound64(base * (rawStep / base <= 2 ? 2 : rawStep / base <= 5 ? 5 : 10)));
+    for (qint64 t = (m_viewStart / step + 1) * step; t < m_viewEnd; t += step)
+        ticks.append({track.left() + track.width() * qreal(t - m_viewStart) / (m_viewEnd - m_viewStart), t});
+    return ticks;
+}
+
 void VideoTimeline::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -480,11 +494,9 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     }
     painter.setPen(ink(0.6));
     QFont ruler = font(); ruler.setPixelSize(theme::kFsMicro); painter.setFont(ruler);
-    const qreal rawStep = qMax<qreal>(1, (m_viewEnd - m_viewStart) * 70.0 / track.width());
-    const qreal base = std::pow(10.0, std::floor(std::log10(rawStep)));
-    const qint64 step = qMax<qint64>(1, qRound64(base * (rawStep / base <= 2 ? 2 : rawStep / base <= 5 ? 5 : 10)));
-    for (qint64 t = (m_viewStart / step + 1) * step; t < m_viewEnd; t += step) {
-        const qreal x = xForTime(t);
+    const auto ticks = rulerTicks();
+    const qint64 step = ticks.size() > 1 ? ticks[1].second - ticks[0].second : 1000;
+    for (const auto &[x, t] : ticks) {
         const QString label = QStringLiteral("%1:%2").arg(t / 60000)
             .arg((t / 1000) % 60, 2, 10, QLatin1Char('0'))
             + (step < 1000 ? QStringLiteral(".%1").arg((t % 1000) / 100) : QString());

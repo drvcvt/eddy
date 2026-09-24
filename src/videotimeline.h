@@ -35,6 +35,8 @@ public:
     // Every public time stays source time.
     void setFragments(const QVector<Fragment> &fragments);
     void setSelectedFragment(int index);   // -1: none
+    // Ruler ticks as (x, edited ms).
+    QVector<QPair<qreal, qint64>> rulerTicks() const;
     QVector<qint64> thumbnailTimes() const;
     QImage thumbnailNear(qint64 time, qint64 *sampleTime) const;
     bool interacting() const { return m_drag != Drag::None; }
