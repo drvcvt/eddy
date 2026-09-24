@@ -63,6 +63,7 @@ add_library(eddy_core STATIC
     src/mediaio.cpp
     src/cursortrack.cpp
     src/studiostyle.cpp
+    src/studiopresets.cpp
     src/studiodocument.cpp
     src/timemap.cpp
     src/camerapath.cpp
@@ -154,6 +155,7 @@ eddy_test(test_mediaio)
 eddy_test(test_cursortrack)
 eddy_test(test_studiostyle)
 eddy_test(test_studiopopover)
+eddy_test(test_studiopresets)
 eddy_test(test_studiodocument)
 eddy_test(test_timemap)
 eddy_test(test_camerapath)

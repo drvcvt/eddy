@@ -28,6 +28,8 @@
 #include "fragmentbar.h"
 #include "fragments.h"
 #include "zoomsuggest.h"
+#include "studiopresets.h"
+#include <QInputDialog>
 #include "exportpanel.h"
 #include "projectstore.h"
 #include "recoverystore.h"
@@ -1786,6 +1788,63 @@ void EditorWindow::openStudio() {
         if (on && doc.keepCenter.isNull()) doc.keepCenter = QRectF(cameraContent()).center();
         setStudioDocument(doc);
         popover->setContentSize(cameraBase().size());
+    });
+    // Presets (studio plan 6.10): applying one belongs to the popover session.
+    const QVector<StudioPreset> presets = loadStudioPresets(configPath());
+    QStringList presetNames;
+    for (const StudioPreset &preset : presets) presetNames << preset.name;
+    popover->setPresets(presetNames);
+    auto applyPreset = [this](const StudioPreset &preset, StudioDocument &doc) {
+        doc.style = preset.style;
+        doc.motion = preset.motion;
+        for (ZoomSegment &z : doc.zooms) z.motion = preset.motion;
+    };
+    connect(popover, &StudioPopover::presetChosen, this, [this, presets, applyPreset](int index) {
+        StudioDocument doc = m_studio;
+        applyPreset(presets.value(index), doc);
+        setStudioDocument(doc);
+    });
+    connect(popover, &StudioPopover::presetSaveRequested, this, [this, popover] {
+        popover->close();
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Save preset"), tr("Name"), QLineEdit::Normal, {}, &ok).trimmed();
+        if (!ok || name.isEmpty()) return;
+        const DeliverResult saved = saveStudioPreset(configPath(), {name, m_studio.style, m_studio.motion});
+        m_toast->showMessage(saved.ok ? tr("Preset saved") : tr("Preset not saved"));
+    });
+    connect(popover, &StudioPopover::presetImportRequested, this, [this, popover, applyPreset] {
+        popover->close();
+        const QString path = QFileDialog::getOpenFileName(this, tr("Import preset"), {}, tr("Studio preset (*.json)"));
+        if (path.isEmpty()) return;
+        QFile file(path);
+        QString error;
+        const auto preset = file.open(QIODevice::ReadOnly) ? importStudioPreset(file.readAll(), &error) : std::nullopt;
+        if (!preset) {
+            std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
+            m_toast->showMessage(tr("Not a usable Studio preset"));
+            return;
+        }
+        saveStudioPreset(configPath(), *preset);
+        editStudio([&](StudioDocument &d) { applyPreset(*preset, d); });
+        m_toast->showMessage(tr("Preset imported"));
+    });
+    connect(popover, &StudioPopover::presetExportRequested, this, [this, popover] {
+        popover->close();
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Export preset"), tr("Name"), QLineEdit::Normal, {}, &ok).trimmed();
+        if (!ok || name.isEmpty()) return;
+        const QString path = QFileDialog::getSaveFileName(this, tr("Export preset"), name + QStringLiteral(".json"),
+                                                          tr("Studio preset (*.json)"));
+        if (path.isEmpty()) return;
+        QString error;
+        const QByteArray bytes = exportStudioPreset({name, m_studio.style, m_studio.motion}, &error);
+        QSaveFile file(path);
+        if (bytes.isEmpty() || !file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
+            std::fprintf(stderr, "eddy: %s\n", qPrintable(error.isEmpty() ? file.errorString() : error));
+            m_toast->showMessage(tr("Preset not exported"));
+            return;
+        }
+        m_toast->showMessage(tr("Preset exported"));
     });
     // Suggestions are ordinary zooms; with the rest of the session one undo step.
     connect(popover, &StudioPopover::suggestRequested, this, [this] {

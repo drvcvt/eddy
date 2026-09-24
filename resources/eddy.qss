@@ -280,6 +280,11 @@ QWidget#StudioPopover QToolButton {
 }
 QWidget#StudioPopover QToolButton#StudioBackground { padding: 0; }
 QWidget#StudioPopover QToolButton#StudioPage { font-size: @fs-small; font-weight: 600; }
+QToolButton#StudioPresets::menu-indicator { image: none; width: 0; height: 0; }
+QMenu#StudioPresetMenu { background: @raise1; color: @sub; border: none; border-radius: 10px; padding: 4px; font-size: @fs-small; font-weight: 500; }
+QMenu#StudioPresetMenu::item { padding: 2px 8px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
+QMenu#StudioPresetMenu::item:selected { background: @raise3; color: @fg; }
+QMenu#StudioPresetMenu::separator { height: 1px; background: @raise2; margin: 4px 6px; }
 QWidget#StudioPopover QToolButton:hover,
 QWidget#StudioPopover QToolButton:focus { background-color: @raise2; color: @fg; }
 QWidget#StudioPopover QToolButton:checked { background-color: @raise3; color: @fg; }
