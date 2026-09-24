@@ -37,6 +37,9 @@ private slots:
         for (auto *b : panel.findChildren<QToolButton *>(QStringLiteral("ExportSegment")))
             if (b->accessibleName().startsWith(QStringLiteral("Preset"))) QVERIFY(!b->isChecked());
         QCOMPARE(changed.count(), 2);
+        // The same clock as the playback bar: hours when there are any, no rounding up.
+        panel.setOutput(QSize(640, 360), 3661900, QStringLiteral("/a/clip.mp4"));
+        QVERIFY(panel.findChild<QLabel *>("ExportSummary")->text().endsWith(QStringLiteral("1:01:01")));
         QSignalSpy save(&panel, &ExportPanel::saveRequested);
         panel.findChild<QToolButton *>("ExportSave")->click();
         QCOMPARE(save.count(), 1);

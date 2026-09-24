@@ -149,19 +149,17 @@ DeliverResult relinkProjectSource(const QString &manifestPath, const QString &ca
     DeliverResult r;
     const auto project = readManifest(manifestPath, &r.error);
     if (!project) return r;
-    QFile file(candidate);
-    if (!file.open(QIODevice::ReadOnly)) {
-        r.error = QStringLiteral("cannot read %1").arg(candidate);
-        return r;
-    }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    if (!hash.addData(&file) || QString::fromLatin1(hash.result().toHex()) != project->sha256) {
-        r.error = QStringLiteral("%1 is not this project's original").arg(QFileInfo(candidate).fileName());
-        return r;
-    }
+    // One read: copy and hash together, and take the copy back if it is not the one.
     const AssetResult asset = storeAsset(candidate, projectAssetsDir(manifestPath));
     if (!asset.ok) {
         r.error = asset.error;
+        return r;
+    }
+    if (asset.sha256 != project->sha256) {
+        const QString stored = QDir(projectAssetsDir(manifestPath)).filePath(asset.name);
+        QFile::remove(stored);
+        QFile::remove(cursorTrackPathFor(stored));
+        r.error = QStringLiteral("%1 is not this project's original").arg(QFileInfo(candidate).fileName());
         return r;
     }
     ProjectSnapshot relinked = *project;
@@ -178,10 +176,12 @@ OpenedProject openProject(const QString &manifestPath) {
     const QFileInfo asset(p.sourcePath);
     if (!asset.exists()) {
         p.error = QStringLiteral("the project's original is missing: %1").arg(p.sourcePath);
+        p.originalMissing = true;
         return p;
     }
     if (asset.size() != p.snapshot.assetSize) {
         p.error = QStringLiteral("the project's original changed: %1").arg(p.sourcePath);
+        p.originalMissing = true;
         return p;
     }
     p.ok = true;

@@ -10,6 +10,7 @@
 #include <QUndoStack>
 #include <QVideoSink>
 #include "editorwindow.h"
+#include "exportsettings.h"
 #include "fragmentbar.h"
 #include "videotimeline.h"
 
@@ -98,6 +99,62 @@ private slots:
         player->pause();
         // A seam may show a frame or two of the cut while the seek lands.
         QVERIFY2(blue <= 2, qPrintable(QStringLiteral("%1 frames from the cut").arg(blue)));
+    }
+    void playbackStopsBeforeACutAtTheEnd() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("colours.mp4");
+        QProcess ffmpeg;
+        ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "color=red:s=160x90:r=30:d=2",
+            "-f", "lavfi", "-i", "color=0x00ff00:s=160x90:r=30:d=1",
+            "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0", "-g", "10", "-pix_fmt", "yuv420p", clip});
+        QVERIFY(ffmpeg.waitForFinished(20000) && ffmpeg.exitCode() == 0);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(clip, 3000), cfg, {});
+        w.show();
+        QTRY_VERIFY(w.findChild<QMediaPlayer *>());
+        auto *player = w.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        QTRY_VERIFY(player->isSeekable());
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        StudioDocument doc;
+        doc.fragments = {{0, 1.0, false}, {2000, 1.0, true}};
+        w.setStudioDocument(doc);
+        int green = 0;
+        connect(video->videoSink(), &QVideoSink::videoFrameChanged, &w, [&](const QVideoFrame &frame) {
+            if (player->playbackState() != QMediaPlayer::PlayingState) return;
+            const QColor c = frame.toImage().pixelColor(80, 45);
+            if (c.green() > 150 && c.red() < 100) ++green;
+        });
+        player->play();
+        QTRY_VERIFY_WITH_TIMEOUT(player->playbackState() != QMediaPlayer::PlayingState, 6000);
+        QVERIFY2(green <= 2, qPrintable(QStringLiteral("%1 frames from the cut").arg(green)));
+    }
+    void anExplicitOutputKeepsItsOwnFormat() {
+        if (!have("ffmpeg") || !have("ffprobe")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("clip.mp4");
+        QProcess ffmpeg;
+        ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "color=red:s=160x90:r=30:d=1", "-pix_fmt", "yuv420p", clip});
+        QVERIFY(ffmpeg.waitForFinished(20000) && ffmpeg.exitCode() == 0);
+        CliOptions cli;
+        cli.configPath = dir.filePath("config");
+        cli.output.toFile = true;
+        cli.output.filePath = dir.filePath("out.mp4");
+        saveExportSettings(cli.configPath, exportPreset(ExportPreset::Gif));   // chosen some other day
+        Config cfg; cfg.animations = false; cfg.copyOnSave = false;
+        EditorWindow w(videoDoc(clip, 1000), cfg, cli);
+        StudioDocument doc;
+        doc.style.background = StudioStyle::Background::Color;
+        w.setStudioDocument(doc);
+        w.save();
+        QTRY_VERIFY_WITH_TIMEOUT(QFileInfo::exists(cli.output.filePath), 20000);
+        QProcess probe;
+        probe.start("ffprobe", {"-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name",
+                                "-of", "csv=p=0", cli.output.filePath});
+        QVERIFY(probe.waitForFinished(10000));
+        QCOMPARE(probe.readAllStandardOutput().trimmed(), QByteArray("h264"));
     }
 };
 

@@ -91,6 +91,28 @@ private slots:
         QVERIFY(r.document.video.durationMs > 0);
     }
 
+    void probeKnowsWhetherThereIsSound() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe"))) QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        const QString silent = dir.filePath(QStringLiteral("silent.mp4"));
+        const QString loud = dir.filePath(QStringLiteral("loud.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=1:r=25", "-pix_fmt", "yuv420p", silent}));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=1:r=25", "-f", "lavfi", "-i", "sine=duration=1", "-shortest",
+            "-pix_fmt", "yuv420p", loud}));
+        const auto withoutSound = probeVideoFile(silent);
+        const auto withSound = probeVideoFile(loud);
+        QVERIFY(withoutSound.ok && withSound.ok);
+        QVERIFY(!withoutSound.info.hasAudio);
+        QVERIFY(withSound.info.hasAudio);
+        QCOMPARE(withSound.info.size, QSize(64, 48));
+    }
+    void formatsTimesLikeThePlaybackBar() {
+        QCOMPARE(formatTime(1999), QStringLiteral("0:01"));
+        QCOMPARE(formatTime(3661900), QStringLiteral("1:01:01"));
+        QCOMPARE(formatPreciseTime(2500), QStringLiteral("0:02.500"));
+    }
     void generatesContactSheetInMemory() {
         if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
         QTemporaryDir dir;

@@ -198,6 +198,17 @@ private slots:
         QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 36));
         QCOMPARE(seeks.last().first().toLongLong(), 5000);
     }
+    void cuttingBeforeTheViewKeepsItOnTheSameSource() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.zoomAt(5, 6000);
+        const qint64 start = timeline.visibleStart(), end = timeline.visibleEnd();
+        QVERIFY(end - start < 3000);
+        timeline.setFragments({{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}});
+        QVERIFY(qAbs(timeline.visibleStart() - start) <= 2);
+        QVERIFY(qAbs(timeline.visibleEnd() - end) <= 2);
+    }
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;
         timeline.setDuration(10000);

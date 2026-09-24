@@ -75,13 +75,15 @@ void VideoTimeline::rebuildAxis() {
 void VideoTimeline::setFragments(const QVector<Fragment> &fragments) {
     if (fragments == m_fragments) return;
     const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
+    // The view keeps showing the same stretch of the source.
+    const qint64 sourceStart = source(m_viewStart), sourceEnd = source(m_viewEnd);
     m_fragments = fragments;
     rebuildAxis();
     if (m_selectedFragment >= fragments::expanded(m_fragments).size()) m_selectedFragment = -1;
     m_hoverCut = -1;
     m_thumbnails.clear();
     if (fullView) fitClip();
-    else setViewRange(m_viewStart, m_viewEnd);
+    else setViewRange(qRound64(edited(sourceStart)), qRound64(edited(sourceEnd)));
     emit viewRangeChanged();
     update();
 }

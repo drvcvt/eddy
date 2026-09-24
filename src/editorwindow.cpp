@@ -184,35 +184,6 @@ QImage toolBackgroundFor(const MediaDocument &media) {
     return bg;
 }
 
-QString formatTime(qint64 ms) {
-    const qint64 total = qMax<qint64>(0, ms / 1000);
-    const qint64 h = total / 3600;
-    const qint64 m = (total % 3600) / 60;
-    const qint64 s = total % 60;
-    if (h > 0)
-        return QStringLiteral("%1:%2:%3")
-            .arg(h)
-            .arg(m, 2, 10, QLatin1Char('0'))
-            .arg(s, 2, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2")
-        .arg(m)
-        .arg(s, 2, 10, QLatin1Char('0'));
-}
-
-QString formatPreciseTime(qint64 ms) {
-    ms = qMax<qint64>(0, ms);
-    const qint64 totalSeconds = ms / 1000;
-    const qint64 h = totalSeconds / 3600;
-    const qint64 m = (totalSeconds % 3600) / 60;
-    const qint64 s = totalSeconds % 60;
-    const qint64 millis = ms % 1000;
-    if (h > 0)
-        return QStringLiteral("%1:%2:%3.%4").arg(h).arg(m, 2, 10, QLatin1Char('0'))
-            .arg(s, 2, 10, QLatin1Char('0')).arg(millis, 3, 10, QLatin1Char('0'));
-    return QStringLiteral("%1:%2.%3").arg(m).arg(s, 2, 10, QLatin1Char('0'))
-        .arg(millis, 3, 10, QLatin1Char('0'));
-}
-
 QPoint contextBarPosition(const QRect &item, const QSize &bar, const QSize &viewport) {
     constexpr int margin = 4;
     constexpr int gap = 8;
@@ -581,8 +552,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             const int i = m_selectedFragment;
             if (i < 0) return;
             QVector<Fragment> list = m_studio.fragments;
-            if (!fragments::setRemoved(list, i, !list[i].removed)) {
-                m_toast->showMessage(tr("The last fragment stays"));
+            if (!fragments::setRemoved(list, i, !list[i].removed)
+                || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
+                m_toast->showMessage(tr("Something of the clip has to stay"));
                 return;
             }
             editStudio([&](StudioDocument &d) { d.fragments = list; });
@@ -1883,6 +1855,8 @@ void EditorWindow::followPlaybackPieces(qint64 sourceMs) {
             return;
         }
     }
+    // Past the last kept piece: the rest up to the trim's end is cut.
+    if (sourceMs < m_trimOutMs) handlePlaybackEnd();
 }
 
 // Steers the selected zoom's target, or the "keep zoomed in" centre when no
@@ -1936,7 +1910,9 @@ void EditorWindow::refreshZoomUi() {
     if (i >= 0 && !cropping) m_zoomBar->setZoom(m_studio.zooms[i]);
     m_zoomBar->setVisible(i >= 0 && !cropping);
     const bool fragment = m_selectedFragment >= 0 && m_selectedFragment < m_studio.fragments.size() && !cropping;
-    if (fragment) m_fragmentBar->setFragment(m_studio.fragments[m_selectedFragment], m_selectedFragment > 0);
+    if (fragment)
+        m_fragmentBar->setFragment(m_studio.fragments[m_selectedFragment],
+                                   m_selectedFragment > 0 && !m_studio.fragments[m_selectedFragment - 1].removed);
     m_fragmentBar->setVisible(fragment);
     const bool map = !cropping && !playing && (i >= 0 || keep);
     if (map && !m_miniMap->isVisible()) {
@@ -2163,8 +2139,7 @@ void EditorWindow::scheduleVideoExportCache(int delayMs) {
 }
 
 QString EditorWindow::createVideoTempPath() const {
-    const QString suffix = exportSuffix(m_exportSettings, m_media.path);
-    QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/eddy-video-XXXXXX.") + suffix);
+    QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/eddy-video-XXXXXX.") + outputSuffix());
     tmp.setAutoRemove(false);
     if (!tmp.open()) {
         std::fprintf(stderr, "eddy: cannot create temporary video\n");
@@ -2650,9 +2625,17 @@ void EditorWindow::save() {
     if (m_cfg.earlyExit) close();
 }
 
+// An explicit -o path names its own format; everything else follows the
+// export popover.
+QString EditorWindow::outputSuffix() const {
+    if (m_cli.output.toFile && !QFileInfo(m_cli.output.filePath).suffix().isEmpty())
+        return QFileInfo(m_cli.output.filePath).suffix().toLower();
+    return exportSuffix(m_exportSettings, m_media.path);
+}
+
 // Boltsnap's shelf offers video cards as MP4 only (studio plan 6.8).
 bool EditorWindow::shelfTakes() const {
-    return exportSuffix(m_exportSettings, m_media.path) == QLatin1String("mp4")
+    return outputSuffix() == QLatin1String("mp4")
         || m_exportSettings.format == ExportSettings::Format::Original;
 }
 
@@ -2742,7 +2725,7 @@ bool EditorWindow::applyProject(const ProjectSnapshot &project, const QString &m
     for (QGraphicsItem *item : *items) m_scene->addItem(item);
     m_undo->clear();   // a reopened project starts without history (21.09. plan 5)
     m_projectPath = manifestPath;
-    m_projectAsset = QFileInfo(m_media.path).fileName();
+    m_projectAssetInfo = {true, {}, project.asset, project.sha256, project.assetSize};
     m_projectSourceName = project.sourceName;
     if (isVideo()) onVideoContentChanged();
     return true;
@@ -2768,11 +2751,15 @@ void EditorWindow::saveProject(bool saveAs, const QString &path) {
     // A reopened project already holds its original; anything else is copied once.
     const QString source = m_media.path;
     const QImage image = m_media.path.isEmpty() ? m_media.image : QImage();
+    // Saving the same project again reuses its original instead of copying it.
+    const bool reuse = target == m_projectPath && !m_projectAssetInfo.name.isEmpty()
+        && QFileInfo(QDir(assets).filePath(m_projectAssetInfo.name)).size() == m_projectAssetInfo.size;
+    const AssetResult kept = m_projectAssetInfo;
     m_projectSaving = true;
     m_toast->showMessage(tr("Saving project…"));
     QPointer<EditorWindow> receiver(this);
-    auto *thread = QThread::create([receiver, target, snapshot, assets, source, image] {
-        AssetResult asset = image.isNull()
+    auto *thread = QThread::create([receiver, target, snapshot, assets, source, image, reuse, kept] {
+        AssetResult asset = reuse ? kept : image.isNull()
             ? storeAsset(source, assets, [receiver](int percent) {
                   if (percent % 20) return;
                   QMetaObject::invokeMethod(qApp, [receiver, percent] {
@@ -2799,6 +2786,7 @@ void EditorWindow::saveProject(bool saveAs, const QString &path) {
                 return;
             }
             receiver->m_projectPath = target;
+            receiver->m_projectAssetInfo = asset;
             receiver->m_toast->showMessage(tr("Project saved with the original"));
             emit receiver->projectSaved(target);
         }, Qt::QueuedConnection);
@@ -2826,8 +2814,7 @@ EditorWindow *openProjectWindow(const QString &manifestPath, const Config &cfg, 
                                 QString *error) {
     OpenedProject opened = openProject(manifestPath);
     // A missing or changed original can be found again, checked byte for byte.
-    if (!opened.ok && (opened.error.contains(QLatin1String("missing")) || opened.error.contains(QLatin1String("changed")))
-        && qobject_cast<QApplication *>(QCoreApplication::instance())
+    if (!opened.ok && opened.originalMissing && qobject_cast<QApplication *>(QCoreApplication::instance())
         && QGuiApplication::platformName() != QLatin1String("offscreen")) {
         const QString candidate = QFileDialog::getOpenFileName(nullptr,
             QCoreApplication::translate("eddy", "Locate the original of %1").arg(QFileInfo(manifestPath).fileName()));
