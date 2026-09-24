@@ -159,7 +159,7 @@ private slots:
             auto *surface = layout->parentWidget();
             if (surface && layout == surface->layout() && surface->autoFillBackground() == false
                 && QStringList{"RedactBar", "TextBar", "SpotlightBar", "CropBar", "Toast",
-                               "ColorPopover", "VideoPreview"}.contains(surface->objectName())
+                               "ColorPopover", "VideoPreview", "ZoomBar"}.contains(surface->objectName())
                 && !(m.left() == m.top() && m.top() == m.right() && m.right() == m.bottom()))
                 bad << QStringLiteral("%1: unequal padding %2/%3/%4/%5").arg(surface->objectName())
                            .arg(m.left()).arg(m.top()).arg(m.right()).arg(m.bottom());

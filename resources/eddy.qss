@@ -275,6 +275,7 @@ QWidget#StudioPopover QToolButton {
     font-weight: 500;
 }
 QWidget#StudioPopover QToolButton#StudioBackground { padding: 0; }
+QWidget#StudioPopover QToolButton#StudioPage { font-size: @fs-small; font-weight: 600; }
 QWidget#StudioPopover QToolButton:hover,
 QWidget#StudioPopover QToolButton:focus { background-color: @raise2; color: @fg; }
 QWidget#StudioPopover QToolButton:checked { background-color: @raise3; color: @fg; }
@@ -309,6 +310,22 @@ QMenu#CropRatioMenu::item { padding: 2px 8px; margin: 1px 0; border: none; borde
 QMenu#CropRatioMenu::item:checked { background: @raise2; color: @fg; }
 QMenu#CropRatioMenu::item:selected { background: @raise3; color: @fg; }
 QMenu#CropRatioMenu::indicator { image: none; width: 0; height: 0; }
+/* The zoom bar shares the crop bar's floating geometry. */
+QWidget#ZoomBar { background: @raise1; border: none; border-radius: 12px; }
+QWidget#ZoomBar QToolButton {
+    color: @sub; padding: 0 8px; border-radius: 8px;
+    font-size: @fs-micro; font-weight: 500;
+}
+QWidget#ZoomBar QToolButton:hover, QWidget#ZoomBar QToolButton:focus { background: @raise2; color: @fg; }
+QWidget#ZoomBar QToolButton#ZoomScale { font-family: @font-mono; font-weight: 400; }
+QToolButton#ZoomScale::menu-indicator, QToolButton#ZoomMotion::menu-indicator { image: none; width: 0; height: 0; }
+QMenu#ZoomScaleMenu, QMenu#ZoomMotionMenu { background: @raise1; color: @sub; border: none; border-radius: 10px; padding: 4px; font-size: @fs-small; font-weight: 500; }
+QMenu#ZoomScaleMenu { font-family: @font-mono; font-weight: 400; }
+QMenu#ZoomScaleMenu::item, QMenu#ZoomMotionMenu::item { padding: 2px 8px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
+QMenu#ZoomScaleMenu::item:checked, QMenu#ZoomMotionMenu::item:checked { background: @raise2; color: @fg; }
+QMenu#ZoomScaleMenu::item:selected, QMenu#ZoomMotionMenu::item:selected { background: @raise3; color: @fg; }
+QMenu#ZoomScaleMenu::indicator, QMenu#ZoomMotionMenu::indicator { image: none; width: 0; height: 0; }
+QWidget#MiniMap { background: @raise1; border: none; border-radius: 10px; }
 /* The one labelled chrome action: its text steps up to sit with the 18px icon. */
 QWidget#Toolbar QToolButton#SendToShelf, QWidget#Toolbar QToolButton#Studio { font-size: @fs-body; }
 /* Rates are technical values like the timecodes beside them. */

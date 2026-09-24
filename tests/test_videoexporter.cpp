@@ -8,6 +8,7 @@
 #include <QTemporaryDir>
 #include "mediaio.h"
 #include "videoexporter.h"
+#include "studiostyle.h"
 
 using namespace eddy;
 
@@ -617,6 +618,73 @@ private slots:
         }
     }
 
+    void keepZoomedInCropsToTheFramesRatio() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QImage halves(320, 180, QImage::Format_RGB32);
+        {
+            QPainter p(&halves);
+            p.fillRect(0, 0, 160, 180, Qt::red);
+            p.fillRect(160, 0, 160, 180, Qt::blue);
+        }
+        const QString still = dir.filePath(QStringLiteral("halves.png"));
+        QVERIFY(halves.save(still));
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-loop", "1", "-i", still, "-t", "1",
+            "-r", "30", "-vf", "setsar=1,format=yuv420p", input}));
+        QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay};
+        request.studio.background = StudioStyle::Background::Color;
+        request.studio.color = Qt::green;
+        request.studio.padding = 0;
+        request.studio.radius = 0;
+        request.studio.shadow = 0;
+        request.studio.aspect = QSize(9, 16);
+        request.baseView = keepZoomedInRect(QRect(0, 0, 320, 180), request.studio, QPointF(240, 90));
+        QCOMPARE(request.baseView, QRect(190, 0, 100, 180));
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const auto probe = probeVideoFile(request.outputPath);
+        QVERIFY(probe.ok);
+        QCOMPARE(probe.info.size, QSize(102, 180));   // 9:16 with a 2 px background grow
+        QCOMPARE(qRound(probe.info.fps), 30);         // a static crop stays on the filter graph
+        const QString frame = dir.filePath(QStringLiteral("frame.png"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-ss", "0.5", "-i", request.outputPath,
+                                                     "-frames:v", "1", frame}));
+        const QColor c = QImage(frame).pixelColor(51, 90);
+        QVERIFY2(c.blue() > 200 && c.red() < 60, qPrintable(c.name()));
+
+        // With a zoom the renderer takes over and zooms inside the same window.
+        request.outputPath = dir.filePath(QStringLiteral("zoom.mp4"));
+        request.baseView = QRect(110, 0, 100, 180);    // straddles both halves
+        request.zooms = {{1, 0, 1000, 2.0, ZoomSegment::Target::Point, QPointF(135, 90),
+                          ZoomSegment::Motion::Instant}};
+        const DeliverResult zoomed = writeVideoWithOverlay(request);
+        QVERIFY2(zoomed.ok, qPrintable(zoomed.error));
+        const auto zoomProbe = probeVideoFile(request.outputPath);
+        QCOMPARE(zoomProbe.info.size, QSize(102, 180));
+        QCOMPARE(qRound(zoomProbe.info.fps), 60);
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", "0.5", "-i", request.outputPath,
+                                                     "-frames:v", "1", frame}));
+        // 2x around x = 135 shows 110..160 (red) across the whole width.
+        const QImage decoded(frame);
+        for (int x : {8, 51, 94}) {
+            const QColor p = decoded.pixelColor(x, 90);
+            QVERIFY2(p.red() > 200 && p.blue() < 60, qPrintable(QStringLiteral("%1: %2").arg(x).arg(p.name())));
+        }
+    }
+    void rejectsABaseViewOutsideTheCrop() {
+        QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
+        VideoExportRequest request{QStringLiteral("in.mp4"), QStringLiteral("out.mp4"), overlay};
+        request.cropRect = QRect(0, 0, 160, 180);
+        request.baseView = QRect(100, 0, 100, 180);
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY(!result.ok);
+        QVERIFY2(result.error.contains(QStringLiteral("view")), qPrintable(result.error));
+    }
     void renderedExportKeepsTrimAndAudio() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

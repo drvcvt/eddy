@@ -8,7 +8,7 @@
 #include <functional>
 #include "items/textitem.h"
 #include "items/spotlightitem.h"
-#include "studiostyle.h"
+#include "studiodocument.h"
 namespace eddy {
 class AddItemCommand : public QUndoCommand {
 public:
@@ -93,17 +93,27 @@ private:
     qint64 m_beforeIn, m_beforeOut, m_afterIn, m_afterOut;
     Apply m_apply;
 };
-class SetStudioStyleCommand : public QUndoCommand {
+// The whole Studio document before and after one gesture. Commands with the
+// same non-zero `mergeKey` in a row fold into one step (mouse-wheel zooming).
+class SetStudioDocumentCommand : public QUndoCommand {
 public:
-    using Apply = std::function<void(const StudioStyle &)>;
-    SetStudioStyleCommand(StudioStyle before, StudioStyle after, Apply apply)
+    using Apply = std::function<void(const StudioDocument &)>;
+    SetStudioDocumentCommand(StudioDocument before, StudioDocument after, Apply apply, int mergeKey = 0)
         : QUndoCommand(QStringLiteral("Studio")), m_before(std::move(before)),
-          m_after(std::move(after)), m_apply(std::move(apply)) {}
+          m_after(std::move(after)), m_apply(std::move(apply)), m_key(mergeKey) {}
     void undo() override { m_apply(m_before); }
     void redo() override { m_apply(m_after); }
+    int id() const override { return m_key ? 0x5354 : -1; }
+    bool mergeWith(const QUndoCommand *other) override {
+        const auto *next = static_cast<const SetStudioDocumentCommand *>(other);
+        if (next->m_key != m_key) return false;
+        m_after = next->m_after;
+        return true;
+    }
 private:
-    StudioStyle m_before, m_after;
+    StudioDocument m_before, m_after;
     Apply m_apply;
+    int m_key;
 };
 
 class SetCropCommand : public QUndoCommand {

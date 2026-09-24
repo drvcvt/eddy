@@ -1,5 +1,5 @@
 // Dev tool: render the editor chrome to a PNG for visual verification (offscreen).
-// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file] [MEDIA]
+// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera] [MEDIA]
 #include "editorwindow.h"
 #include "theme.h"
 #include "config.h"
@@ -11,6 +11,8 @@
 #include "videotimeline.h"
 #include "cropcontroller.h"
 #include "toolcontroller.h"
+#include "studiodocument.h"
+#include "studiostyle.h"
 #include <QApplication>
 #include <QGraphicsScene>
 #include <QImage>
@@ -175,6 +177,41 @@ int main(int argc, char **argv) {
             painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
         } else if (popover) {
             popover->close();
+        }
+    }
+    if (mode.contains(QStringLiteral("zoom")) || mode.contains(QStringLiteral("camera"))) {
+        // Studio on, two zooms, the first selected (context bar and mini map);
+        // "camera" also paints the popover on its Camera page.
+        eddy::StudioDocument doc = window->studioDocument();
+        for (const auto &preset : eddy::studioBackgroundPresets())
+            if (preset.kind == eddy::StudioStyle::Background::Gradient) {
+                doc.style.background = preset.kind;
+                doc.style.color = preset.color;
+                doc.style.color2 = preset.color2;
+                break;
+            }
+        const QRect base = window->cameraBase();
+        doc.zooms = {{1, 1000, 3000, 2.0, eddy::ZoomSegment::Target::Point,
+                      QPointF(base.width() * 0.7, base.height() * 0.35), eddy::ZoomSegment::Motion::Focused},
+                     {2, 5000, 6500, 1.5, eddy::ZoomSegment::Target::Point,
+                      QRectF(base).center(), eddy::ZoomSegment::Motion::Smooth}};
+        window->setStudioDocument(doc);
+        window->selectZoom(1);
+        // The playback bar grows by the lane; let the layout settle first.
+        QEventLoop settle;
+        QTimer::singleShot(200, &settle, &QEventLoop::quit);
+        settle.exec();
+        pm = window->grab();
+        if (mode.contains(QStringLiteral("camera"))) {
+            window->openStudio();
+            app.processEvents();
+            auto *popover = window->findChild<QWidget *>(QStringLiteral("StudioPopover"));
+            for (auto *tab : popover->findChildren<QToolButton *>(QStringLiteral("StudioPage")))
+                if (tab->text() == QStringLiteral("Camera")) tab->click();
+            app.processEvents();
+            pm = window->grab();
+            QPainter painter(&pm);
+            painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
         }
     }
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");

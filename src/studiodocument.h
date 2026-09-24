@@ -1,5 +1,6 @@
 #pragma once
 #include <QJsonObject>
+#include <QMetaType>
 #include <QPointF>
 #include <QSize>
 #include <QString>
@@ -37,6 +38,8 @@ struct StudioDocument {
     QVector<Fragment> fragments;     // empty: the whole source at 1x
     bool keepZoomedIn = false;
     QPointF keepCenter;              // where the narrower view sits without a cursor track
+    // Motion for new zooms; the Camera page sets it and every zoom at once.
+    ZoomSegment::Motion motion = ZoomSegment::Motion::Focused;
 
     // Whether an export needs the frame-render path instead of the filter graph.
     bool timeVarying() const;
@@ -53,3 +56,6 @@ std::optional<StudioDocument> studioFromJson(const QJsonObject &json, qint64 dur
                                              QSize source, QString *error);
 
 }
+
+Q_DECLARE_METATYPE(eddy::ZoomSegment)
+Q_DECLARE_METATYPE(eddy::ZoomSegment::Motion)

@@ -50,6 +50,38 @@ StudioLayout studioLayout(QSize content, const StudioStyle &style) {
     return {output, QRect(origin, content), std::clamp(style.radius, 0.0, 50.0) * unit(content)};
 }
 
+QRect keepZoomedInRect(QRect content, const StudioStyle &style, QPointF center) {
+    if (!style.active() || style.aspect.isEmpty() || content.width() < 4 || content.height() < 4)
+        return content;
+    const double want = double(style.aspect.width()) / style.aspect.height();
+    // The ratio of the padded window, before studioLayout grows it to `want`;
+    // it rises with the width and falls with the height.
+    auto framed = [&](int w, int h) {
+        const int pad = qRound(std::clamp(style.padding, 0.0, 50.0) * unit(QSize(w, h)));
+        return double(w + 2 * pad) / (h + 2 * pad);
+    };
+    int w = content.width() & ~1, h = content.height() & ~1;
+    if (framed(w, h) > want) {
+        int lo = 2, hi = w;   // the widest even window that is not too wide
+        while (lo < hi) {
+            const int mid = ((lo + hi + 2) / 2) & ~1;
+            if (framed(mid, h) <= want) lo = mid; else hi = mid - 2;
+        }
+        w = lo;
+    } else {
+        int lo = 2, hi = h;   // the tallest even window that is not too tall
+        while (lo < hi) {
+            const int mid = ((lo + hi + 2) / 2) & ~1;
+            if (framed(w, mid) >= want) lo = mid; else hi = mid - 2;
+        }
+        h = lo;
+    }
+    if (w == (content.width() & ~1) && h == (content.height() & ~1)) return content;
+    const int x = qBound(0, qRound(center.x() - w / 2.0) - content.x(), content.width() - w) & ~1;
+    const int y = qBound(0, qRound(center.y() - h / 2.0) - content.y(), content.height() - h) & ~1;
+    return QRect(content.x() + x, content.y() + y, w, h);
+}
+
 static QPainterPath roundedContent(const QRectF &rect, double radius) {
     QPainterPath path;
     path.addRoundedRect(rect, radius, radius);

@@ -174,9 +174,12 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const bool trimmed = req.trimOutMs >= 0;
     const qint64 endMs = trimmed ? req.trimOutMs : source.durationMs;
     const QRect content = req.cropRect.isNull() ? req.overlay.rect() : req.cropRect;
+    const QRect view = req.baseView.isNull() ? content : req.baseView;
     const CameraPath camera(req.zooms, TimeMap(source.durationMs, req.trimInMs, endMs, {}),
-                            CameraFrame{QRectF(content), 0, {}});
-    const StudioRenderer renderer(req.overlay.size(), content, req.studio,
+                            CameraFrame{QRectF(content),
+                                        view == content ? 0.0 : double(view.width()) / view.height(),
+                                        QRectF(view).center()});
+    const StudioRenderer renderer(req.overlay.size(), view, req.studio,
                                   overlayVisible ? req.overlay : QImage());
     const QSize size = renderer.outputSize();
     QStringList seek;
@@ -252,6 +255,15 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         r.error = QStringLiteral("video crop must fit the source and use even pixel coordinates");
         return r;
     }
+    const QRect bounds = crop.isNull() ? req.overlay.rect() : crop;
+    const QRect view = req.baseView;
+    if (view != QRect() && (view.isEmpty() || !bounds.contains(view)
+        || view.x() % 2 || view.y() % 2 || view.width() % 2 || view.height() % 2)) {
+        r.error = QStringLiteral("video base view must fit the crop and use even pixel coordinates");
+        return r;
+    }
+    // What the frame holds while the camera rests: the base view, else the crop.
+    const QRect framed = view.isNull() ? crop : view;
     const bool trimmed = req.trimOutMs >= 0;
     if (req.trimInMs < 0 || (trimmed && req.trimOutMs <= req.trimInMs)) {
         r.error = QStringLiteral("invalid video trim range");
@@ -282,7 +294,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
 
     // Studio framing: an opaque background still and a coverage mask, merged
     // with the video padded to the output size.
-    const QSize contentSize = crop.isNull() ? req.overlay.size() : crop.size();
+    const QSize contentSize = framed.isNull() ? req.overlay.size() : framed.size();
     const StudioLayout studio = studioLayout(contentSize, req.studio);
     QTemporaryFile studioBackground(QDir::tempPath() + QStringLiteral("/eddy-studio-bg-XXXXXX.png"));
     QTemporaryFile studioMask(QDir::tempPath() + QStringLiteral("/eddy-studio-mask-XXXXXX.png"));
@@ -360,8 +372,9 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
                                               req.overlay.size());
     filter += current + (overlayVisible ? QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1")
                                        : QStringLiteral("null"));
-    if (!crop.isNull())
-        filter += QStringLiteral(",crop=%1:%2:%3:%4").arg(crop.width()).arg(crop.height()).arg(crop.x()).arg(crop.y());
+    if (!framed.isNull())
+        filter += QStringLiteral(",crop=%1:%2:%3:%4").arg(framed.width()).arg(framed.height())
+                      .arg(framed.x()).arg(framed.y());
     if (req.studio.active()) {
         // maskedmerge on planar yuv is SIMD work, where an RGBA overlay of the
         // whole output more than doubled export time. The stills are single
