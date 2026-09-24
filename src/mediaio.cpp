@@ -122,7 +122,7 @@ ProbeVideoResult probeVideoFile(const QString &path) {
     QProcess p;
     p.start(ffprobe, {
         QStringLiteral("-v"), QStringLiteral("error"),
-        QStringLiteral("-show_entries"), QStringLiteral("stream=codec_type,width,height,r_frame_rate,sample_aspect_ratio:stream_side_data=rotation,displaymatrix:format=duration"),
+        QStringLiteral("-show_entries"), QStringLiteral("stream=codec_type,width,height,r_frame_rate,sample_aspect_ratio,start_time:stream_side_data=rotation,displaymatrix:format=duration"),
         QStringLiteral("-of"), QStringLiteral("json"),
         path
     });
@@ -140,12 +140,20 @@ ProbeVideoResult probeVideoFile(const QString &path) {
 
     const auto metadata = QJsonDocument::fromJson(p.readAllStandardOutput()).object();
     const auto streams = metadata.value("streams").toArray();
-    QJsonObject stream;
+    QJsonObject stream, audio;
     for (const auto &value : streams) {
         const QJsonObject candidate = value.toObject();
         const QString type = candidate.value("codec_type").toString();
         if (type == QLatin1String("video") && stream.isEmpty()) stream = candidate;
-        if (type == QLatin1String("audio")) r.info.hasAudio = true;
+        if (type == QLatin1String("audio") && audio.isEmpty()) audio = candidate;
+    }
+    r.info.hasAudio = !audio.isEmpty();
+    if (r.info.hasAudio) {
+        bool audioOk = false, videoOk = false;
+        const double a = audio.value("start_time").toString().toDouble(&audioOk);
+        const double v = stream.value("start_time").toString().toDouble(&videoOk);
+        if (audioOk && videoOk && std::isfinite(a - v) && qAbs(a - v) < 3600)
+            r.info.audioOffsetMs = qRound64((a - v) * 1000);
     }
     int width = stream.value("width").toInt();
     int height = stream.value("height").toInt();
