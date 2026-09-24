@@ -40,6 +40,7 @@
 #include <memory>
 #include <QPainter>
 #include "items/stepitem.h"
+#include "items/rectitem.h"
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -188,6 +189,18 @@ int main(int argc, char **argv) {
                 last = step;
             }
         last->setSelected(true);
+        app.processEvents();
+    }
+    if (mode == QStringLiteral("align")) {
+        auto *scene = window->findChild<QGraphicsScene *>();
+        const QRectF rects[] = {QRectF(160, 150, 140, 90), QRectF(380, 230, 120, 120), QRectF(600, 170, 160, 70)};
+        for (const QRectF &r : rects) {
+            auto *item = new eddy::RectItem(r);
+            item->setStrokeColor(QColor("#ff3b30"));
+            item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+            scene->addItem(item);
+            item->setSelected(true);
+        }
         app.processEvents();
     }
     if (mode == QStringLiteral("tooltip")) {

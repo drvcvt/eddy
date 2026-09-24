@@ -1,5 +1,7 @@
 #include "editorwindow.h"
 #include "stepbar.h"
+#include "selectionbar.h"
+#include "snapping.h"
 #include "items/stepitem.h"
 #include "audiowaveform.h"
 #include "canvas.h"
@@ -391,6 +393,21 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             m_undo->push(new SetStepCommand(step, step->number(), step->size(), step->number(), size));
     });
     connect(m_stepBar, &StepBar::renumberRequested, this, &EditorWindow::renumberSteps);
+    m_selectionBar = new SelectionBar(m_canvas->viewport());
+    m_selectionBar->hide();
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshSelectionBar);
+    connect(m_scene, &QGraphicsScene::changed, this, &EditorWindow::refreshSelectionBar);
+    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::refreshSelectionBar);
+    connect(m_selectionBar, &SelectionBar::alignChosen, this, [this](Align align) {
+        QVector<QRectF> boxes;
+        for (QGraphicsItem *item : alignableSelection()) boxes.append(alignmentBounds(item));
+        moveSelection(alignDeltas(boxes, align), tr("Align"));
+    });
+    connect(m_selectionBar, &SelectionBar::distributeChosen, this, [this](Qt::Orientation orientation) {
+        QVector<QRectF> boxes;
+        for (QGraphicsItem *item : alignableSelection()) boxes.append(alignmentBounds(item));
+        moveSelection(distributeDeltas(boxes, orientation), tr("Space evenly"));
+    });
     m_toast = new Toast(this);
     m_tooltip = new QLabel(this);
     m_tooltip->setObjectName(QStringLiteral("CompactTooltip"));
@@ -1494,6 +1511,50 @@ void EditorWindow::updateSelectedText(const std::function<void(TextItem *)> &cha
     refreshTextBar();
 }
 
+// Selected items that can move, in a stable order: the stacking order.
+QList<QGraphicsItem *> EditorWindow::alignableSelection() const {
+    QList<QGraphicsItem *> out;
+    for (QGraphicsItem *item : m_scene->items(Qt::AscendingOrder))
+        if (item->isSelected() && item->flags().testFlag(QGraphicsItem::ItemIsMovable)) out.append(item);
+    return out;
+}
+
+void EditorWindow::refreshSelectionBar() {
+    const QList<QGraphicsItem *> items = alignableSelection();
+    if (items.size() < 2 || m_tools->editingText()) { m_selectionBar->hide(); return; }
+    QVector<QRectF> boxes;
+    QRectF all;
+    for (QGraphicsItem *item : items) {
+        boxes.append(alignmentBounds(item));
+        all |= boxes.last();
+    }
+    m_selectionBar->setSelection(items.size(), !distributeDeltas(boxes, Qt::Horizontal).isEmpty(),
+                                 !distributeDeltas(boxes, Qt::Vertical).isEmpty());
+    m_selectionBar->adjustSize();
+    const QRect area(m_canvas->mapFromScene(all.topLeft()), m_canvas->mapFromScene(all.bottomRight()));
+    m_selectionBar->move(contextBarPosition(area.normalized(), m_selectionBar->size(), m_canvas->viewport()->size()));
+    m_selectionBar->show();
+    m_selectionBar->raise();
+}
+
+// Positions only, as one undo step; moves within a hundredth of a pixel are none.
+void EditorWindow::moveSelection(const QVector<QPointF> &deltas, const QString &name) {
+    const QList<QGraphicsItem *> items = alignableSelection();
+    if (deltas.size() != items.size()) return;
+    QList<QGraphicsItem *> moved;
+    QList<QPointF> before, after;
+    for (qsizetype i = 0; i < items.size(); ++i) {
+        if (std::abs(deltas[i].x()) < 0.01 && std::abs(deltas[i].y()) < 0.01) continue;
+        moved.append(items[i]);
+        before.append(items[i]->pos());
+        after.append(items[i]->pos() + deltas[i]);
+    }
+    if (moved.isEmpty()) return;
+    auto *command = new MoveItemsCommand(moved, before, after);
+    command->setText(name);
+    m_undo->push(command);
+}
+
 StepItem *EditorWindow::selectedStep() const {
     const auto selected = m_scene->selectedItems();
     return selected.size() == 1 ? dynamic_cast<StepItem *>(selected.first()) : nullptr;
@@ -1731,6 +1792,7 @@ void EditorWindow::toggleTheme() {
     }
     m_textBar->refreshTheme();
     m_stepBar->refreshTheme();
+    m_selectionBar->refreshTheme();
     m_dragPill->refreshTheme();
     if (m_zoomBar) m_zoomBar->refreshTheme();
     m_scene->update();

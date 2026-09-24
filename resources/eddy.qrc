@@ -32,6 +32,14 @@
     <file>icons/reset.svg</file>
     <file>icons/loop.svg</file>
     <file>icons/align-left.svg</file>
+    <file>icons/objects-left.svg</file>
+    <file>icons/objects-hcenter.svg</file>
+    <file>icons/objects-right.svg</file>
+    <file>icons/objects-top.svg</file>
+    <file>icons/objects-vcenter.svg</file>
+    <file>icons/objects-bottom.svg</file>
+    <file>icons/distribute-h.svg</file>
+    <file>icons/distribute-v.svg</file>
     <file>icons/align-center.svg</file>
     <file>icons/align-right.svg</file>
     <file>icons/spotlight.svg</file>

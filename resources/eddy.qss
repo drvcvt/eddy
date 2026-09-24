@@ -77,7 +77,7 @@ QWidget#ColorPopover {
     border: none;
     border-radius: 14px;
 }
-QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar, QWidget#StepBar {
+QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar, QWidget#StepBar, QWidget#SelectionBar {
     background-color: @raise1;
     border: none;
     /* 8px chip inset by the 4px margin, so the gap stays concentric; any larger
@@ -94,7 +94,8 @@ QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar
 }
 /* The text bar is icons throughout, letterforms included: padding would clip
    the wider glyphs at 20px. */
-QWidget#TextBar QToolButton, QWidget#StepBar QToolButton { padding: 0; }
+QWidget#TextBar QToolButton, QWidget#StepBar QToolButton, QWidget#SelectionBar QToolButton { padding: 0; border-radius: 8px; }
+QWidget#SelectionBar QToolButton:hover { background-color: @raise2; }
 QWidget#StepBar QToolButton::menu-indicator { image: none; }
 QLineEdit#StepNumber {
     background-color: @raise2;
