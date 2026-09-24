@@ -19,6 +19,7 @@ QString helpText() {
         "      --no-anim          disable window and tool animations\n"
         "      --gpu              use the OpenGL canvas viewport\n"
         "      --boltsnap-card-id <id>  replace this Boltsnap card on save\n"
+        "      --resume           continue an edit kept from an earlier session\n"
         "  -h, --help             show this help\n"
         "  -v, --version          show the version\n");
 }
@@ -64,6 +65,8 @@ ParseResult parseArgs(const QStringList &args) {
             o.configPath = next(a); if (!r.ok) return r;
         } else if (a == "--early-exit") {
             o.earlyExit = true;
+        } else if (a == "--resume") {
+            o.resume = true;
         } else if (a == "--no-anim") {
             o.noAnim = true;
         } else if (a == "--gpu") {
@@ -83,7 +86,7 @@ ParseResult parseArgs(const QStringList &args) {
         }
     }
 
-    if (!haveInput) { r.ok = false; r.error = "no input media (pass a path, -f FILE, or -)"; }
+    if (!haveInput && !o.resume) { r.ok = false; r.error = "no input media (pass a path, -f FILE, or -)"; }
     return r;
 }
 

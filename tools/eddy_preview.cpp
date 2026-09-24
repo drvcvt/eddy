@@ -13,6 +13,10 @@
 #include "toolcontroller.h"
 #include "studiodocument.h"
 #include "studiostyle.h"
+#include "recoverystore.h"
+#include "resumedialog.h"
+#include <QLockFile>
+#include <QTemporaryDir>
 #include <QApplication>
 #include <QGraphicsScene>
 #include <QImage>
@@ -49,6 +53,26 @@ int main(int argc, char **argv) {
         picker.show();
         app.processEvents();
         return picker.grab().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
+    }
+    if (mode == QStringLiteral("resume")) {
+        // Two kept edits in a scratch folder, one of them open elsewhere.
+        QTemporaryDir scratch;
+        eddy::RecoveryStore store(scratch.path());
+        const QString a = store.create(), b = store.create();
+        for (const QString &id : {a, b}) {
+            QFile manifest(store.manifestFor(id));
+            manifest.open(QIODevice::WriteOnly);
+            manifest.write("{}");
+        }
+        store.touch(a, QStringLiteral("/home/you/Bilder/boltsnap-2026-09-24_16-30-37.mp4"),
+                    QStringLiteral("boltsnap-2026-09-24_16-30-37.mp4"));
+        store.touch(b, QStringLiteral("/home/you/Bilder/screenshot.png"), QStringLiteral("screenshot.png"));
+        QLockFile held(store.lockFileFor(a));
+        held.tryLock(0);
+        eddy::ResumeDialog dialog(store);
+        dialog.show();
+        app.processEvents();
+        return dialog.grab().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
     }
     if (mode.startsWith(QStringLiteral("video"))) {
         eddy::MediaDocument media;

@@ -171,6 +171,10 @@ QLabel#ToastText {
     font-family: @font-ui;
     font-size: @fs-small;
 }
+QToolButton#ToastAction {
+    background: @fg; color: @bg; border: none; border-radius: 8px;
+    padding: 2px 12px; font-size: @fs-small; font-weight: 600;
+}
 
 QWidget#DragPill {
     background-color: transparent;
@@ -330,6 +334,15 @@ QMenu#ZoomScaleMenu::item:checked, QMenu#ZoomMotionMenu::item:checked, QMenu#Fra
 QMenu#ZoomScaleMenu::item:selected, QMenu#ZoomMotionMenu::item:selected, QMenu#FragmentSpeedMenu::item:selected { background: @raise3; color: @fg; }
 QMenu#ZoomScaleMenu::indicator, QMenu#ZoomMotionMenu::indicator, QMenu#FragmentSpeedMenu::indicator { image: none; width: 0; height: 0; }
 QWidget#MiniMap { background: @raise1; border: none; border-radius: 10px; }
+/* Resume: the kept edits, newest first. */
+QDialog#ResumeDialog { background: @raise1; }
+QDialog#ResumeDialog QListWidget { background: @raise1; border: none; outline: 0; color: @fg; font-size: @fs-small; }
+QDialog#ResumeDialog QListWidget::item { padding: 6px 8px; border-radius: 8px; }
+QDialog#ResumeDialog QListWidget::item:selected { background: @raise3; color: @fg; }
+QDialog#ResumeDialog QLabel#ResumeEmpty { color: @sub; font-size: @fs-small; }
+QDialog#ResumeDialog QToolButton { color: @sub; border: none; border-radius: 8px; padding: 0 10px; font-size: @fs-small; font-weight: 500; }
+QDialog#ResumeDialog QToolButton:hover, QDialog#ResumeDialog QToolButton:focus { background: @raise2; color: @fg; }
+QDialog#ResumeDialog QToolButton#ResumeOpen { background: @fg; color: @bg; font-weight: 600; }
 /* Export popover at Save: segmented rows (Q7 B2), the choice a step brighter. */
 QMenu#ExportMenu { background: transparent; border: none; padding: 0; }
 QWidget#ExportPanel { background-color: @raise1; border: none; border-radius: 14px; }
@@ -343,11 +356,13 @@ QWidget#ExportPanel QToolButton#ExportSegment {
 }
 QWidget#ExportPanel QToolButton#ExportSegment:hover { color: @fg; }
 QWidget#ExportPanel QToolButton#ExportSegment:checked { background-color: @segment-on; color: @fg; }
-QWidget#ExportPanel QToolButton#ProjectSave, QWidget#ExportPanel QToolButton#ProjectOpen {
+QWidget#ExportPanel QToolButton#ProjectSave, QWidget#ExportPanel QToolButton#ProjectOpen,
+QWidget#ExportPanel QToolButton#ProjectResume {
     color: @sub; background: transparent; border: none; border-radius: 8px;
     padding: 0 8px; font-size: @fs-small; font-weight: 500;
 }
 QWidget#ExportPanel QToolButton#ProjectSave:hover, QWidget#ExportPanel QToolButton#ProjectOpen:hover,
+QWidget#ExportPanel QToolButton#ProjectResume:hover, QWidget#ExportPanel QToolButton#ProjectResume:focus,
 QWidget#ExportPanel QToolButton#ProjectSave:focus, QWidget#ExportPanel QToolButton#ProjectOpen:focus {
     background: @raise2; color: @fg;
 }

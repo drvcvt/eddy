@@ -39,6 +39,8 @@ add_library(eddy_core STATIC
     src/exportpanel.cpp
     src/projectcodec.cpp
     src/projectstore.cpp
+    src/recoverystore.cpp
+    src/resumedialog.cpp
     src/minimap.cpp
     src/loupe.cpp
     src/colorpopover.cpp
@@ -167,6 +169,7 @@ eddy_test(test_exportsettings)
 eddy_test(test_exportpanel)
 eddy_test(test_projectcodec)
 eddy_test(test_projectstore)
+eddy_test(test_recoverystore)
 eddy_test(test_imageio)
 eddy_test(test_items)
 eddy_test(test_ocr)

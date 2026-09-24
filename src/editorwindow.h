@@ -19,6 +19,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <QLockFile>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel; class QLineEdit;
@@ -71,8 +72,17 @@ public:
     QString projectPath() const { return m_projectPath; }
     // `path` skips the dialog; saving runs in the background.
     void saveProject(bool saveAs = false, const QString &path = {});
+    // Kept edits for Resume. Off unless the app turns it on, so tests and
+    // tools never write into the user's recovery folder.
+    static void setRecoveryEnabledByDefault(bool on);
+    void setRecoveryDelays(int idleMs, int maxMs);
+    QString recoveryManifest() const;
+    // Continues a kept edit in this window: same entry, unnamed.
+    void adoptRecovery(const QString &id);
+    void openResumeDialog();
 signals:
     void projectSaved(const QString &path);
+    void recoveryWritten(const QString &manifest);
 public:
 public slots:
     void save();   // to file/save-dir per cli/config
@@ -173,6 +183,24 @@ private:
     void finishCameraGesture(bool cancelled);
     void openExportPanel();
     void openProjectDialog();
+    void writeSnapshot(const QString &target, const AssetResult &known, bool progress,
+                       std::function<void(const AssetResult &, const QString &)> done);
+    void noteRecoveryChange();
+    bool gestureRunning() const;
+    void writeRecovery();
+    void flushRecovery();
+    void offerKeptEdit();
+    QTimer *m_recoveryIdle = nullptr;
+    QTimer *m_recoveryMax = nullptr;
+    QString m_recoveryId;
+    std::unique_ptr<QLockFile> m_recoveryLock;
+    AssetResult m_recoveryAsset;
+    QString m_projectSource;          // where a reopened edit's original came from
+    bool m_recoveryEnabled = false;
+    bool m_recoveryPending = false;
+    bool m_recoveryWriting = false;
+    bool m_recoveryPaused = false;
+    bool m_restoring = false;
     QString m_projectPath;
     AssetResult m_projectAssetInfo;   // the original as it sits in m_projectPath's assets
     QString m_projectSourceName;
