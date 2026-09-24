@@ -2,8 +2,8 @@
 
 Datum: 2026-09-23, Stand 2026-09-24. Status: **Vertrag v1 und Loader implementiert, Studio-Styling
 für Bilder und Videos implementiert (Schritte 1 und 2 unten), Kompositionsmodell und
-Render-Exportpfad implementiert (Schritt 3). Zoom-UI noch nicht; Cursor-Rendering in Eddy
-gestrichen.** Vollständiger Umsetzungsplan: `docs/plans/2026-09-24-studio-features.md`. Hintergrund und Funktionskatalog: `docs/plans/2026-09-23-screen-studio-research.md`.
+Render-Exportpfad implementiert (Schritt 3), Zoom-Segmente in der App mit Spur, Kontextleiste,
+Mini-Karte, Camera-Seite und "keep zoomed in" (Phase S2). Cursor-Rendering in Eddy gestrichen.** Vollständiger Umsetzungsplan: `docs/plans/2026-09-24-studio-features.md`. Hintergrund und Funktionskatalog: `docs/plans/2026-09-23-screen-studio-research.md`.
 
 ## 1. Grundsatz: Studio ist ein Extra, kein Muss
 

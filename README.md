@@ -67,10 +67,21 @@ shows the resulting output size. It is off for
 every new document. Switching it on restores the style you used last, stored in
 the config file's `[studio]` group, and one popover session is one undo step.
 The canvas previews exactly what Save, Copy, drag, shelf and frame copy deliver.
-Videos keep their frame rate and audio. Zoom segments (in progress, see
-`docs/plans/2026-09-24-studio-features.md`) export through a frame renderer at
-60 fps; everything else keeps the ffmpeg filter-graph export. When a video has a
-Boltsnap cursor track beside it (`clip.cursor.json`), Eddy loads it for later
+Videos keep their frame rate and audio.
+
+**Zooms** (videos): with Studio on, a zoom lane sits under the filmstrip and draws
+the camera's real zoom over time. Click the empty lane or press `Z` to add a
+two-second 2× zoom, drag it to move, drag its edges to resize (it snaps to the
+playhead, the trim and its neighbours). A selected zoom shows where the camera
+comes to rest: drag empty content with the Move tool, or the window in the mini
+map, to aim it; the wheel over the map sets any level from 1.1× to 4×. The bar
+under the canvas sets 1.25×, 1.5×, 2× or 3×, Focused, Smooth or Instant motion,
+and removes the zoom. The popover's **Camera** page sets the motion of every zoom
+and **Keep zoomed in**, which fills a narrow output ratio such as 9:16 with a
+window of the video instead of background. Playback shows the camera ride, and the
+export matches the preview; zooms export through a frame renderer at 60 fps,
+everything else keeps the ffmpeg filter-graph export. When a video has a Boltsnap
+cursor track beside it (`clip.cursor.json`), Eddy loads it for later
 cursor-following zooms; the cursor itself stays the one Boltsnap baked in.
 
 Video has an adaptive filmstrip and a time ruler. Hover for a source-frame preview,
@@ -159,6 +170,8 @@ it does not track moving text.
 | `I` / `O` on video | Set Start / End at the playhead |
 | `Enter` / `Esc` in a trim time field | Apply / restore its value |
 | `C`, then `Enter` / `Esc` | Open Crop, apply / cancel |
+| `Z` on video | Add a zoom at the playhead |
+| `Delete` / Left / Right with a zoom selected | Remove it / move it by a frame (`Shift`: ten) |
 | `Esc` | Cancel the active interaction, then close |
 | Scroll wheel / `+` / `-` | Zoom |
 | `0` / `1` | Fit image / 100% zoom |

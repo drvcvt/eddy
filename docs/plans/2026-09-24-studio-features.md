@@ -3,10 +3,9 @@
 Datum: 2026-09-24. Basis: `main` bei `2910125` plus die uncommittete Studio-Arbeit vom
 2026-09-23 (Export-Rückmeldung, Cursor-Loader, Studio-Styling für Bilder und Videos).
 Status: **Plan vollständig und freigegeben, alle Design- und Umfangsfragen am 2026-09-24
-beantwortet (Abschnitt 11 und 12). S0 und S1 umgesetzt (Abschnitt 9), nächste Phase S2
-(Zoom-Segmente in der UI).** Offen bleiben nur Fragen, die echte Daten oder Clips brauchen
-(Federwerte N6: Vergleichsclips gerendert, Wahl offen; Schnittmarke in S4, Masken-Spur in S6,
-Projektaktionen im Export-Popover mit P5/P6). Umsetzung Phase für Phase mit je eigenem
+beantwortet (Abschnitt 11 und 12, N6 inklusive). S0, S1 und S2 umgesetzt (Abschnitt 9),
+nächste Phase Projekt-Kern P5.** Offen bleiben nur Fragen, die echte Daten oder Clips
+brauchen (Schnittmarke in S4, Masken-Spur in S6, Projektaktionen im Export-Popover mit P5/P6). Umsetzung Phase für Phase mit je eigenem
 Implementierungsplan (Abschnitt 9).
 
 Grundlagen, die hier nicht wiederholt werden:
@@ -572,7 +571,8 @@ beim Schließen verloren) → S4 → S3 → S5 → P6 (Recovery) → S6/S7/S8 �
 Annotation-Hilfen P7/P8.
 
 Implementierungspläne, je Phase ein eigener, geschrieben kurz bevor die Phase beginnt:
-S0 `docs/plans/2026-09-24-studio-s0-model.md`, S1 `docs/plans/2026-09-24-studio-s1-render-export.md`.
+S0 `docs/plans/2026-09-24-studio-s0-model.md`, S1 `docs/plans/2026-09-24-studio-s1-render-export.md`,
+S2 `docs/plans/2026-09-24-studio-s2-zooms.md`.
 
 Umsetzungsstand: **S0 umgesetzt** (2026-09-24): `src/studiodocument.*`, `src/timemap.*`,
 `src/camerapath.*` mit `test_studiodocument`, `test_timemap`, `test_camerapath`. Build grün,
@@ -584,6 +584,13 @@ Encoder): Filtergraph 2,47 bis 2,51 s, Renderpfad mit 2×-Zoom 2,81 bis 2,86 s. 
 wirksam, wenn S2 Zoom-Segmente anlegt.
 Committet am 2026-09-24 auf Branch `feat/studio` (Details:
 `docs/handoffs/2026-09-24-studio-model-render-export-preview.md`).
+**S2 umgesetzt** (2026-09-24): Zoom-Spur (`zoomlane`, `VideoTimeline`), Canvas-Kamera,
+Kontextleiste (`ZoomBar`), Mini-Karte, Motion-Symbole aus der Federfunktion, Camera-Seite,
+"keep zoomed in" mit festem Mittelpunkt (`keepZoomedInRect`, `VideoExportRequest::baseView`),
+`SetStudioDocumentCommand`. Build grün, `ctest` 39/39. Vorschau gegen Export (7.2) am
+generierten Markierungsclip: vor und nach der Fahrt 0 px, mitten in der Fahrt 0,4 px
+Abweichung; Schwelle im Test 1,5 px im 320×180-Bild. Echter Clip 9:16 mit zwei Zooms
+(5,4 s, 660×1170): 1,9 s Export.
 
 Arbeitsweise pro Phase: Arbeitsbranch `feat/studio`, Commits nur auf Auftrag, Push erst nach
 Freigabe. Subagents nur auf ausdrücklichen Wunsch. Builds mit `--parallel 2`.
@@ -662,8 +669,8 @@ Am 2026-09-24 entschieden:
 
 Noch offen, weil es echte Clips oder Daten braucht:
 
-- **N6 Federwerte der Kamera:** Vergleichsclips über den echten Renderpfad gerendert
-  (2026-09-24, Boltsnap-Clip 14,0 bis 19,4 s, Focused 100/20 gegen 196/28, Smooth 36/12 gegen
-  20/9, Übergabe zwischen zwei Zooms). Wahl des Maintainers steht aus; bis dahin gelten die
-  Vorschläge aus 3.4. Die Clips lagen in `/tmp/studio-springs/` (nicht dauerhaft) und lassen
-  sich mit einem kleinen Programm gegen `writeVideoWithOverlay` neu erzeugen.
+- **N6 Federwerte der Kamera: entschieden 2026-09-24,** Focused 100/20 und Smooth 36/12
+  (die Vorschläge aus 3.4). Gewählt an neu gerenderten Vergleichsclips über den echten
+  Renderpfad (Boltsnap-Aufnahme vom 2026-09-24, 24,0 bis 29,4 s, zwei 2,2×-Zooms mit
+  Übergabe, Focused 100/20 gegen 196/28, Smooth 36/12 gegen 20/9, auch in halber
+  Geschwindigkeit).
