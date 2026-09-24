@@ -34,6 +34,7 @@ class VideoPreviewProvider;
 class CropController;
 class CropBar;
 class ZoomBar;
+class FragmentBar;
 class ExportPanel;
 class MiniMap;
 enum class RedactMode;
@@ -160,6 +161,13 @@ private:
     void refreshZoomUi();
     void positionZoomUi();
     void addZoomAt(qint64 sourceMs);
+    void selectFragment(int index);
+    void splitAtPlayhead();
+    void followPlaybackPieces(qint64 sourceMs);
+    FragmentBar *m_fragmentBar = nullptr;
+    int m_selectedFragment = -1;
+    bool m_timelineTrimming = false;   // what the running timeline gesture is
+    qreal m_previewRate = 1.0;       // the speed menu's rate; fragments multiply it
     void moveCameraTarget(QPointF delta);
     void finishCameraGesture(bool cancelled);
     void openExportPanel();

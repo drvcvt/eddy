@@ -34,6 +34,7 @@ add_library(eddy_core STATIC
     src/cropbar.cpp
     src/motionicon.cpp
     src/zoombar.cpp
+    src/fragmentbar.cpp
     src/exportsettings.cpp
     src/exportpanel.cpp
     src/projectcodec.cpp
@@ -175,6 +176,7 @@ eddy_test(test_toolbar)
 eddy_test(test_editorwindow)
 eddy_test(test_studiozooms)
 eddy_test(test_projects)
+eddy_test(test_fragmentsedit)
 eddy_test(test_theme)
 eddy_test(test_selectionhandles)
 eddy_test(test_videotimeline)

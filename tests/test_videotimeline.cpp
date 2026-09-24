@@ -164,6 +164,31 @@ private slots:
         // Zoomed in, the curve fills the block near its top; before the ramp it does not.
         QVERIFY(qGray(shot.pixel(156, 58)) != qGray(shot.pixel(72, 58)));
     }
+    void fragmentsShapeTheTimeAxis() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        // Keep 0-4 s, cut 4-6 s, 6-10 s at 2x: 4 + 2 = 6 s wide.
+        timeline.setFragments({{0, 1.0, false}, {4000, 1.0, true}, {6000, 2.0, false}});
+        timeline.show();
+        QCOMPARE(timeline.visibleStart(), 0);
+        QCOMPARE(timeline.visibleEnd(), 10000);
+        QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
+        // Five sixths across is edited 5 s, which is source 8 s in the 2x fragment.
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(256, 36));
+        QVERIFY(!seeks.isEmpty());
+        QCOMPARE(seeks.last().first().toLongLong(), 8000);
+        // The cut's notch sits over the seam at edited 4 s.
+        QSignalSpy cuts(&timeline, &VideoTimeline::cutClicked);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(206, 14));
+        QCOMPARE(cuts.count(), 1);
+        QCOMPARE(cuts.first().first().toInt(), 1);
+        // Without fragments the axis is the source again.
+        timeline.setFragments({});
+        seeks.clear();
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 36));
+        QCOMPARE(seeks.last().first().toLongLong(), 5000);
+    }
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;
         timeline.setDuration(10000);
