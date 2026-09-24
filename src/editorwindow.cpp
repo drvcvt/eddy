@@ -22,6 +22,7 @@
 #include "dragpill.h"
 #include "redactocrcontroller.h"
 #include "items/redactitem.h"
+#include "previewitems.h"
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <cstdio>
@@ -306,7 +307,8 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         bgItem->setZValue(-1000);
         m_backgroundItem = bgItem;
     } else {
-        auto *bgItem = m_scene->addPixmap(QPixmap::fromImage(m_bg));
+        auto *bgItem = new PreviewPixmapItem(QPixmap::fromImage(m_bg));
+        m_scene->addItem(bgItem);
         bgItem->setTransformationMode(Qt::SmoothTransformation);
         bgItem->setZValue(-1000);
         m_backgroundItem = bgItem;
@@ -1096,7 +1098,7 @@ void EditorWindow::showVideoStill() {
 void EditorWindow::ensureVideoPlayer() {
     if (!isVideo() || m_player) return;
     if (!m_videoItem) {
-        auto *videoItem = new QGraphicsVideoItem;
+        auto *videoItem = new PreviewVideoItem;
         videoItem->setSize(QSizeF(m_media.nativeSize()));
         videoItem->setAspectRatioMode(Qt::IgnoreAspectRatio);
         videoItem->setZValue(-1000);
@@ -1109,7 +1111,7 @@ void EditorWindow::ensureVideoPlayer() {
         m_backgroundItem = m_videoItem;
         // Keep paused frames independent of the backend's video surface. Making
         // the still a background child also excludes it from annotation exports.
-        m_videoStill = new QGraphicsPixmapItem(videoItem);
+        m_videoStill = new PreviewPixmapItem(videoItem);
         m_videoStill->setZValue(-1000);
         m_videoStill->setAcceptedMouseButtons(Qt::NoButton);
         m_videoStill->setTransformationMode(Qt::SmoothTransformation);
