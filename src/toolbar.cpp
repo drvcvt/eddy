@@ -13,6 +13,9 @@
 #include <QColorDialog>
 #include <QTimer>
 #include <QMenu>
+#include <QStyleOptionToolButton>
+#include <QStylePainter>
+#include <cmath>
 
 namespace eddy {
 
@@ -34,8 +37,68 @@ void Toolbar::enableVideoFrameCopy() {
     copy->setAccessibleName(tr("Copy video; hold or press Alt+Down for frame copy"));
 }
 
-static QToolButton *mkBtn(bool checkable, bool square) {
-    auto *b = new QToolButton;
+// A top-bar button with an icon and a label. Qt centres the icon box on the
+// label's line box, which leaves a 15 px label's capitals a pixel below the
+// glyph and only 5 px between them. This draws both itself: the glyph's ink
+// centred on the capitals and 8 px from the text (mt-ui-style, body gap), on
+// whole device pixels at every scale.
+class LabelButton : public QToolButton {
+public:
+    QSize sizeHint() const override {
+        const QRectF ink = inkRect(devicePixelRatioF());
+        return QSize(qCeil(2 * kPad + ink.width() + kGap + QFontMetricsF(font()).horizontalAdvance(text())),
+                     theme::kBarButton.height());
+    }
+    QSize minimumSizeHint() const override { return sizeHint(); }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QStylePainter p(this);
+        QStyleOptionToolButton option;
+        initStyleOption(&option);
+        option.text.clear();
+        option.icon = QIcon();
+        p.drawComplexControl(QStyle::CC_ToolButton, option);   // the hover or checked fill
+        const qreal dpr = devicePixelRatioF();
+        auto snap = [dpr](qreal v) { return std::round(v * dpr) / dpr; };
+        const QFontMetricsF metrics(font());
+        const qreal baseline = snap((height() + metrics.capHeight()) / 2);
+        const qreal capMiddle = baseline - metrics.capHeight() / 2;
+        const QRectF ink = inkRect(dpr);
+        const QIcon::Mode mode = !isEnabled() ? QIcon::Disabled : underMouse() ? QIcon::Active : QIcon::Normal;
+        p.drawPixmap(QPointF(snap(kPad - ink.left()), snap(capMiddle - ink.center().y())),
+                     icon().pixmap(iconSize(), dpr, mode, isChecked() ? QIcon::On : QIcon::Off));
+        p.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText));
+        p.drawText(QPointF(kPad + ink.width() + kGap, baseline), text());
+    }
+
+private:
+    static constexpr qreal kPad = 8, kGap = 8;
+    // The glyph's ink inside its pixmap, in logical pixels; measured, not
+    // derived from the SVG, so every glyph sits by what is actually drawn.
+    QRectF inkRect(qreal dpr) const {
+        if (dpr != m_inkDpr) {
+            const QImage image = icon().pixmap(iconSize(), dpr).toImage()
+                                     .convertToFormat(QImage::Format_ARGB32);
+            int left = image.width(), top = image.height(), right = -1, bottom = -1;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x)
+                    if (qAlpha(image.pixel(x, y)) > 64) {
+                        left = qMin(left, x); right = qMax(right, x);
+                        top = qMin(top, y); bottom = qMax(bottom, y);
+                    }
+            m_ink = right < 0 ? QRectF() : QRectF(left / dpr, top / dpr, (right - left + 1) / dpr,
+                                                  (bottom - top + 1) / dpr);
+            m_inkDpr = dpr;
+        }
+        return m_ink;
+    }
+    mutable QRectF m_ink;
+    mutable qreal m_inkDpr = 0;
+};
+
+static QToolButton *mkBtn(bool checkable, bool square, QToolButton *b = nullptr) {
+    if (!b) b = new QToolButton;
     b->setCheckable(checkable);
     b->setAutoRaise(true);
     b->setFocusPolicy(Qt::NoFocus);      // keep keyboard focus on the window for hotkeys
@@ -161,7 +224,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     // Studio frames the output, so it sits with the output actions. Its checked
     // state mirrors the document; a click always opens the popover.
-    m_studioBtn = mkBtn(true, false); m_studioBtn->setObjectName("Studio");
+    m_studioBtn = mkBtn(true, false, new LabelButton); m_studioBtn->setObjectName("Studio");
     m_studioBtn->setIcon(theme::tintedIcon(QStringLiteral(":/icons/studio.svg"), iconRest, iconHover));
     m_studioBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_studioBtn->setText(QStringLiteral("Studio"));
@@ -191,7 +254,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
 
-    auto *shelf = mkBtn(false, false); shelf->setObjectName("SendToShelf");
+    auto *shelf = mkBtn(false, false, new LabelButton); shelf->setObjectName("SendToShelf");
     // Same icon box as Save and Copy so the row's glyphs start and end on one
     // line; the label takes the body step so the 15px ink is not larger than it.
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
