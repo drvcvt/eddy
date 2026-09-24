@@ -26,6 +26,8 @@
 #include "zoomlane.h"
 #include "zoombar.h"
 #include "exportpanel.h"
+#include "projectstore.h"
+#include <QThread>
 #include "minimap.h"
 #include "motionicon.h"
 #include <QGraphicsScene>
@@ -534,20 +536,30 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     // (the controller's default) would emit nothing at all. Keep this call.
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
     setupCrop();
+    // Holding Save opens the export popover; its footer holds the project actions.
+    m_exportPanel = new ExportPanel;
+    m_exportPanel->setVideo(isVideo());
+    QMenu *exportMenu = m_toolbar->enableExportMenu(m_exportPanel);
+    connect(exportMenu, &QMenu::aboutToShow, this, &EditorWindow::openExportPanel);
+    connect(m_exportPanel, &ExportPanel::saveRequested, this, [this, exportMenu] {
+        exportMenu->close();
+        save();
+    });
+    connect(m_exportPanel, &ExportPanel::projectSaveRequested, this, [this, exportMenu] {
+        exportMenu->close();
+        saveProject();
+    });
+    connect(m_exportPanel, &ExportPanel::projectOpenRequested, this, [this, exportMenu] {
+        exportMenu->close();
+        openProjectDialog();
+    });
     if (isVideo()) {
         m_exportSettings = loadExportSettings(configPath());
-        m_exportPanel = new ExportPanel;
         m_exportPanel->setSettings(m_exportSettings);
-        QMenu *exportMenu = m_toolbar->enableExportMenu(m_exportPanel);
-        connect(exportMenu, &QMenu::aboutToShow, this, &EditorWindow::openExportPanel);
         connect(m_exportPanel, &ExportPanel::settingsChanged, this, [this](const ExportSettings &settings) {
             m_exportSettings = settings;
             saveExportSettings(configPath(), settings);
             onVideoContentChanged();   // the cached export no longer matches
-        });
-        connect(m_exportPanel, &ExportPanel::saveRequested, this, [this, exportMenu] {
-            exportMenu->close();
-            save();
         });
         m_cameraRebuild = new QTimer(this);
         m_cameraRebuild->setSingleShot(true);
@@ -2418,6 +2430,10 @@ void EditorWindow::saveVideo() {
         if (m_cfg.earlyExit && !hasVideoEdits()) close();
         return;
     }
+    if (isProjectPath(path)) {   // a project's original and manifest are never an output
+        m_toast->showMessage(tr("Cannot save over a project file"));
+        return;
+    }
 
     if (!hasVideoEdits()) {
         startVideoFileSave(m_media.path, path, m_cfg.copyOnSave, m_cfg.earlyExit);
@@ -2512,6 +2528,10 @@ void EditorWindow::save() {
         path = QDir(m_cfg.saveDir).filePath(
                    "eddy-" + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss") + ".png");
 
+    if (!path.isEmpty() && isProjectPath(path)) {
+        m_toast->showMessage(tr("Cannot save over a project file"));
+        return;
+    }
     if (!path.isEmpty()) {
         auto res = writePng(img, path);
         if (!res.ok) std::fprintf(stderr, "eddy: %s\n", qPrintable(res.error));
@@ -2570,8 +2590,156 @@ void EditorWindow::sendToShelf() {
 
 void EditorWindow::openExportPanel() {
     const QSize framed = studioLayout(cameraBase().size(), m_studio.style).output;
-    m_exportPanel->setOutput(framed, qint64(m_timeMap.outputDurationMs()), m_media.path);
+    m_exportPanel->setOutput(framed, isVideo() ? qint64(m_timeMap.outputDurationMs()) : 0, m_media.path);
     m_exportPanel->setSettings(m_exportSettings);
+}
+
+ProjectSnapshot EditorWindow::projectSnapshot() const {
+    ProjectSnapshot p;
+    p.kind = m_media.kind;
+    p.sourceName = m_projectSourceName.isEmpty() ? QFileInfo(m_media.path).fileName() : m_projectSourceName;
+    p.size = m_media.nativeSize();
+    p.crop = m_cropRect;
+    if (isVideo()) {
+        p.durationMs = m_media.video.durationMs;
+        p.trimInMs = m_trimInMs;
+        p.trimOutMs = m_trimOutMs;
+        p.positionMs = m_timeline ? m_timeline->position() : 0;
+        p.exportSettings = m_exportSettings;
+    }
+    p.studio = m_studio;
+    QList<QGraphicsItem *> items;
+    for (QGraphicsItem *item : m_scene->items(Qt::AscendingOrder))
+        if (!item->parentItem() && item->zValue() > -1000) items.append(item);
+    p.items = itemsToJson(items);
+    return p;
+}
+
+bool EditorWindow::applyProject(const ProjectSnapshot &project, const QString &manifestPath, QString *error) {
+    if (project.size != m_media.nativeSize() || project.kind != m_media.kind) {
+        if (error) *error = QStringLiteral("the project's original does not match its record");
+        return false;
+    }
+    QString itemError;
+    const auto items = itemsFromJson(project.items, m_bg, m_media.nativeSize(), &itemError);
+    if (!items) {
+        if (error) *error = itemError;
+        return false;
+    }
+    setCropRect(project.crop);
+    if (isVideo()) {
+        m_exportSettings = project.exportSettings;
+        setTrimRangeState(project.trimInMs, project.trimOutMs > 0 ? project.trimOutMs : m_media.video.durationMs);
+        if (project.positionMs > 0) {
+            m_timeline->setPosition(project.positionMs);
+            requestVideoSeek(project.positionMs);
+        }
+    }
+    setStudioDocument(project.studio);
+    for (QGraphicsItem *item : *items) m_scene->addItem(item);
+    m_undo->clear();   // a reopened project starts without history (21.09. plan 5)
+    m_projectPath = manifestPath;
+    m_projectAsset = QFileInfo(m_media.path).fileName();
+    m_projectSourceName = project.sourceName;
+    if (isVideo()) onVideoContentChanged();
+    return true;
+}
+
+void EditorWindow::saveProject(bool saveAs, const QString &path) {
+    if (m_projectSaving) return;
+    m_tools->commitTextEdit();
+    finishCrop();
+    QString target = path;
+    if (target.isEmpty() && (saveAs || m_projectPath.isEmpty())) {
+        const QString name = QFileInfo(m_media.path.isEmpty() ? QStringLiteral("image") : m_media.path).completeBaseName();
+        target = QFileDialog::getSaveFileName(this, tr("Save project with the original and its layers"),
+            QDir(QFileInfo(m_media.path).absolutePath()).filePath(name + QStringLiteral(".eddy")),
+            tr("Eddy project (*.eddy)"));
+        if (target.isEmpty()) return;
+        if (!target.endsWith(QLatin1String(".eddy"), Qt::CaseInsensitive)) target += QStringLiteral(".eddy");
+    } else if (target.isEmpty()) {
+        target = m_projectPath;
+    }
+    const ProjectSnapshot snapshot = projectSnapshot();
+    const QString assets = projectAssetsDir(target);
+    // A reopened project already holds its original; anything else is copied once.
+    const QString source = m_media.path;
+    const QImage image = m_media.path.isEmpty() ? m_media.image : QImage();
+    m_projectSaving = true;
+    m_toast->showMessage(tr("Saving project…"));
+    QPointer<EditorWindow> receiver(this);
+    auto *thread = QThread::create([receiver, target, snapshot, assets, source, image] {
+        AssetResult asset = image.isNull()
+            ? storeAsset(source, assets, [receiver](int percent) {
+                  if (percent % 20) return;
+                  QMetaObject::invokeMethod(qApp, [receiver, percent] {
+                      if (receiver && receiver->m_projectSaving)
+                          receiver->m_toast->showMessage(tr("Saving project %1%").arg(percent));
+                  }, Qt::QueuedConnection);
+              })
+            : storeImageAsset(image, assets);
+        ProjectSnapshot project = snapshot;
+        DeliverResult written;
+        if (asset.ok) {
+            project.asset = asset.name;
+            project.sha256 = asset.sha256;
+            project.assetSize = asset.size;
+            written = writeProject(target, project);
+        }
+        QMetaObject::invokeMethod(qApp, [receiver, target, asset, written] {
+            if (!receiver) return;
+            receiver->m_projectSaving = false;
+            const QString error = !asset.ok ? asset.error : written.error;
+            if (!error.isEmpty()) {
+                std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
+                receiver->m_toast->showMessage(tr("Project not saved"));
+                return;
+            }
+            receiver->m_projectPath = target;
+            receiver->m_toast->showMessage(tr("Project saved with the original"));
+            emit receiver->projectSaved(target);
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void EditorWindow::openProjectDialog() {
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open project"),
+        m_projectPath.isEmpty() ? QString() : QFileInfo(m_projectPath).absolutePath(), tr("Eddy project (*.eddy)"));
+    if (path.isEmpty()) return;
+    QString error;
+    EditorWindow *window = openProjectWindow(path, m_cfg, m_cli, &error);
+    if (!window) {
+        m_toast->showMessage(tr("Cannot open the project"));
+        std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
+        return;
+    }
+    window->setAttribute(Qt::WA_DeleteOnClose);
+    window->show();
+}
+
+EditorWindow *openProjectWindow(const QString &manifestPath, const Config &cfg, const CliOptions &cli,
+                                QString *error) {
+    const OpenedProject opened = openProject(manifestPath);
+    if (!opened.ok) {
+        if (error) *error = opened.error;
+        return nullptr;
+    }
+    const LoadMediaResult media = loadMediaInput({InputSpec::File, opened.sourcePath});
+    if (!media.ok) {
+        if (error) *error = media.error;
+        return nullptr;
+    }
+    // Output routes come from this session, never from the project (21.09. plan 5).
+    CliOptions session = cli;
+    session.boltsnapCardId = 0;
+    auto *window = new EditorWindow(media.document, cfg, session);
+    if (!window->applyProject(opened.snapshot, manifestPath, error)) {
+        delete window;
+        return nullptr;
+    }
+    return window;
 }
 
 void EditorWindow::copy() {
@@ -2707,14 +2875,6 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             }
             QWidget::keyPressEvent(e);
             break;
-        case Qt::Key_O:
-            if (isVideo() && m_timeline) {
-                m_timeline->setTrimRange(m_timeline->trimIn(), m_timeline->position());
-                applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
-                break;
-            }
-            QWidget::keyPressEvent(e);
-            break;
         case Qt::Key_J:
         case Qt::Key_L:
             if (isVideo() && m_timeline) {
@@ -2787,7 +2947,19 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
                             m_tools->duplicateSelection(QPointF(8,8));
                         else QWidget::keyPressEvent(e);
                         break;
-        case Qt::Key_S: if (e->modifiers() & Qt::ControlModifier) save(); break;
+        case Qt::Key_S:
+            if ((e->modifiers() & Qt::ControlModifier) && (e->modifiers() & Qt::ShiftModifier)) saveProject();
+            else if (e->modifiers() & Qt::ControlModifier) save();
+            break;
+        case Qt::Key_O:
+            if (e->modifiers() & Qt::ControlModifier) { openProjectDialog(); break; }
+            if (isVideo() && m_timeline) {
+                m_timeline->setTrimRange(m_timeline->trimIn(), m_timeline->position());
+                applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
+                break;
+            }
+            QWidget::keyPressEvent(e);
+            break;
         case Qt::Key_Return: case Qt::Key_Enter: save(); break;
         case Qt::Key_Delete: case Qt::Key_Backspace: {
             const auto sel = m_scene->selectedItems();

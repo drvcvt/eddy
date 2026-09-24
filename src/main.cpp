@@ -70,15 +70,28 @@ int main(int argc, char **argv) {
         _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
-    auto load = eddy::loadMediaInput(pr.options.input);
-    if (!load.ok) { std::fprintf(stderr, "eddy: %s\n", qPrintable(load.error)); return 1; }
-    if (!load.warning.isEmpty()) std::fprintf(stderr, "eddy: %s\n", qPrintable(load.warning));
-
     eddy::Config cfg = eddy::loadConfig(pr.options.configPath);
     eddy::applyCli(cfg, pr.options);
     const bool dark = eddy::theme::resolveDark(cfg.theme, systemPalette);
     app.setPalette(eddy::theme::palette(dark));
     app.setStyleSheet(eddy::theme::styleSheet(dark));
+
+    // A project opens before any media loading (21.09. plan 7).
+    const QString input = pr.options.input.path;
+    if (pr.options.input.kind == eddy::InputSpec::File
+        && input.endsWith(QLatin1String(".eddy"), Qt::CaseInsensitive)) {
+        QString error;
+        eddy::EditorWindow *project = eddy::openProjectWindow(input, cfg, pr.options, &error);
+        if (!project) { std::fprintf(stderr, "eddy: %s\n", qPrintable(error)); return 1; }
+        project->setAttribute(Qt::WA_DeleteOnClose);
+        eddy::pushWindowRules("eddy");
+        project->show();
+        return app.exec();
+    }
+
+    auto load = eddy::loadMediaInput(pr.options.input);
+    if (!load.ok) { std::fprintf(stderr, "eddy: %s\n", qPrintable(load.error)); return 1; }
+    if (!load.warning.isEmpty()) std::fprintf(stderr, "eddy: %s\n", qPrintable(load.warning));
 
     eddy::pushWindowRules("eddy");   // before show → instant float, no fade
     eddy::EditorWindow win(load.document, cfg, pr.options);
