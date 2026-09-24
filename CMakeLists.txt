@@ -52,6 +52,9 @@ add_library(eddy_core STATIC
     src/mediaio.cpp
     src/cursortrack.cpp
     src/studiostyle.cpp
+    src/studiodocument.cpp
+    src/timemap.cpp
+    src/camerapath.cpp
     src/studiopopover.cpp
     src/videoexporter.cpp
     src/waylanddrag.cpp
@@ -131,6 +134,9 @@ eddy_test(test_config)
 eddy_test(test_mediaio)
 eddy_test(test_cursortrack)
 eddy_test(test_studiostyle)
+eddy_test(test_studiodocument)
+eddy_test(test_timemap)
+eddy_test(test_camerapath)
 eddy_test(test_exporter)
 eddy_test(test_boltsnapipc)
 eddy_test(test_videoexporter)
