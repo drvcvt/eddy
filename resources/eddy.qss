@@ -131,6 +131,7 @@ QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
 QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: @font-ui; font-weight: 500; padding: 0 6px; }
 QWidget#PlaybackBar QLabel#TrimDuration { color: @fg; padding: 0 6px; }
 QLabel#VideoExportStatus { color: @sub; font-size: @fs-micro; padding-right: 8px; }
+QWidget#PlaybackBar QLabel#NoAudio { color: @sub; font-size: @fs-small; padding: 0 4px; }
 QWidget#PlaybackBar QLineEdit {
     background: transparent;
     color: @fg;

@@ -28,6 +28,7 @@ static StudioDocument everything() {
     d.motion = ZoomSegment::Motion::Smooth;
     d.keepFollowsCursor = false;
     d.motionBlur = 40;
+    d.audio = false;
     return d;
 }
 
@@ -75,7 +76,7 @@ private slots:
 
     void onlyVersionAndStyleAreRequired() {
         QJsonObject json = studioToJson(everything());
-        for (const char *key : {"zooms", "fragments", "keepZoomedIn", "camera"}) json.remove(QLatin1String(key));
+        for (const char *key : {"zooms", "fragments", "keepZoomedIn", "camera", "audio"}) json.remove(QLatin1String(key));
         QString error;
         const auto doc = studioFromJson(json, kDuration, kSource, &error);
         QVERIFY2(doc, qPrintable(error));
@@ -83,6 +84,7 @@ private slots:
         QVERIFY(!doc->keepZoomedIn);
         QCOMPARE(doc->keepCenter, QPointF(960, 540));   // the source centre
         QCOMPARE(doc->motion, ZoomSegment::Motion::Focused);
+        QVERIFY(doc->audio);   // older files keep their sound
     }
 
     void writesACompactStableShape() {

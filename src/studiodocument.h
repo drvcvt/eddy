@@ -45,6 +45,8 @@ struct StudioDocument {
     ZoomSegment::Motion motion = ZoomSegment::Motion::Focused;
     // Motion blur of camera moves, 0 (off) to 100; exports only (studio plan 6.11, E7).
     int motionBlur = 0;
+    // "Include audio in output" (21.09. plan 4); off, the output has no audio stream.
+    bool audio = true;
 
     // Whether an export needs the frame-render path instead of the filter graph.
     bool timeVarying() const;

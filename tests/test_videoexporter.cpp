@@ -1012,6 +1012,35 @@ private slots:
             "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", request.outputPath});
         QVERIFY2(!audio.isEmpty(), "the rendered export lost its audio stream");
     }
+    void withoutAudioNoRouteKeepsAnAudioStream() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=2:r=25", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-shortest", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        auto streams = [&](const QString &path) {
+            return processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-show_entries", "stream=codec_type",
+                                                             "-of", "csv=p=0", path}).trimmed();
+        };
+        const QVector<Fragment> cut = {{0, 1.0, false}, {800, 1.0, true}, {1200, 1.0, false}};
+        const ZoomSegment zoom{1, 0, 2000, 1.5, ZoomSegment::Target::Point, QPointF(32, 24),
+                               ZoomSegment::Motion::Focused};
+        // The plain graph, the graph with cut sound, the frame renderer.
+        for (int route = 0; route < 3; ++route) {
+            VideoExportRequest request{input, dir.filePath(QStringLiteral("out%1.mp4").arg(route)), overlay};
+            request.includeAudio = false;
+            if (route == 1) request.fragments = cut;
+            if (route == 2) request.zooms = {zoom};
+            const DeliverResult result = writeVideoWithOverlay(request);
+            QVERIFY2(result.ok, qPrintable(result.error));
+            QCOMPARE(streams(request.outputPath), QByteArray("video"));
+        }
+    }
 };
 
 QTEST_GUILESS_MAIN(TestVideoExporter)

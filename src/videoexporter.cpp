@@ -225,7 +225,7 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const QRect view = req.baseView.isNull() ? content : req.baseView;
     const TimeMap time(source.durationMs, req.trimInMs, endMs, req.fragments);
     const bool pieces = !req.fragments.isEmpty();
-    const bool sound = pieces && source.hasAudio;
+    const bool sound = pieces && source.hasAudio && req.includeAudio;
     const CameraPath camera(req.zooms, time,
                             CameraFrame{QRectF(content),
                                         view == content ? 0.0 : double(view.width()) / view.height(),
@@ -306,7 +306,8 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
                 "[gb][gp]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"), "-an", output};
         } else {
             // Qt draws RGB; the BT.709 matrix also tags the output, so players do not guess.
-            const QStringList audio = !pieces ? QStringList{"-map", "1:a?"}
+            const QStringList audio = !req.includeAudio ? QStringList()
+                : !pieces ? QStringList{"-map", "1:a?"}
                 : sound ? QStringList{"-filter_complex", fragmentAudio(time.pieces(), req.trimInMs, QStringLiteral("[1:a]")),
                                       "-map", "[aout]"}
                         : QStringList();
@@ -504,7 +505,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     // before crop and framing (studio plan 4.3).
     if (pieces)
         filter += QStringLiteral("[pre];") + fragmentVideo(time.pieces(), req.trimInMs, QStringLiteral("[pre]"));
-    const bool sound = pieces && !gif && source.hasAudio;
+    const bool sound = pieces && !gif && source.hasAudio && req.includeAudio;
     const QString audioFilter = sound ? QStringLiteral(";") + fragmentAudio(time.pieces(), req.trimInMs, QStringLiteral("[0:a]"))
                                       : QString();
     if (!framed.isNull())
@@ -560,7 +561,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     const QStringList inputs = args;
     QStringList maps = {QStringLiteral("-map"), QStringLiteral("[v]")};
     if (sound) maps += {QStringLiteral("-map"), QStringLiteral("[aout]")};
-    else if (!gif && !pieces) maps += {QStringLiteral("-map"), QStringLiteral("0:a?")};
+    else if (!gif && !pieces && req.includeAudio) maps += {QStringLiteral("-map"), QStringLiteral("0:a?")};
     maps += {QStringLiteral("-threads:v"), QStringLiteral("2")};
     QStringList outputs;
     if (trimmed && !pieces) {
