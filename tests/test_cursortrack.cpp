@@ -49,16 +49,31 @@ private slots:
 
     void interpolatesVisiblePositions() {
         const auto r = parseCursorTrack(track(
-            "\"samples\":[[100,10,20],[200,20,40],[300,null,null],[400,5,6]]"), QSize(64, 48));
+            "\"samples\":[[100,10,20],[120,20,40],[300,null,null],[400,5,6]]"), QSize(64, 48));
         QVERIFY(r.ok);
         const CursorTrack &t = r.track;
         QVERIFY(!t.positionAt(99));
         QCOMPARE(*t.positionAt(100), QPointF(10, 20));
-        QCOMPARE(*t.positionAt(150), QPointF(15, 30));
+        QCOMPARE(*t.positionAt(110), QPointF(15, 30));
         // No interpolation into a hidden stretch, nothing while hidden.
         QCOMPARE(*t.positionAt(299), QPointF(20, 40));
         QVERIFY(!t.positionAt(350));
         QCOMPARE(*t.positionAt(5000), QPointF(5, 6));
+    }
+    void holdsThePositionWhileThePointerRests() {
+        // Boltsnap writes only when the pointer moves: a long gap is a pause,
+        // not a slow glide (its sidecar thins moves to 120 Hz).
+        const auto r = parseCursorTrack(track(
+            "\"samples\":[[0,10,10],[8,12,10],[2000,40,10],[2008,42,10]]"), QSize(64, 48));
+        QVERIFY(r.ok);
+        const CursorTrack &t = r.track;
+        QCOMPARE(*t.positionAt(4), QPointF(11, 10));
+        QCOMPARE(*t.positionAt(1000), QPointF(12, 10));
+        QCOMPARE(*t.positionAt(1990), QPointF(12, 10));
+        // The last sample period before the next move still glides.
+        const QPointF late = *t.positionAt(1996);
+        QVERIFY(late.x() > 12 && late.x() < 40);
+        QCOMPARE(*t.positionAt(2004), QPointF(41, 10));
     }
 
     void rejectsUnusableTracks() {
