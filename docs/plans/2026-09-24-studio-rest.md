@@ -492,7 +492,7 @@ Speichern, zweites ffprobe, Textvergleich statt Zustand, doppelte Uhr). `ctest` 
 | W6 | E1 | Zeitfenster: Modell und Export | `675e8a0` |
 | W6 | E2 | Masken-Spur und Leisten | `675e8a0` |
 | W6 | F1 | Studio-Presets | `dd54861` |
-| W6 | F2 | Motion Blur | |
+| W6 | F2 | Motion Blur | `9a42553` |
 | W7 | G1 | Audio-Probe und Wellenform-Daten | |
 | W7 | G2 | Wellenform-Spur | |
 | W7 | G3 | Ton in der Ausgabe | |
