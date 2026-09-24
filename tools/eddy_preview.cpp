@@ -214,6 +214,22 @@ int main(int argc, char **argv) {
             painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
         }
     }
+    if (mode.contains(QStringLiteral("export"))) {
+        QTimer::singleShot(300, [&] {
+            auto *menu = window->findChild<QMenu *>(QStringLiteral("ExportMenu"));
+            pm = window->grab();
+            if (menu) {
+                QPainter painter(&pm);
+                painter.drawPixmap(window->mapFromGlobal(menu->pos()), menu->grab());
+                menu->close();
+            }
+        });
+        // The export popover at Save, painted where it opens.
+        auto *save = window->findChild<QToolButton *>(QStringLiteral("Save"));
+        if (save && save->menu()) {
+            save->showMenu();   // blocks: the menu is closed from a timer after the grab
+        }
+    }
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");
     pm.save(out);
     return 0;

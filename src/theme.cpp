@@ -75,13 +75,13 @@ QString styleSheet(bool dark) {
         ? QList<QPair<QString, QString>>{
             {"@bar-active", "#2E2E2E"}, {"@bar-hover", "#212121"},
             {"@bar", "rgba(0, 0, 0, 153)"}, {"@chip-on-fg", "#EEEEEE"}, {"@chip-on", "#414141"},
-            {"@raise3", "#414141"}, {"@raise2", "#353535"},
+            {"@raise3", "#414141"}, {"@raise2", "#353535"}, {"@segment-on", "#4A4A4A"},
             {"@raise1", "#202020"}, {"@faint", "#5C5C5C"},
             {"@sub", "#999999"}, {"@fg", "#EEEEEE"}, {"@bg", "#181818"}}
         : QList<QPair<QString, QString>>{
             {"@bar-active", "rgba(0, 0, 0, 24)"}, {"@bar-hover", "rgba(0, 0, 0, 14)"},
             {"@bar", "#F1F1F1"}, {"@chip-on-fg", "#FAFAFA"}, {"@chip-on", "#1A1A1A"},
-            {"@raise3", "#E0E0E0"}, {"@raise2", "#E9E9E9"},
+            {"@raise3", "#E0E0E0"}, {"@raise2", "#E9E9E9"}, {"@segment-on", "#FFFFFF"},
             {"@raise1", "#F1F1F1"}, {"@faint", "#A6A6A6"},
             {"@sub", "#6E6E6E"}, {"@fg", "#1A1A1A"}, {"@bg", "#FAFAFA"}};
     for (const auto &[token, color] : tokens) qss.replace(token, color);

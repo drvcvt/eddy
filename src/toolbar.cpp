@@ -1,4 +1,5 @@
 #include "toolbar.h"
+#include <QWidgetAction>
 #include "colorpopover.h"
 #include "theme.h"
 #include <QHBoxLayout>
@@ -18,6 +19,24 @@
 #include <cmath>
 
 namespace eddy {
+
+QMenu *Toolbar::enableExportMenu(QWidget *panel) {
+    auto *save = findChild<QToolButton *>(QStringLiteral("Save"));
+    if (!save || save->menu()) return save ? save->menu() : nullptr;
+    auto *menu = new QMenu(save);
+    menu->setObjectName(QStringLiteral("ExportMenu"));
+    menu->setWindowFlag(Qt::FramelessWindowHint);
+    menu->setAttribute(Qt::WA_TranslucentBackground);
+    auto *action = new QWidgetAction(menu);
+    action->setDefaultWidget(panel);
+    menu->addAction(action);
+    save->setMenu(menu);
+    save->setPopupMode(QToolButton::DelayedPopup);
+    save->setFocusPolicy(Qt::StrongFocus);
+    save->setToolTip(tr("Save\tEnter\nHold for export options"));
+    save->setAccessibleName(tr("Save; hold or press Alt+Down for export options"));
+    return menu;
+}
 
 void Toolbar::enableVideoFrameCopy() {
     auto *copy = findChild<QToolButton *>(QStringLiteral("Copy"));

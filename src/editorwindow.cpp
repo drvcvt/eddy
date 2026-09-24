@@ -25,6 +25,7 @@
 #include "previewitems.h"
 #include "zoomlane.h"
 #include "zoombar.h"
+#include "exportpanel.h"
 #include "minimap.h"
 #include "motionicon.h"
 #include <QGraphicsScene>
@@ -534,6 +535,20 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
     setupCrop();
     if (isVideo()) {
+        m_exportSettings = loadExportSettings(configPath());
+        m_exportPanel = new ExportPanel;
+        m_exportPanel->setSettings(m_exportSettings);
+        QMenu *exportMenu = m_toolbar->enableExportMenu(m_exportPanel);
+        connect(exportMenu, &QMenu::aboutToShow, this, &EditorWindow::openExportPanel);
+        connect(m_exportPanel, &ExportPanel::settingsChanged, this, [this](const ExportSettings &settings) {
+            m_exportSettings = settings;
+            saveExportSettings(configPath(), settings);
+            onVideoContentChanged();   // the cached export no longer matches
+        });
+        connect(m_exportPanel, &ExportPanel::saveRequested, this, [this, exportMenu] {
+            exportMenu->close();
+            save();
+        });
         m_cameraRebuild = new QTimer(this);
         m_cameraRebuild->setSingleShot(true);
         m_cameraRebuild->setInterval(16);
@@ -1893,7 +1908,8 @@ bool EditorWindow::hasTrim() const {
 
 bool EditorWindow::hasVideoEdits() const {
     return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty() || m_studio.style.active()
-        || !m_studio.zooms.isEmpty() || cameraBase() != cameraContent();
+        || !m_studio.zooms.isEmpty() || cameraBase() != cameraContent()
+        || m_exportSettings != ExportSettings{};
 }
 
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
@@ -2033,9 +2049,7 @@ void EditorWindow::scheduleVideoExportCache(int delayMs) {
 }
 
 QString EditorWindow::createVideoTempPath() const {
-    const QString suffix = QFileInfo(m_media.path).suffix().isEmpty()
-        ? QStringLiteral("mp4")
-        : QFileInfo(m_media.path).suffix();
+    const QString suffix = exportSuffix(m_exportSettings, m_media.path);
     QTemporaryFile tmp(QDir::tempPath() + QStringLiteral("/eddy-video-XXXXXX.") + suffix);
     tmp.setAutoRemove(false);
     if (!tmp.open()) {
@@ -2070,6 +2084,8 @@ void EditorWindow::startVideoExportCache() {
     request.cropRect = m_cropRect;
     request.studio = m_studio.style;
     request.zooms = m_studio.zooms;
+    request.maxShortSide = m_exportSettings.shortSide;
+    request.maxFps = m_exportSettings.fps;
     if (cameraBase() != cameraContent()) request.baseView = cameraBase();
     m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
     request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
@@ -2357,6 +2373,11 @@ void EditorWindow::saveVideo() {
         sendToShelf();
         return;
     }
+    if (route == SaveRoute::BoltsnapCard && !shelfTakes()) {
+        m_toast->showMessage(tr("The shelf takes MP4 only, copied instead"));
+        copy();
+        return;
+    }
     if (route == SaveRoute::BoltsnapCard) {
         m_closeAfterVideoCard = m_cfg.earlyExit;
         if (!hasVideoEdits()) {
@@ -2379,17 +2400,13 @@ void EditorWindow::saveVideo() {
     } else if (m_cli.output.toStdout) {
         std::fprintf(stderr, "eddy: video export to stdout is not supported\n");
     } else if (route == SaveRoute::ExplicitOutput && !m_cli.output.saveDir.isEmpty()) {
-        const QString suffix = QFileInfo(m_media.path).suffix().isEmpty()
-            ? QStringLiteral("mp4")
-            : QFileInfo(m_media.path).suffix();
+        const QString suffix = exportSuffix(m_exportSettings, m_media.path);
         path = QDir(m_cli.output.saveDir).filePath(
             QStringLiteral("eddy-")
             + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss")
             + QStringLiteral(".") + suffix);
     } else if (route == SaveRoute::ConfigDirectory) {
-        const QString suffix = QFileInfo(m_media.path).suffix().isEmpty()
-            ? QStringLiteral("mp4")
-            : QFileInfo(m_media.path).suffix();
+        const QString suffix = exportSuffix(m_exportSettings, m_media.path);
         path = QDir(m_cfg.saveDir).filePath(
             QStringLiteral("eddy-")
             + QDateTime::currentDateTime().toString("yyyyMMdd-hhmmss")
@@ -2510,8 +2527,21 @@ void EditorWindow::save() {
     if (m_cfg.earlyExit) close();
 }
 
+// Boltsnap's shelf offers video cards as MP4 only (studio plan 6.8).
+bool EditorWindow::shelfTakes() const {
+    return exportSuffix(m_exportSettings, m_media.path) == QLatin1String("mp4")
+        || m_exportSettings.format == ExportSettings::Format::Original;
+}
+
 void EditorWindow::sendToShelf() {
     finishCrop();
+    if (isVideo() && !shelfTakes()) {
+        m_videoShelfFallbackPending = false;
+        m_closeAfterVideoShelf = false;
+        m_toast->showMessage(tr("The shelf takes MP4 only, copied instead"));
+        copy();
+        return;
+    }
     if (isVideo()) {
         if (!hasVideoEdits()) {
             const bool copyAfter = m_copyVideoPending;
@@ -2536,6 +2566,12 @@ void EditorWindow::sendToShelf() {
         return;
     }
     postImageToShelf(exportComposite(), true);
+}
+
+void EditorWindow::openExportPanel() {
+    const QSize framed = studioLayout(cameraBase().size(), m_studio.style).output;
+    m_exportPanel->setOutput(framed, qint64(m_timeMap.outputDurationMs()), m_media.path);
+    m_exportPanel->setSettings(m_exportSettings);
 }
 
 void EditorWindow::copy() {

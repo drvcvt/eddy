@@ -35,6 +35,7 @@ add_library(eddy_core STATIC
     src/motionicon.cpp
     src/zoombar.cpp
     src/exportsettings.cpp
+    src/exportpanel.cpp
     src/minimap.cpp
     src/loupe.cpp
     src/colorpopover.cpp
@@ -156,6 +157,7 @@ eddy_test(test_exporter)
 eddy_test(test_boltsnapipc)
 eddy_test(test_videoexporter)
 eddy_test(test_exportsettings)
+eddy_test(test_exportpanel)
 eddy_test(test_imageio)
 eddy_test(test_items)
 eddy_test(test_ocr)

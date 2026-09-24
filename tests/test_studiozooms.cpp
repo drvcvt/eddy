@@ -16,6 +16,9 @@
 #include "studiopopover.h"
 #include "videotimeline.h"
 #include "zoombar.h"
+#include "exportpanel.h"
+#include "exportsettings.h"
+#include <QDir>
 #include "studiostyle.h"
 #include <QLabel>
 
@@ -261,6 +264,35 @@ private slots:
         QTest::keyClick(&w, Qt::Key_Z, Qt::ControlModifier);   // takes the zoom away again
         QTest::mouseRelease(timeline, Qt::LeftButton, Qt::NoModifier, QPoint(xAt(2000), y));
         QVERIFY2(w.studioDocument().zooms.isEmpty(), "the release brought the undone zoom back");
+    }
+    void exportPresetsReachEverySaveRoute() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString clip = markerClip(dir);
+        Config cfg; cfg.animations = false; cfg.copyOnSave = false;
+        CliOptions cli; cli.configPath = dir.filePath(QStringLiteral("config"));
+        cli.output.saveDir = dir.path();
+        EditorWindow w(videoDoc(clip), cfg, cli);
+        w.show();
+        auto *menu = w.findChild<QMenu *>(QStringLiteral("ExportMenu"));
+        QVERIFY(menu);
+        auto *panel = menu->findChild<ExportPanel *>();
+        QVERIFY(panel);
+        emit menu->aboutToShow();
+        QCOMPARE(panel->findChild<QLabel *>(QStringLiteral("ExportSummary"))->text(),
+                 QStringLiteral("320 × 180   0:04"));
+        for (auto *b : panel->findChildren<QToolButton *>(QStringLiteral("ExportSegment")))
+            if (b->accessibleName() == QStringLiteral("Preset GIF")) b->click();
+        // Remembered for the next window.
+        QCOMPARE(loadExportSettings(cli.configPath), exportPreset(ExportPreset::Gif));
+        panel->findChild<QToolButton *>(QStringLiteral("ExportSave"))->click();
+        QTRY_VERIFY_WITH_TIMEOUT(!QDir(dir.path()).entryList({QStringLiteral("eddy-*.gif")}).isEmpty(), 20000);
+        const QString gif = dir.filePath(QDir(dir.path()).entryList({QStringLiteral("eddy-*.gif")}).first());
+        QProcess probe;
+        probe.start(QStringLiteral("ffprobe"), {"-v", "error", "-show_entries", "stream=codec_name,width,height",
+                                               "-of", "csv=p=0", gif});
+        QVERIFY(probe.waitForFinished(10000));
+        QCOMPARE(probe.readAllStandardOutput().trimmed(), QByteArray("gif,320,180"));
     }
     void exportedZoomMatchesThePreview() {
         if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
