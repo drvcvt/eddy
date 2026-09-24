@@ -343,6 +343,7 @@ private slots:
         ToolController tools(&scene, &undo, QImage(240,140,QImage::Format_ARGB32_Premultiplied));
         tools.setTool(ToolType::Text);
         Canvas canvas(&scene, &tools);
+        canvas.setSnapping(false);   // the exact pointer offset is the point here
         canvas.resize(260,160);
         canvas.show();
         auto *text = new TextItem(QStringLiteral("Move me"), Qt::red, 18);

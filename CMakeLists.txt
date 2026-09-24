@@ -71,6 +71,7 @@ add_library(eddy_core STATIC
     src/fragments.cpp
     src/zoomsuggest.cpp
     src/stepbar.cpp
+    src/snapping.cpp
     src/audiowaveform.cpp
     src/studiorenderer.cpp
     src/renderexport.cpp
@@ -167,6 +168,7 @@ eddy_test(test_fragments)
 eddy_test(test_zoomsuggest)
 eddy_test(test_audiowaveform)
 eddy_test(test_stepitem)
+eddy_test(test_snapping)
 eddy_test(test_studiorenderer)
 eddy_test(test_renderexport)
 eddy_test(test_exporter)
