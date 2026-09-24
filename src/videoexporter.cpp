@@ -94,6 +94,50 @@ static QString appendBlurFilters(QString &filter, QString current, const QVector
     return current;
 }
 
+static bool hasAudioStream(const QString &path) {
+    const QString ffprobe = QStandardPaths::findExecutable(QStringLiteral("ffprobe"));
+    if (ffprobe.isEmpty()) return false;
+    QProcess p;
+    p.start(ffprobe, {"-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", path});
+    return p.waitForFinished(15000) && !p.readAllStandardOutput().trimmed().isEmpty();
+}
+
+static QString seconds(double ms) { return QString::number(ms / 1000.0, 'f', 4); }
+
+// The kept pieces of the input after `label`, one after another: each trimmed
+// relative to the input's first frame at `originMs` and sped up. The result is
+// the unlabelled end of the chain (studio plan 4.3).
+static QString fragmentVideo(const QVector<TimePiece> &pieces, double originMs, const QString &label) {
+    QString f = label + QStringLiteral("split=%1").arg(pieces.size());
+    for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[fs%1]").arg(i);
+    f += QLatin1Char(';');
+    for (int i = 0; i < pieces.size(); ++i)
+        f += QStringLiteral("[fs%1]trim=start=%2:end=%3,setpts=(PTS-STARTPTS)/%4[fv%1];")
+                 .arg(i).arg(seconds(pieces[i].srcStart - originMs), seconds(pieces[i].srcEnd - originMs))
+                 .arg(pieces[i].speed);
+    for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[fv%1]").arg(i);
+    return f + QStringLiteral("concat=n=%1:v=1:a=0").arg(pieces.size());
+}
+
+// The same pieces of `input`'s sound, ending in [aout]. atempo takes 0.5 to 2
+// per stage, so slower and faster speeds chain it.
+static QString fragmentAudio(const QVector<TimePiece> &pieces, double originMs, const QString &input) {
+    QString f = input + QStringLiteral("asplit=%1").arg(pieces.size());
+    for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[as%1]").arg(i);
+    f += QLatin1Char(';');
+    for (int i = 0; i < pieces.size(); ++i) {
+        QString tempo;
+        double speed = pieces[i].speed;
+        for (; speed < 0.5; speed /= 0.5) tempo += QStringLiteral(",atempo=0.5");
+        for (; speed > 2.0; speed /= 2.0) tempo += QStringLiteral(",atempo=2");
+        if (speed != 1.0) tempo += QStringLiteral(",atempo=%1").arg(speed);
+        f += QStringLiteral("[as%1]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS%4[fa%1];")
+                 .arg(i).arg(seconds(pieces[i].srcStart - originMs), seconds(pieces[i].srcEnd - originMs), tempo);
+    }
+    for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[fa%1]").arg(i);
+    return f + QStringLiteral("concat=n=%1:v=0:a=1[aout]").arg(pieces.size());
+}
+
 // Codec arguments for `encoder`; empty means the CPU arguments as given.
 static QStringList encoderCodecArgs(const QString &encoder, const QStringList &cpuArgs, bool trimmed) {
     if (encoder.isEmpty()) return cpuArgs;
@@ -177,7 +221,10 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const qint64 endMs = trimmed ? req.trimOutMs : source.durationMs;
     const QRect content = req.cropRect.isNull() ? req.overlay.rect() : req.cropRect;
     const QRect view = req.baseView.isNull() ? content : req.baseView;
-    const CameraPath camera(req.zooms, TimeMap(source.durationMs, req.trimInMs, endMs, {}),
+    const TimeMap time(source.durationMs, req.trimInMs, endMs, req.fragments);
+    const bool pieces = !req.fragments.isEmpty();
+    const bool sound = pieces && hasAudioStream(req.inputPath);
+    const CameraPath camera(req.zooms, time,
                             CameraFrame{QRectF(content),
                                         view == content ? 0.0 : double(view.width()) / view.height(),
                                         QRectF(view).center()});
@@ -196,15 +243,20 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
         .arg(req.overlay.width()).arg(req.overlay.height()).arg(fps);
     const QString blurred = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
                                               req.overlay.size());
-    filter += blurred + QStringLiteral("format=bgra[v]");
+    if (pieces)   // sped-up pieces change the rate, so fps comes again after them
+        filter += blurred + QStringLiteral("null[pre];") + fragmentVideo(time.pieces(), req.trimInMs, QStringLiteral("[pre]"))
+                  + QStringLiteral(",fps=%1,format=bgra[v]").arg(fps);
+    else
+        filter += blurred + QStringLiteral("format=bgra[v]");
     RenderPipeline job;
     job.ffmpeg = ffmpeg;
     job.sourceSize = req.overlay.size();
+    // With pieces the length limits what is read, not what comes out.
     job.decodeArgs = QStringList{"-hide_banner", "-loglevel", "error", "-nostdin"} + seek
-        + QStringList{"-i", req.inputPath} + length
+        + (pieces ? length : QStringList()) + QStringList{"-i", req.inputPath} + (pieces ? QStringList() : length)
         + QStringList{"-filter_complex", filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "-"};
     job.outputSize = size;
-    job.expectedFrames = qRound64((endMs - req.trimInMs) * fps / 1000.0);
+    job.expectedFrames = qRound64(time.outputDurationMs() * fps / 1000.0);
     job.render = [&](qint64 index, const QImage &frame, QImage &out) {
         renderer.render(frame, camera.rectAt(index * 1000.0 / fps), out);
     };
@@ -234,10 +286,14 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
                 "[gb][gp]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"), "-an", output};
         } else {
             // Qt draws RGB; the BT.709 matrix also tags the output, so players do not guess.
-            job.encodeArgs = input + seek + length + QStringList{"-i", req.inputPath, "-map", "0:v", "-map", "1:a?",
-                "-vf", shrink + QStringLiteral("scale=out_color_matrix=bt709:out_range=tv,format=")
+            const QStringList audio = !pieces ? QStringList{"-map", "1:a?"}
+                : sound ? QStringList{"-filter_complex", fragmentAudio(time.pieces(), req.trimInMs, QStringLiteral("[1:a]")),
+                                      "-map", "[aout]"}
+                        : QStringList();
+            job.encodeArgs = input + seek + length + QStringList{"-i", req.inputPath, "-map", "0:v"} + audio
+                + QStringList{"-vf", shrink + QStringLiteral("scale=out_color_matrix=bt709:out_range=tv,format=")
                            + (device.isEmpty() ? QStringLiteral("yuv420p") : QStringLiteral("nv12,hwupload"))}
-                + encoderCodecArgs(encoder, cpuCodecs, trimmed) + QStringList{"-shortest", output};
+                + encoderCodecArgs(encoder, cpuCodecs, trimmed || pieces) + QStringList{"-shortest", output};
         }
         job.timeoutMs = req.timeoutMs < 0 ? -1 : qMax(0, req.timeoutMs - int(elapsed.elapsed()));
         r = runRenderPipeline(job);
@@ -280,6 +336,8 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     // What the frame holds while the camera rests: the base view, else the crop.
     const QRect framed = view.isNull() ? crop : view;
     const bool trimmed = req.trimOutMs >= 0;
+    const bool pieces = !req.fragments.isEmpty();
+    const bool reencodeAudio = trimmed || pieces;
     if (req.trimInMs < 0 || (trimmed && req.trimOutMs <= req.trimInMs)) {
         r.error = QStringLiteral("invalid video trim range");
         return r;
@@ -363,10 +421,10 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
             QStringLiteral("-preset"), QStringLiteral("veryfast"),
             QStringLiteral("-crf"), QStringLiteral("18"),
             QStringLiteral("-pix_fmt"), QStringLiteral("yuv420p"),
-            QStringLiteral("-c:a"), trimmed ? QStringLiteral("aac") : QStringLiteral("copy"),
+            QStringLiteral("-c:a"), reencodeAudio ? QStringLiteral("aac") : QStringLiteral("copy"),
             QStringLiteral("-movflags"), QStringLiteral("+faststart"),
         };
-        if (trimmed)
+        if (reencodeAudio)
             codecArgs += {QStringLiteral("-b:a"), QStringLiteral("192k")};
     }
 
@@ -377,8 +435,8 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     const VideoInfo source = probeVideoFile(req.inputPath).info;
     const int maxFps = std::clamp(req.maxFps, 1, 60);
     const bool highFps = source.fps > maxFps;
-    const qint64 outputMs = trimmed ? req.trimOutMs - req.trimInMs
-                                    : source.durationMs - req.trimInMs;
+    const TimeMap time(source.durationMs, req.trimInMs, trimmed ? req.trimOutMs : source.durationMs, req.fragments);
+    const qint64 outputMs = qRound64(time.outputDurationMs());
     if (render) {
         const DeliverResult rendered = writeRendered(req, ffmpeg, actualOutput, codecArgs, source,
                                                      overlayVisible, elapsed);
@@ -391,6 +449,13 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
                                               req.overlay.size());
     filter += current + (overlayVisible ? QStringLiteral("[1:v]overlay=0:0:format=auto:shortest=1")
                                        : QStringLiteral("null"));
+    // Pieces come after blur and annotations, which live in source time, and
+    // before crop and framing (studio plan 4.3).
+    if (pieces)
+        filter += QStringLiteral("[pre];") + fragmentVideo(time.pieces(), req.trimInMs, QStringLiteral("[pre]"));
+    const bool sound = pieces && !gif && hasAudioStream(req.inputPath);
+    const QString audioFilter = sound ? QStringLiteral(";") + fragmentAudio(time.pieces(), req.trimInMs, QStringLiteral("[0:a]"))
+                                      : QString();
     if (!framed.isNull())
         filter += QStringLiteral(",crop=%1:%2:%3:%4").arg(framed.width()).arg(framed.height())
                       .arg(framed.x()).arg(framed.y());
@@ -431,6 +496,9 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
             QStringLiteral("-ss"), QString::number(req.trimInMs / 1000.0, 'f', 3),
         };
     }
+    // With pieces, the length only limits what is read; the pieces set the output.
+    if (pieces && trimmed)
+        args += {QStringLiteral("-t"), QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3)};
     args += {QStringLiteral("-i"), req.inputPath};
     if (overlayVisible)
         args += {QStringLiteral("-loop"), QStringLiteral("1"), QStringLiteral("-i"), overlayPath};
@@ -438,10 +506,11 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         args += {QStringLiteral("-i"), studioBackground.fileName(), QStringLiteral("-i"), studioMask.fileName()};
     const QStringList inputs = args;
     QStringList maps = {QStringLiteral("-map"), QStringLiteral("[v]")};
-    if (!gif) maps += {QStringLiteral("-map"), QStringLiteral("0:a?")};
+    if (sound) maps += {QStringLiteral("-map"), QStringLiteral("[aout]")};
+    else if (!gif && !pieces) maps += {QStringLiteral("-map"), QStringLiteral("0:a?")};
     maps += {QStringLiteral("-threads:v"), QStringLiteral("2")};
     QStringList outputs;
-    if (trimmed) {
+    if (trimmed && !pieces) {
         outputs += {
             QStringLiteral("-t"),
             QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3),
@@ -465,11 +534,11 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
             return r;
         }
         const QStringList device = deviceArgs(encoder);
-        const QStringList codecs = encoderCodecArgs(encoder, codecArgs, trimmed);
+        const QStringList codecs = encoderCodecArgs(encoder, codecArgs, reencodeAudio);
         QProcess p;
         p.start(ffmpeg, device + inputs + QStringList{"-filter_complex", filter
             + (device.isEmpty() ? QString() : QStringLiteral(",format=nv12,hwupload"))
-            + "[v]"} + maps + codecs + outputs);
+            + "[v]" + audioFilter} + maps + codecs + outputs);
         QElapsedTimer quiet;
         quiet.start();
         qint64 lastUs = -1;
