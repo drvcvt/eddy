@@ -26,6 +26,7 @@ static StudioDocument everything() {
     d.keepZoomedIn = true;
     d.keepCenter = QPointF(800, 540);
     d.motion = ZoomSegment::Motion::Smooth;
+    d.keepFollowsCursor = false;
     return d;
 }
 

@@ -38,6 +38,9 @@ struct StudioDocument {
     QVector<Fragment> fragments;     // empty: the whole source at 1x
     bool keepZoomedIn = false;
     QPointF keepCenter;              // where the narrower view sits without a cursor track
+    // With a cursor track the narrower view follows the pointer until its
+    // centre is dragged by hand (decision E10).
+    bool keepFollowsCursor = true;
     // Motion for new zooms; the Camera page sets it and every zoom at once.
     ZoomSegment::Motion motion = ZoomSegment::Motion::Focused;
 

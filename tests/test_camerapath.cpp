@@ -140,6 +140,39 @@ private slots:
         QVERIFY(qAbs(p.zoomAt(8000) - 2.0) < 1e-3);
     }
 
+    void cursorZoomsFollowThePointerWithADeadZone() {
+        CursorTrack track;
+        track.videoSize = QSize(1920, 1080);
+        auto at = [&](qint64 ms, double x, double y, bool visible = true) {
+            track.samples.append({ms, QPointF(x, y), visible});
+        };
+        at(0, 960, 540);
+        at(2000, 1000, 540);      // inside the middle 40 %: the camera stays
+        at(3000, 1500, 540);      // outside: it follows until the pointer is on the box's edge
+        at(6500, 0, 0, false);    // gone: the camera holds
+        ZoomSegment z = zoom(1000, 9000, 2.0, QPointF(0, 0));
+        z.target = ZoomSegment::Target::Cursor;
+        const TimeMap time(10000, 0, 10000, {});
+        const CameraPath p({z}, time, CameraFrame{kContent, 0, {}, &track, false});
+        QVERIFY(qAbs(p.rectAt(2800).center().x() - 960) < 1);
+        // Window 960 wide, dead zone 40 %: the pointer ends 192 px right of the centre.
+        QVERIFY(qAbs(p.rectAt(6000).center().x() - (1500 - 192)) < 1);
+        QVERIFY(qAbs(p.rectAt(8500).center().x() - (1500 - 192)) < 1);
+        QVERIFY(qAbs(p.rectAt(9800).width() - 1920) < 20);   // back out after the zoom
+    }
+    void aFollowingBaseViewKeepsThePointerInIt() {
+        CursorTrack track;
+        track.videoSize = QSize(1920, 1080);
+        track.samples = {{0, QPointF(960, 540), true}, {2000, QPointF(1700, 540), true}};
+        const TimeMap time(10000, 0, 10000, {});
+        const CameraPath fixed({}, time, CameraFrame{kContent, 9.0 / 16, QPointF(960, 540), &track, false});
+        const CameraPath follows({}, time, CameraFrame{kContent, 9.0 / 16, QPointF(960, 540), &track, true});
+        QVERIFY(qAbs(fixed.rectAt(5000).center().x() - 960) < 1);
+        // Base 607.5 wide: the pointer rests 0.2 of it right of the centre.
+        QVERIFY(qAbs(follows.rectAt(5000).center().x() - (1700 - 121.5)) < 1);
+        QVERIFY(QRectF(kContent).contains(follows.rectAt(5000)));
+    }
+
     void narrowOutputsShowTheLargestFittingWindow() {
         const TimeMap time(10000, 0, 10000, {});
         const CameraPath left({}, time, CameraFrame{QRectF(0, 0, 1600, 900), 9.0 / 16, QPointF(100, 450)});

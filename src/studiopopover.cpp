@@ -224,8 +224,18 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         m_keep->setCursor(Qt::PointingHandCursor);
         rows->addWidget(m_keep, 1, 1, 1, 3, Qt::AlignLeft);
         connect(m_keep, &QToolButton::toggled, this, &StudioPopover::keepZoomedInChanged);
+        if (camera.suggestAvailable) {
+            auto *suggest = new QToolButton(cameraPage);
+            suggest->setObjectName(QStringLiteral("StudioSuggest"));
+            suggest->setText(tr("Suggest zooms"));
+            suggest->setToolTip(tr("Add zooms where the pointer clicks or rests"));
+            suggest->setFixedHeight(theme::kFloatButton.height());
+            suggest->setCursor(Qt::PointingHandCursor);
+            rows->addWidget(suggest, 2, 1, 1, 3, Qt::AlignLeft);
+            connect(suggest, &QToolButton::clicked, this, &StudioPopover::suggestRequested);
+        }
         setKeepZoomedInAvailable(camera.keepZoomedInAvailable);
-        rows->setRowStretch(2, 1);
+        rows->setRowStretch(3, 1);
         outer->addWidget(cameraPage);
         cameraPage->hide();
         // Each page takes its own size; the right edge stays under the Studio button.

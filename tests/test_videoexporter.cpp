@@ -685,6 +685,47 @@ private slots:
             QVERIFY2(p.red() > 200 && p.blue() < 60, qPrintable(QStringLiteral("%1: %2").arg(x).arg(p.name())));
         }
     }
+    void theCameraFollowsThePointerTrack() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QImage halves(320, 180, QImage::Format_RGB32);
+        {
+            QPainter p(&halves);
+            p.fillRect(0, 0, 160, 180, Qt::red);
+            p.fillRect(160, 0, 160, 180, Qt::blue);
+        }
+        const QString still = dir.filePath(QStringLiteral("halves.png"));
+        QVERIFY(halves.save(still));
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-loop", "1", "-i", still, "-t", "1",
+            "-r", "30", "-vf", "setsar=1,format=yuv420p", input}));
+        auto track = std::make_shared<CursorTrack>();
+        track->videoSize = QSize(320, 180);
+        track->samples = {{0, QPointF(300, 90), true}};   // the pointer rests on the blue side
+        QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        auto centre = [&](const QString &file) {
+            const QString frame = dir.filePath(QStringLiteral("frame.png"));
+            runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", "0.5", "-i", file, "-frames:v", "1", frame});
+            const QImage image(frame);
+            return image.pixelColor(image.width() / 2, image.height() / 2);
+        };
+        // A Cursor zoom looks where the pointer is, whatever its point says.
+        VideoExportRequest zoomed{input, dir.filePath(QStringLiteral("zoom.mp4")), overlay};
+        zoomed.cursorTrack = track;
+        zoomed.zooms = {{1, 0, 1000, 2.0, ZoomSegment::Target::Cursor, QPointF(20, 20), ZoomSegment::Motion::Instant}};
+        QVERIFY2(writeVideoWithOverlay(zoomed).ok, "cursor zoom export failed");
+        QVERIFY2(centre(zoomed.outputPath).blue() > 200, qPrintable(centre(zoomed.outputPath).name()));
+        // A narrowed base view follows it too, without any zoom.
+        VideoExportRequest follows{input, dir.filePath(QStringLiteral("follow.mp4")), overlay};
+        follows.cursorTrack = track;
+        follows.baseView = QRect(110, 0, 100, 180);
+        follows.baseFollowsCursor = true;
+        QVERIFY(writeVideoWithOverlay(follows).ok);
+        QCOMPARE(qRound(probeVideoFile(follows.outputPath).info.fps), 60);   // it moves, so it renders
+        QVERIFY2(centre(follows.outputPath).blue() > 200, qPrintable(centre(follows.outputPath).name()));
+    }
     void rejectsABaseViewOutsideTheCrop() {
         QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
         VideoExportRequest request{QStringLiteral("in.mp4"), QStringLiteral("out.mp4"), overlay};

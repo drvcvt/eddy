@@ -219,7 +219,7 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const CameraPath camera(req.zooms, time,
                             CameraFrame{QRectF(content),
                                         view == content ? 0.0 : double(view.width()) / view.height(),
-                                        QRectF(view).center()});
+                                        QRectF(view).center(), req.cursorTrack.get(), req.baseFollowsCursor});
     const StudioRenderer renderer(req.overlay.size(), view, req.studio,
                                   overlayVisible ? req.overlay : QImage());
     const QSize size = renderer.outputSize();
@@ -603,7 +603,9 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
 }
 
 DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
-    return writeVideo(req, !req.zooms.isEmpty());
+    // A base view that follows the pointer moves over time like a zoom does.
+    const bool follows = req.baseFollowsCursor && req.cursorTrack && !req.baseView.isNull();
+    return writeVideo(req, !req.zooms.isEmpty() || follows);
 }
 
 DeliverResult writeVideoRendered(const VideoExportRequest &req) {
