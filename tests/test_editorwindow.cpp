@@ -1729,7 +1729,7 @@ private slots:
         QVERIFY2(QFileInfo::exists(video), "handoff removed the original video");
     }
 #endif
-    void failedVideoSaveToShelfUsesOnlyTheWindowsClipboardFallback() {
+    void failedVideoSaveToShelfFallsBackToTheClipboard() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString video = dir.filePath(QStringLiteral("input.mp4"));
@@ -1757,14 +1757,10 @@ private slots:
         window.save();
         QTRY_COMPARE_WITH_TIMEOUT(toast->text(),
                                   QStringLiteral("Boltsnap shelf unavailable"), 3000);
-#ifdef Q_OS_WIN
         QVERIFY(QGuiApplication::clipboard()->mimeData()->hasUrls());
         QCOMPARE(QFileInfo(QGuiApplication::clipboard()->mimeData()->urls().first().toLocalFile())
                      .canonicalFilePath(),
                  QFileInfo(video).canonicalFilePath());
-#else
-        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("sentinel"));
-#endif
 
         if (oldSocket.isNull())
             qunsetenv("EDDY_BOLTSNAP_SOCKET");

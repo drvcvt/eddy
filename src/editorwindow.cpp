@@ -2038,9 +2038,7 @@ void EditorWindow::saveVideo() {
     if (route == SaveRoute::Shelf) {
         m_closeAfterVideoShelf = m_cfg.earlyExit;
         m_copyVideoPending = m_copyVideoPending || m_cfg.copyOnSave;
-#ifdef Q_OS_WIN
-        m_videoShelfFallbackPending = true;
-#endif
+        m_videoShelfFallbackPending = true;   // no shelf: the clipboard still gets the video
         sendToShelf();
         return;
     }
