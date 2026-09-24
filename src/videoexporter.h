@@ -3,7 +3,9 @@
 #include <QRect>
 #include <QString>
 #include <QVector>
+#include <functional>
 #include "exporter.h"
+#include "studiostyle.h"
 
 namespace eddy {
 
@@ -14,8 +16,18 @@ struct VideoExportRequest {
     qint64 trimInMs = 0;
     qint64 trimOutMs = -1;
     int timeoutMs = 30 * 60 * 1000;
+    // An encoder whose output position does not advance this long is killed;
+    // a stalled hardware encoder falls back to the CPU encoder.
+    int stallTimeoutMs = 60 * 1000;
     QVector<QRect> blurRects;
     QRect cropRect;
+    StudioStyle studio;   // framing around the (cropped) video; off by default
+    // Called from the export thread with 0-99 as encoding advances, or -1
+    // while the output length is unknown.
+    std::function<void(int percent)> progress;
+    // Polled from the export thread; returning true kills ffmpeg and fails
+    // the export with "video export cancelled".
+    std::function<bool()> cancelled;
 };
 
 DeliverResult replaceFileAtomically(const QString &from, const QString &to);

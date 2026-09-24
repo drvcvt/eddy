@@ -14,6 +14,9 @@
 #include "videotimeline.h"
 #include "items/spotlightitem.h"
 #include "undocommands.h"
+#include "studiopopover.h"
+#include <QUndoStack>
+#include <QSlider>
 #include <QMediaPlayer>
 #include <QAudioOutput>
 #include <QSlider>
@@ -274,7 +277,7 @@ private slots:
         for (const char *name : {"Undo", "Redo", "move", "arrow", "pen", "rect",
                                  "ellipse", "highlight", "text", "redact", "spotlight",
                                  "WidthS", "WidthM", "WidthL", "Swatch", "Save", "Copy",
-                                 "SendToShelf", "Theme"}) {
+                                 "SendToShelf", "Studio", "Theme"}) {
             auto *button = window.findChild<QToolButton *>(QString::fromLatin1(name));
             QVERIFY2(button, name);
             QVERIFY2(button->isVisible(), name);
@@ -1186,10 +1189,124 @@ private slots:
 
         w.sendToShelf();
         QVERIFY(toast->text().contains(QStringLiteral("Preparing")));
-        QTRY_COMPARE_WITH_TIMEOUT(toast->text(), QStringLiteral("Video export failed"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(toast->text().startsWith(QStringLiteral("Video export failed: ")), 5000);
+        QVERIFY2(toast->text().contains(QStringLiteral("No such file")), qPrintable(toast->text()));
+        const auto *status = w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"));
+        QVERIFY(status);
+        QCOMPARE(status->text(), QStringLiteral("Export failed"));
+        QVERIFY(status->toolTip().contains(QStringLiteral("eddy-missing-video-export-test")));
         const auto *exportTimer = w.findChild<QTimer *>(QStringLiteral("VideoExportTimer"));
         QVERIFY(exportTimer);
         QVERIFY(!exportTimer->isActive());
+    }
+    void runningVideoExportCanBeCancelled() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        // Fail the hardware probes quickly, then hang like a stuck encoder.
+        script.write("#!/bin/sh\ncase \"$*\" in *lavfi*) exit 1;; esac\nwhile :; do sleep 0.05; done\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/eddy-cancel-video-export-test.mp4");
+        doc.video.size = QSize(64, 48);
+        doc.video.durationMs = 1000;
+        doc.video.fps = 25.0;
+        Config cfg; cfg.animations = false;
+        CliOptions cli;
+        EditorWindow w(doc, cfg, cli);
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *toast = w.findChild<Toast *>();
+        auto *cancel = w.findChild<QToolButton *>(QStringLiteral("VideoExportCancel"));
+        auto *status = w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"));
+        QVERIFY(timeline && toast && cancel && status);
+        QVERIFY(cancel->isHidden());
+        timeline->setPosition(200);
+        QTest::keyClick(&w, Qt::Key_I);
+
+        w.sendToShelf();
+        QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
+        QTest::mouseClick(cancel, Qt::LeftButton);
+        QCOMPARE(toast->text(), QStringLiteral("Video export cancelled"));
+        QVERIFY(cancel->isHidden());
+        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QStringLiteral("Edited"), 2000);
+        qputenv("PATH", oldPath);
+        QCOMPARE(toast->text(), QStringLiteral("Video export cancelled"));
+        QVERIFY2(w.close(), "window stayed blocked after cancelling the export");
+#endif
+    }
+    void studioIsOffByDefault() {
+        QImage img(200, 100, QImage::Format_ARGB32); img.fill(Qt::red);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(img, cfg, {});
+        QVERIFY(!w.studioStyle().active());
+        auto *button = w.findChild<QToolButton *>(QStringLiteral("Studio"));
+        QVERIFY(button && !button->isChecked());
+        QCOMPARE(w.exportComposite().size(), QSize(200, 100));
+    }
+    void studioFramesTheImageExport() {
+        QImage img(200, 100, QImage::Format_ARGB32); img.fill(Qt::red);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(img, cfg, {});
+        StudioStyle style;
+        style.background = StudioStyle::Background::Color;
+        style.color = QColor(0, 0, 255);
+        style.padding = 10; style.radius = 0; style.shadow = 0;
+        w.setStudioStyle(style);
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("Studio"))->isChecked());
+        QImage out = w.exportComposite();
+        QCOMPARE(out.size(), QSize(220, 120));
+        QCOMPARE(out.pixelColor(2, 2), QColor(0, 0, 255));
+        QCOMPARE(out.pixelColor(110, 60), QColor(255, 0, 0));
+    }
+    void studioSessionIsOneUndoStepAndRemembersTheStyle() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        CliOptions cli; cli.configPath = dir.filePath(QStringLiteral("config"));
+        QImage img(200, 100, QImage::Format_ARGB32); img.fill(Qt::red);
+        Config cfg; cfg.animations = false;
+        StudioStyle chosen;
+        {
+            EditorWindow w(img, cfg, cli);
+            auto *undo = w.findChild<QUndoStack *>();
+            QVERIFY(undo);
+            w.openStudio();
+            QVERIFY2(w.studioStyle().active(), "opening Studio switches it on with the last style");
+            auto *popover = w.findChild<StudioPopover *>();
+            QVERIFY(popover);
+            // The output size follows the style: 200x100 grows by the padding.
+            const auto *size = popover->findChild<QLabel *>(QStringLiteral("StudioSize"));
+            QVERIFY(size);
+            const QSize out = studioLayout(QSize(200, 100), w.studioStyle()).output;
+            QCOMPARE(size->text(), QStringLiteral("%1 × %2").arg(out.width()).arg(out.height()));
+            // Several slider moves inside one popover session.
+            for (auto *slider : popover->findChildren<QSlider *>()) slider->setValue(30);
+            chosen = w.studioStyle();
+            const QSize grown = studioLayout(QSize(200, 100), chosen).output;
+            QCOMPARE(size->text(), QStringLiteral("%1 × %2").arg(grown.width()).arg(grown.height()));
+            popover->close();
+            QTRY_VERIFY(!w.findChild<StudioPopover *>());
+            QCOMPARE(undo->count(), 1);
+            undo->undo();
+            QVERIFY(!w.studioStyle().active());
+            undo->redo();
+            QCOMPARE(w.studioStyle(), chosen);
+        }
+        // A new document starts off, but switching on restores the last style.
+        EditorWindow next(img, cfg, cli);
+        QVERIFY(!next.studioStyle().active());
+        next.openStudio();
+        QCOMPARE(next.studioStyle().padding, chosen.padding);
+        QCOMPARE(next.studioStyle().shadow, chosen.shadow);
+        QCOMPARE(next.studioStyle().color, chosen.color);
     }
     void videoDocumentDefersPlayerCreationUntilShow() {
         MediaDocument doc;

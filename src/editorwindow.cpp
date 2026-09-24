@@ -7,6 +7,8 @@
 #include "exporter.h"
 #include "boltsnapipc.h"
 #include "videoexporter.h"
+#include "studiopopover.h"
+#include <QFileDialog>
 #include "videotimeline.h"
 #include "videopreviewprovider.h"
 #include "selectionhandles.h"
@@ -256,6 +258,9 @@ EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOpti
 EditorWindow::~EditorWindow() {
     QObject::disconnect(m_scene, nullptr, this, nullptr);
     QObject::disconnect(m_undo, nullptr, this, nullptr);
+    // An open Studio popover is deleted with us; its close handler must not run
+    // against a half-destroyed window.
+    if (m_studioPopover) QObject::disconnect(m_studioPopover, nullptr, this, nullptr);
     if (!m_cachedVideoPath.isEmpty() && !m_clipboardVideoPaths.contains(m_cachedVideoPath)
         && !m_videoIpcPaths.contains(m_cachedVideoPath))
         QFile::remove(m_cachedVideoPath);
@@ -355,6 +360,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         if (m_toast) m_toast->showMessage(QStringLiteral("Click to pick a colour \xC2\xB7 Esc to cancel"));
     });
     connect(m_toolbar, &Toolbar::themeToggleRequested, this, &EditorWindow::toggleTheme);
+    connect(m_toolbar, &Toolbar::studioRequested, this, &EditorWindow::openStudio);
     connect(m_canvas, &Canvas::colorPicked, this, [this](const QColor &c){
         m_tools->setColor(c);
         m_toolbar->setSwatchColor(c);
@@ -494,7 +500,21 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_exportStatus->setFixedWidth(110);
         m_exportStatus->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_exportStatus->setToolTip(tr("Video export status"));
-        fl->addWidget(m_exportStatus, 0, 0, Qt::AlignRight);
+        m_exportCancel = new QToolButton(viewControls);
+        m_exportCancel->setObjectName(QStringLiteral("VideoExportCancel"));
+        m_exportCancel->setText(tr("Cancel"));
+        m_exportCancel->setToolTip(tr("Stop the running video export"));
+        m_exportCancel->setAccessibleName(tr("Cancel video export"));
+        m_exportCancel->setFocusPolicy(Qt::NoFocus);
+        m_exportCancel->setCursor(Qt::PointingHandCursor);
+        m_exportCancel->setFixedHeight(theme::kBarButton.height());
+        m_exportCancel->hide();
+        connect(m_exportCancel, &QToolButton::clicked, this, &EditorWindow::cancelVideoExport);
+        auto *exportControls = new QHBoxLayout;
+        exportControls->setSpacing(2);
+        exportControls->addWidget(m_exportStatus);
+        exportControls->addWidget(m_exportCancel);
+        fl->addLayout(exportControls, 0, 0, Qt::AlignRight);
     }
     viewControls->setAttribute(Qt::WA_StyledBackground, true);
     lay->addWidget(viewControls, isVideo() ? 3 : 2, 0, 1, 2);
@@ -1388,6 +1408,7 @@ void EditorWindow::finishCrop() {
 void EditorWindow::setCropRect(QRect rect) {
     m_cropRect = rect;
     m_canvas->setContentRect(rect);
+    updateStudioPreview();
     const QSize size = rect.isEmpty() ? m_media.nativeSize() : rect.size();
     const QString name = m_media.path.isEmpty() ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
     setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
@@ -1453,7 +1474,68 @@ QImage EditorWindow::exportComposite() {
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the image
     QImage image = renderToImage(*m_scene, m_bg.size());
     for (QGraphicsItem *item : selection) item->setSelected(true);
-    return m_cropRect.isEmpty() ? image : image.copy(m_cropRect);
+    return renderStudioImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect), m_studioStyle);
+}
+
+QString EditorWindow::configPath() const {
+    return m_cli.configPath.isEmpty() ? defaultConfigPath() : m_cli.configPath;
+}
+
+void EditorWindow::setStudioStyle(const StudioStyle &style) {
+    m_studioStyle = style;
+    m_toolbar->setStudioActive(style.active());
+    updateStudioPreview();
+    if (isVideo()) onVideoContentChanged();
+}
+
+void EditorWindow::updateStudioPreview() {
+    if (!m_studioStyle.active()) { m_canvas->clearStudioFrame(); return; }
+    const QRect content = m_cropRect.isEmpty() ? QRect(QPoint(), m_media.nativeSize()) : m_cropRect;
+    const StudioLayout layout = studioLayout(content.size(), m_studioStyle);
+    // Lengths are relative to the content, so a smaller render looks the same;
+    // this keeps slider drags cheap on 4K media.
+    const qreal scale = qMin(1.0, 1600.0 / qMax(1, qMax(content.width(), content.height())));
+    const QSize previewSize = (QSizeF(content.size()) * scale).toSize().expandedTo(QSize(1, 1));
+    const QPixmap background = QPixmap::fromImage(renderStudioBackground(previewSize, m_studioStyle));
+    m_canvas->setStudioFrame(background,
+        QRectF(content.topLeft() - layout.content.topLeft(), layout.output), layout.radius);
+}
+
+void EditorWindow::openStudio() {
+    // A second click on the button closes the popover instead of stacking one.
+    if (m_studioPopover) { m_studioPopover->close(); return; }
+    finishCrop();
+    const StudioStyle before = m_studioStyle;
+    // Switching Studio on starts from the style used last time.
+    if (!m_studioStyle.active()) setStudioStyle(loadLastStudioStyle(configPath()));
+    auto *popover = new StudioPopover(m_studioStyle,
+        m_cropRect.isEmpty() ? m_media.nativeSize() : m_cropRect.size(), this);
+    popover->setAttribute(Qt::WA_DeleteOnClose);
+    popover->setAttribute(Qt::WA_TranslucentBackground);
+    m_studioPopover = popover;
+    connect(popover, &StudioPopover::styleChanged, this, &EditorWindow::setStudioStyle);
+    connect(popover, &StudioPopover::imageRequested, this, [this, popover] {
+        // The popover's deferred deletion runs after the dialog returns, so its
+        // single undo step still includes the chosen image.
+        popover->close();
+        const QString path = QFileDialog::getOpenFileName(this, tr("Background image"), {},
+            tr("Images (*.png *.jpg *.jpeg *.webp *.bmp)"));
+        if (path.isEmpty()) return;
+        StudioStyle style = m_studioStyle;
+        style.background = StudioStyle::Background::Image;
+        style.imagePath = path;
+        setStudioStyle(style);
+    });
+    connect(popover, &QObject::destroyed, this, [this, before] {
+        if (m_studioStyle == before) return;
+        saveLastStudioStyle(configPath(), m_studioStyle);
+        m_undo->push(new SetStudioStyleCommand(before, m_studioStyle,
+            [this](const StudioStyle &style) { setStudioStyle(style); }));
+    });
+    auto *button = m_toolbar->findChild<QToolButton *>(QStringLiteral("Studio"));
+    const QPoint anchor = button->mapToGlobal(QPoint(button->width(), button->height() + 4));
+    popover->move(anchor - QPoint(popover->width(), 0));
+    popover->show();
 }
 
 QImage EditorWindow::renderAnnotationOverlay() {
@@ -1497,7 +1579,7 @@ bool EditorWindow::hasTrim() const {
 }
 
 bool EditorWindow::hasVideoEdits() const {
-    return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty();
+    return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty() || m_studioStyle.active();
 }
 
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
@@ -1615,7 +1697,10 @@ void EditorWindow::onVideoContentChanged() {
     }
     ++m_videoRevision;
     const bool edited = hasVideoEdits();
-    if (m_exportStatus) m_exportStatus->setText(edited ? tr("Edited") : QString());
+    if (m_exportStatus) {
+        m_exportStatus->setText(edited ? tr("Edited") : QString());
+        m_exportStatus->setToolTip(tr("Video export status"));
+    }
     if (m_dragPill) {
         m_dragPill->setPreparationNeeded(edited);
         m_dragPill->setEnabled(!m_videoExportInProgress || !edited);
@@ -1668,14 +1753,31 @@ void EditorWindow::startVideoExportCache() {
         m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000
     };
     request.cropRect = m_cropRect;
+    request.studio = m_studioStyle;
+    m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
+    request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
+    QPointer<EditorWindow> receiver(this);
+    request.progress = [receiver, revision](int percent) {
+        QMetaObject::invokeMethod(qApp, [receiver, revision, percent] {
+            if (receiver && receiver->m_videoExportInProgress && receiver->m_videoExportCancel
+                && !receiver->m_videoExportCancel->load()
+                && receiver->m_videoRevision == revision && receiver->m_exportStatus) {
+                receiver->m_exportStatus->setText(percent < 0 ? tr("Exporting…")
+                    : tr("Exporting %1%").arg(percent));
+            }
+        }, Qt::QueuedConnection);
+    };
     for (QGraphicsItem *item : m_scene->items())
         if (auto *redact = dynamic_cast<RedactItem *>(item))
             request.blurRects += redact->blurRectsInScene();
     m_videoExportInProgress = true;
     if (m_dragPill) m_dragPill->setEnabled(false);
-    if (m_exportStatus) m_exportStatus->setText(tr("Preparing…"));
+    if (m_exportStatus) {
+        m_exportStatus->setText(tr("Preparing…"));
+        m_exportStatus->setToolTip(tr("Video export status"));
+    }
+    if (m_exportCancel) m_exportCancel->show();
 
-    QPointer<EditorWindow> receiver(this);
     auto *thread = QThread::create([receiver, revision, path, request] {
         const DeliverResult result = writeVideoWithOverlay(request);
         QMetaObject::invokeMethod(qApp, [receiver, revision, path, result] {
@@ -1691,6 +1793,9 @@ void EditorWindow::startVideoExportCache() {
 
 void EditorWindow::finishVideoExportCache(int revision, const QString &path, const DeliverResult &result) {
     m_videoExportInProgress = false;
+    const bool cancelled = m_videoExportCancel && m_videoExportCancel->load();
+    m_videoExportCancel.reset();
+    if (m_exportCancel) m_exportCancel->hide();
     const bool current = result.ok && hasVideoEdits() && revision == m_videoRevision;
     if (current) {
         if (!m_cachedVideoPath.isEmpty() && m_cachedVideoPath != path
@@ -1707,8 +1812,13 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         if (m_exportStatus) m_exportStatus->setText(tr("Ready"));
     } else {
         QFile::remove(path);
-        if (!result.ok && revision == m_videoRevision) {
-            if (m_exportStatus) m_exportStatus->setText(tr("Export failed"));
+        if (cancelled) {
+            if (m_exportStatus) m_exportStatus->setText(hasVideoEdits() ? tr("Edited") : QString());
+        } else if (!result.ok && revision == m_videoRevision) {
+            if (m_exportStatus) {
+                m_exportStatus->setText(tr("Export failed"));
+                m_exportStatus->setToolTip(result.error);
+            }
             std::fprintf(stderr, "eddy: %s\n", qPrintable(result.error));
         }
     }
@@ -1717,17 +1827,29 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         if (result.ok)
             completePendingVideoActions(m_cachedVideoPath, true);
         else
-            failPendingVideoActions();
+            failPendingVideoActions(result.error);
     }
 
     const bool needsFreshExport = hasVideoEdits() && revision != m_videoRevision;
-    if (m_videoExportPending || needsFreshExport) {
+    if (m_videoStatusRequested && (m_videoExportPending || needsFreshExport)) {
         m_videoExportPending = false;
         scheduleVideoExportCache(100);
     } else if (m_closeAfterVideoExport) {
         m_closeAfterVideoExport = false;
         close();
     }
+}
+
+void EditorWindow::cancelVideoExport() {
+    if (!m_videoExportInProgress || !m_videoExportCancel) return;
+    // ffmpeg is killed on the export thread; finishVideoExportCache cleans up.
+    m_videoExportCancel->store(true);
+    if (m_videoExportTimer) m_videoExportTimer->stop();
+    m_videoExportPending = false;
+    failPendingVideoActions();
+    if (m_exportCancel) m_exportCancel->hide();
+    if (m_exportStatus) m_exportStatus->setText(tr("Cancelling…"));
+    if (m_toast) m_toast->showMessage(tr("Video export cancelled"));
 }
 
 void EditorWindow::copyVideoFile(const QString &path) {
@@ -1854,7 +1976,7 @@ void EditorWindow::finishVideoFileSave(const QString &path, const DeliverResult 
     finish();
 }
 
-void EditorWindow::failPendingVideoActions() {
+void EditorWindow::failPendingVideoActions(const QString &reason) {
     m_videoStatusRequested = false;
     if (m_dragPill) m_dragPill->setEnabled(true);
     m_copyVideoPending = false;
@@ -1866,7 +1988,12 @@ void EditorWindow::failPendingVideoActions() {
     m_videoSavePendingClose = false;
     m_closeAfterVideoShelf = false;
     m_closeAfterVideoCard = false;
-    if (m_toast) m_toast->showMessage(QStringLiteral("Video export failed"));
+    // ffmpeg reports the actual cause on its last stderr line.
+    const QString detail = reason.trimmed().section(QLatin1Char('\n'), -1).trimmed();
+    if (m_toast)
+        m_toast->showMessage(detail.isEmpty() ? tr("Video export failed")
+            : tr("Video export failed: %1").arg(fontMetrics().elidedText(detail, Qt::ElideRight, 480)),
+            6000);
 }
 
 void EditorWindow::completePendingVideoActions(const QString &path, bool takeOwnership) {
@@ -2142,7 +2269,8 @@ void EditorWindow::copyVideoFrame() {
     m_scene->clearSelection();
     m_scene->clearFocus();
     const QImage image = renderToImage(*m_scene, m_media.nativeSize());
-    QApplication::clipboard()->setImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect));
+    QApplication::clipboard()->setImage(
+        renderStudioImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect), m_studioStyle));
     m_toast->showMessage(tr("Frame copied"));
 }
 

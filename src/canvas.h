@@ -21,6 +21,10 @@ public:
     void setContentRect(QRectF rect);
     QRectF contentRect() const;
     void setCropController(CropController *crop);
+    // Studio preview: `background` fills `output` (scene coordinates) around
+    // the content rect, whose corners are rounded by `radius` scene units.
+    void setStudioFrame(const QPixmap &background, QRectF output, qreal radius);
+    void clearStudioFrame();
     bool fitted() const { return m_fitted; }
     void restoreView(const QTransform &transform, QPointF center, bool fitted);
     void setSpacePan(bool on);
@@ -55,6 +59,10 @@ private:
     ToolController *m_tools;
     CropController *m_crop = nullptr;
     QRectF m_contentRect;
+    QRectF viewRect() const;        // what Fit shows: the Studio frame or the content
+    QPixmap m_studioBackground;
+    QRectF m_studioOutput;
+    qreal m_studioRadius = 0;
     bool m_fitted = false;
     double m_zoom = 1.0;            // visual (animated) scale
     double m_targetZoom = 1.0;      // logical target

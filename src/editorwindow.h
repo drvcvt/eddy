@@ -5,11 +5,14 @@
 #include "cli.h"
 #include "mediaio.h"
 #include "exporter.h"
+#include "studiostyle.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
 #include <QVideoFrame>
+#include <atomic>
 #include <functional>
+#include <memory>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel; class QLineEdit;
@@ -37,6 +40,9 @@ public:
     EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent=nullptr);
     ~EditorWindow() override;
     QImage exportComposite();   // for tests + save/copy
+    StudioStyle studioStyle() const { return m_studioStyle; }
+    void setStudioStyle(const StudioStyle &style);   // not an undo step on its own
+    void openStudio();
 public slots:
     void save();   // to file/save-dir per cli/config
     void copy();   // to clipboard
@@ -77,9 +83,10 @@ private:
     void scheduleVideoExportCache(int delayMs = 350);
     void startVideoExportCache();
     void finishVideoExportCache(int revision, const QString &path, const DeliverResult &result);
+    void cancelVideoExport();
     QString createVideoTempPath() const;
     void completePendingVideoActions(const QString &path, bool takeOwnership);
-    void failPendingVideoActions();
+    void failPendingVideoActions(const QString &reason = {});
     void runVideoIpc(const std::function<DeliverResult()> &operation,
                      const std::function<void(const DeliverResult &)> &completion,
                      const QString &pinnedPath = {});
@@ -110,6 +117,10 @@ private:
     void finishCrop();
     void setCropRect(QRect rect);
     void positionCropBar();
+    void updateStudioPreview();
+    QString configPath() const;
+    StudioStyle m_studioStyle;       // this document; off by default
+    QPointer<QWidget> m_studioPopover;
     CropController *m_crop = nullptr;
     CropBar *m_cropBar = nullptr;
     QRect m_cropRect;
@@ -145,6 +156,7 @@ private:
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
     QLabel *m_exportStatus = nullptr;
+    QToolButton *m_exportCancel = nullptr;
     QLineEdit *m_trimInLabel = nullptr;
     QLineEdit *m_trimOutLabel = nullptr;
     QLabel *m_trimDurationLabel = nullptr;
@@ -177,6 +189,7 @@ private:
     int m_cachedVideoRevision = -1;
     bool m_videoExportInProgress = false;
     bool m_videoExportPending = false;
+    std::shared_ptr<std::atomic_bool> m_videoExportCancel;
     bool m_videoStatusRequested = false;
     bool m_copyVideoPending = false;
     bool m_sendVideoToShelfPending = false;

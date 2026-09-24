@@ -118,7 +118,7 @@ void Canvas::fitMedia() {
     if (m_zoomAnim) m_zoomAnim->stop();
     resetTransform();
     m_fitted = true;
-    QRectF fittedRect = contentRect();
+    QRectF fittedRect = (m_crop && m_crop->active()) ? contentRect() : viewRect();
     if (m_crop && m_crop->active()) {
         const qreal scale = qMax(0.001, qMin((viewport()->width() - 4.0) / fittedRect.width(),
                                             (viewport()->height() - 4.0) / fittedRect.height()));
@@ -127,8 +127,28 @@ void Canvas::fitMedia() {
     fitInView(fittedRect, Qt::KeepAspectRatio);
     m_zoom = m_targetZoom = transform().m11();
     updateNavigationBounds();
-    centerOn(contentRect().center());
+    centerOn(fittedRect.center());
     emit viewChanged();
+}
+
+QRectF Canvas::viewRect() const {
+    return m_studioOutput.isEmpty() ? contentRect() : m_studioOutput;
+}
+
+void Canvas::setStudioFrame(const QPixmap &background, QRectF output, qreal radius) {
+    m_studioBackground = background;
+    m_studioOutput = output;
+    m_studioRadius = radius;
+    if (m_fitted) fitMedia();
+    viewport()->update();
+}
+
+void Canvas::clearStudioFrame() {
+    if (m_studioOutput.isEmpty()) return;
+    m_studioBackground = {};
+    m_studioOutput = {};
+    if (m_fitted) fitMedia();
+    viewport()->update();
 }
 
 QRectF Canvas::contentRect() const {
@@ -162,6 +182,31 @@ void Canvas::setCropController(CropController *crop) {
 
 void Canvas::drawForeground(QPainter *painter, const QRectF &) {
     const bool cropping = m_crop && m_crop->active();
+    if (!cropping && !m_studioOutput.isEmpty()) {
+        // Same picture as the export: the background around rounded content,
+        // covering anything drawn past the content's edge or corners.
+        painter->save();
+        painter->resetTransform();
+        painter->setRenderHint(QPainter::Antialiasing);
+        const QTransform view = viewportTransform();
+        const QRectF output = view.mapRect(m_studioOutput);
+        const QRectF content = view.mapRect(contentRect());
+        const qreal radius = m_studioRadius * view.m11();
+        QPainterPath outside;
+        outside.addRect(viewport()->rect());
+        outside.addRect(output);
+        painter->fillPath(outside, palette().color(QPalette::Window));
+        QPainterPath ring;
+        ring.addRect(output);
+        ring.addRoundedRect(content, radius, radius);
+        QBrush brush(m_studioBackground);
+        brush.setTransform(QTransform::fromScale(output.width() / m_studioBackground.width(),
+                                                 output.height() / m_studioBackground.height())
+                           * QTransform::fromTranslate(output.x(), output.y()));
+        painter->fillPath(ring, brush);
+        painter->restore();
+        return;
+    }
     if (!cropping && contentRect() == scene()->sceneRect()) return;
     painter->save();
     painter->resetTransform();

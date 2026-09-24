@@ -138,6 +138,162 @@ private slots:
 #endif
     }
 
+    void stopsFfmpegThatMakesNoProgress() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("#!/bin/sh\nwhile :; do echo out_time_us=0; echo progress=continue; sleep 0.05; done\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        QImage overlay(16, 16, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{QStringLiteral("/tmp/in.mp4"), dir.filePath(QStringLiteral("out.mp4")),
+                                   overlay, 0, -1, 4000};
+        request.stallTimeoutMs = 300;
+        QElapsedTimer timer;
+        timer.start();
+        const auto result = writeVideoWithOverlay(request);
+        qputenv("PATH", oldPath);
+
+        QVERIFY(!result.ok);
+        QVERIFY2(timer.elapsed() < 2000, "stalled ffmpeg ran into the overall timeout");
+        QVERIFY2(result.error.contains(QStringLiteral("progress")), qPrintable(result.error));
+#endif
+    }
+
+    void cancelStopsRunningFfmpeg() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("#!/bin/sh\nwhile :; do sleep 0.05; done\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        QImage overlay(16, 16, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{QStringLiteral("/tmp/in.mp4"), dir.filePath(QStringLiteral("out.mp4")),
+                                   overlay, 0, -1, 4000};
+        QElapsedTimer timer;
+        timer.start();
+        request.cancelled = [&timer] { return timer.elapsed() > 200; };
+        const auto result = writeVideoWithOverlay(request);
+        qputenv("PATH", oldPath);
+
+        QVERIFY(!result.ok);
+        QVERIFY2(timer.elapsed() < 1500, "cancelled export kept running");
+        QVERIFY2(result.error.contains(QStringLiteral("cancelled")), qPrintable(result.error));
+#endif
+    }
+
+    void framesVideoWithStudioBackground() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=red:s=320x240:d=0.6:r=10", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(320, 240, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay};
+        request.cropRect = QRect(0, 0, 200, 100);
+        request.studio.background = StudioStyle::Background::Color;
+        request.studio.color = QColor(0, 0, 255);
+        request.studio.padding = 21;   // an odd 21 px offset: yuv420 pad would round it
+        request.studio.radius = 20;
+        request.studio.shadow = 0;
+        const auto result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const auto probe = probeVideoFile(request.outputPath);
+        QVERIFY(probe.ok);
+        QCOMPARE(probe.info.size, QSize(242, 142));   // 200x100 + 2 * 21% of 100
+        QCOMPARE(probe.info.durationMs / 100, qint64(6));
+        QCOMPARE(qRound(probe.info.fps), 10);   // the video, not the still, sets the rate
+        const QString frame = dir.filePath(QStringLiteral("frame.png"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-i", request.outputPath,
+                                                     "-frames:v", "1", frame}));
+        const QImage decoded(frame);
+        const auto near = [](QColor a, QColor b) {
+            return qAbs(a.red() - b.red()) < 40 && qAbs(a.green() - b.green()) < 40
+                && qAbs(a.blue() - b.blue()) < 40;
+        };
+        QVERIFY2(near(decoded.pixelColor(5, 5), Qt::blue), "background");
+        QVERIFY2(near(decoded.pixelColor(120, 70), Qt::red), "content");
+        // Radius 20% of 100 px: the content's own corner shows the background.
+        QVERIFY2(near(decoded.pixelColor(22, 22), Qt::blue), "rounded corner");
+        // Video and frame hole must line up to the pixel on every edge: no
+        // column of pad colour and no background eating into the content.
+        const QRect content(20, 20, 200, 100);   // origin snapped to even
+        for (const QPoint &p : {QPoint(content.left(), 70), QPoint(content.right(), 70),
+                                QPoint(120, content.top()), QPoint(120, content.bottom())}) {
+            const QColor c = decoded.pixelColor(p);
+            QVERIFY2(c.red() > 150 && c.blue() < 110,
+                     qPrintable(QStringLiteral("edge %1,%2 is %3").arg(p.x()).arg(p.y()).arg(c.name())));
+        }
+    }
+
+    void framesAnnotatedVideo() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=red:s=200x100:d=0.3:r=10", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(200, 100, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        QPainter(&overlay).fillRect(QRect(80, 30, 40, 40), Qt::green);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay};
+        request.studio.background = StudioStyle::Background::Color;
+        request.studio.color = QColor(0, 0, 255);
+        request.studio.padding = 20;
+        request.studio.radius = 0;
+        request.studio.shadow = 0;
+        const auto result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const QString frame = dir.filePath(QStringLiteral("frame.png"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-i", request.outputPath,
+                                                     "-frames:v", "1", frame}));
+        const QImage decoded(frame);
+        QCOMPARE(decoded.size(), QSize(240, 140));
+        QVERIFY(decoded.pixelColor(5, 5).blue() > 200);
+        const QColor mark = decoded.pixelColor(20 + 100, 20 + 50);   // annotation, shifted by the padding
+        QVERIFY2(mark.green() > 200 && mark.red() < 60, qPrintable(mark.name()));
+        QVERIFY(decoded.pixelColor(20 + 20, 20 + 50).red() > 200);
+    }
+
+    void reportsEncodingProgress() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "testsrc=s=320x240:d=3:r=30", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(320, 240, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay};
+        QList<int> reported;
+        request.progress = [&reported](int percent) { reported.append(percent); };
+        const auto result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(!reported.isEmpty());
+        QVERIFY2(std::is_sorted(reported.cbegin(), reported.cend()), "progress went backwards");
+        QVERIFY(reported.first() >= 0 && reported.last() <= 99);
+        QVERIFY2(reported.last() >= 50, qPrintable(QStringLiteral("final progress %1").arg(reported.last())));
+    }
+
     void hardwareFailureFallsBackWithoutAnEmptyOverlay() {
 #ifdef Q_OS_WIN
         QSKIP("POSIX fake ffmpeg helper is not available on Windows");
