@@ -1,4 +1,5 @@
 #include "videotimeline.h"
+#include "audiowaveform.h"
 #include "theme.h"
 #include "zoomlane.h"
 #include "motionicon.h"
@@ -44,6 +45,13 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
             return;
         }
         QMenu menu(this);
+        if (m_waveform) {
+            QAction *show = menu.addAction(tr("Show waveform"));
+            show->setCheckable(true);
+            show->setChecked(m_waveformVisible);
+            connect(show, &QAction::toggled, this, &VideoTimeline::setWaveformVisible);
+            menu.addSeparator();
+        }
         if (inZoomLane(pos)) {
             const qint64 time = timeForX(pos.x());
             menu.addAction(tr("Add zoom here"), this, [this, time] { emit zoomAddRequested(time); });
@@ -54,6 +62,44 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
         menu.addAction(tr("Fit clip\t0"), this, &VideoTimeline::fitClip);
         menu.exec(mapToGlobal(pos));
     });
+}
+
+// A grey envelope, the same up and down, with a brighter RMS core on a fixed
+// scale. Stretches not read yet get a dotted line, never a flat "silence".
+void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, const std::function<QColor(qreal)> &ink) {
+    const QRectF lane = waveformRect();
+    QPainterPath shape;
+    shape.addRoundedRect(lane, 6, 6);
+    painter.save();
+    painter.setClipPath(shape);
+    painter.setPen(Qt::NoPen);
+    painter.fillRect(lane, ink(0.07));
+    if (m_waveform->state() == AudioWaveformProvider::State::Failed) {
+        QFont label = font();
+        label.setPixelSize(theme::kFsMicro);
+        painter.setFont(label);
+        painter.setPen(ink(0.45));
+        painter.drawText(lane, Qt::AlignCenter, tr("Waveform unavailable"));
+    } else {
+        const qreal middle = lane.center().y(), reach = lane.height() / 2 - 2;
+        const QColor envelope = ink(0.32), core = ink(0.5), pending = ink(0.2);
+        const int left = int(std::floor(lane.left())), right = int(std::ceil(lane.right()));
+        for (int x = left; x < right; ++x) {
+            const auto s = m_waveform->summary(timeForX(x), timeForX(x + 1));
+            if (!s.known) {
+                if (x % 4 == 0) painter.fillRect(QRectF(x, middle - 0.5, 2, 1), pending);
+                continue;
+            }
+            const qreal peak = std::max<qreal>(0.5, reach * s.peak), rms = reach * s.rms;
+            painter.fillRect(QRectF(x, middle - peak, 1, 2 * peak), envelope);
+            if (rms >= 0.5) painter.fillRect(QRectF(x, middle - rms, 1, 2 * rms), core);
+        }
+    }
+    QColor shade = palette().color(QPalette::Window);
+    shade.setAlpha(205);
+    painter.fillRect(QRectF(lane.left(), lane.top(), qMax(0.0, inX - lane.left()), lane.height()), shade);
+    painter.fillRect(QRectF(qMax(lane.left(), outX), lane.top(), qMax(0.0, lane.right() - outX), lane.height()), shade);
+    painter.restore();
 }
 
 double VideoTimeline::edited(qint64 sourceMs) const {
@@ -208,7 +254,37 @@ void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
 
 QRectF VideoTimeline::trackRect() const {
     return QRectF(6, 18, qMax(1, width() - 12),
-                  height() - 22 - (m_laneVisible ? 32 : 0) - (m_masks.isEmpty() ? 0 : 24));
+                  height() - 22 - (waveformShown() ? 32 : 0) - (m_laneVisible ? 32 : 0) - (m_masks.isEmpty() ? 0 : 24));
+}
+
+void VideoTimeline::setWaveform(AudioWaveformProvider *waveform) {
+    if (m_waveform == waveform) return;
+    if (m_waveform) m_waveform->disconnect(this);
+    m_waveform = waveform;
+    if (waveform) {
+        connect(waveform, &AudioWaveformProvider::changed, this, qOverload<>(&QWidget::update));
+        connect(waveform, &QObject::destroyed, this, [this] { updateHeight(); update(); });
+    }
+    updateHeight();
+    update();
+}
+
+void VideoTimeline::setWaveformVisible(bool visible) {
+    if (visible == m_waveformVisible) return;
+    cancelInteraction();
+    m_waveformVisible = visible;
+    updateHeight();
+    update();
+}
+
+QRectF VideoTimeline::waveformRect() const {
+    if (!waveformShown()) return {};
+    const QRectF track = trackRect();
+    return QRectF(track.left(), track.bottom() + 4, track.width(), 28);
+}
+
+qreal VideoTimeline::belowWaveform() const {
+    return waveformShown() ? waveformRect().bottom() : trackRect().bottom();
 }
 
 void VideoTimeline::setZoomLaneVisible(bool visible) {
@@ -235,7 +311,7 @@ void VideoTimeline::setSelectedZoom(quint32 id) {
 }
 
 void VideoTimeline::updateHeight() {
-    setFixedHeight(52 + (m_laneVisible ? 32 : 0) + (m_masks.isEmpty() ? 0 : 24));
+    setFixedHeight(52 + (waveformShown() ? 32 : 0) + (m_laneVisible ? 32 : 0) + (m_masks.isEmpty() ? 0 : 24));
 }
 
 bool VideoTimeline::inZoomLane(QPointF pos) const {
@@ -254,7 +330,7 @@ void VideoTimeline::setMasks(const QVector<MaskBlock> &masks) {
 QRectF VideoTimeline::maskLaneRect() const {
     if (m_masks.isEmpty()) return {};
     const QRectF track = trackRect();
-    const qreal top = (m_laneVisible ? zoomLaneRect().bottom() : track.bottom()) + 4;
+    const qreal top = (m_laneVisible ? zoomLaneRect().bottom() : belowWaveform()) + 4;
     return QRectF(track.left(), top, track.width(), 20);
 }
 
@@ -304,7 +380,7 @@ void VideoTimeline::moveMaskDrag(qreal x) {
 QRectF VideoTimeline::zoomLaneRect() const {
     if (!m_laneVisible) return {};
     const QRectF track = trackRect();
-    return QRectF(track.left(), track.bottom() + 4, track.width(), 28);
+    return QRectF(track.left(), belowWaveform() + 4, track.width(), 28);
 }
 
 quint32 VideoTimeline::zoomAt(QPointF pos, Drag *part) const {
@@ -445,6 +521,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         }
     }
     painter.restore();
+    if (waveformShown()) paintWaveform(painter, inX, outX, ink);
 
     if (m_laneVisible) {
         const QRectF lane = zoomLaneRect();
@@ -558,7 +635,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     painter.setBrush(ink(0.86));
     if (playX >= track.left() && playX <= track.right()) {
         const qreal playBottom = !m_masks.isEmpty() ? maskLaneRect().bottom()
-            : m_laneVisible ? zoomLaneRect().bottom() : track.bottom() + 3;
+            : m_laneVisible ? zoomLaneRect().bottom() : waveformShown() ? waveformRect().bottom() : track.bottom() + 3;
         painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, playBottom - track.top()), 1, 1);
         painter.drawRoundedRect(QRectF(playX - 3, track.top() - 4, 6, 5), 2, 2);
     }

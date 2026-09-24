@@ -1,6 +1,10 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include "videotimeline.h"
+#include "audiowaveform.h"
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 
 using namespace eddy;
 
@@ -308,6 +312,45 @@ private slots:
         QCOMPARE(timeline.position(), 0);
     }
 
+    void waveformLaneSitsUnderTheFilmStripAndScrubs() {
+        if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("clicks.mkv"));
+        QProcess make;
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x48:d=3:r=25",
+            "-f", "lavfi", "-i", "aevalsrc=exprs=if(between(t\\,1\\,1.02)\\,0.9\\,0):s=48000:d=3",
+            "-c:a", "pcm_s16le", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        VideoTimeline timeline;
+        timeline.resize(612, 52);
+        timeline.setDuration(3000);
+        timeline.setZoomLaneVisible(true);
+        timeline.show();
+        const qreal zoomTop = timeline.zoomLaneRect().top();
+        QVERIFY(timeline.waveformRect().isEmpty());
+        AudioWaveformProvider waveform(file, 3000, 0);
+        timeline.setWaveform(&waveform);
+        QCOMPARE(timeline.height(), 52 + 32 + 32);
+        const QRectF lane = timeline.waveformRect();
+        QCOMPARE(lane.height(), 28.0);
+        QCOMPARE(lane.top(), 52.0);                          // right under the film strip
+        QCOMPARE(timeline.zoomLaneRect().top(), lane.bottom() + 4);
+        QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
+        auto xAt = [&](qint64 ms) { return int(lane.left() + lane.width() * ms / 3000.0); };
+        const QImage shot = timeline.grab().toImage();
+        const int y = int(lane.center().y()) - 4;
+        QVERIFY2(shot.pixelColor(xAt(1005), y) != shot.pixelColor(xAt(2000), y),
+                 qPrintable(shot.pixelColor(xAt(1005), y).name() + " " + shot.pixelColor(xAt(2000), y).name()));
+        // A click on the waveform scrubs like the film strip.
+        QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(xAt(2000), int(lane.center().y())));
+        QVERIFY(!seeks.isEmpty());
+        QVERIFY(qAbs(seeks.last().first().toLongLong() - 2000) <= 10);
+        // Hidden, the lanes below move back up.
+        timeline.setWaveformVisible(false);
+        QCOMPARE(timeline.zoomLaneRect().top(), zoomTop);
+        QCOMPARE(timeline.height(), 52 + 32);
+    }
     void storesContactSheetWithoutDiskState() {
         VideoTimeline timeline;
         QImage sheet(320, 45, QImage::Format_RGB32);

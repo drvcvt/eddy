@@ -32,6 +32,16 @@ static MediaDocument videoDoc(const QString &path, qint64 duration = 4000) {
 class TestFragmentsEdit : public QObject {
     Q_OBJECT
 private slots:
+    void onlyAVideoWithSoundGetsAWaveform() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow silent(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        QVERIFY(!silent.findChild<VideoTimeline *>()->waveformShown());
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow loud(doc, cfg, {});
+        QVERIFY(loud.findChild<VideoTimeline *>()->waveformShown());   // its place is kept while it loads
+    }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
