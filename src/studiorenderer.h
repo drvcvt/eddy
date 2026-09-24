@@ -30,6 +30,9 @@ public:
     // `sourceMs` picks the timed overlays that show.
     void render(const QImage &frame, const QRectF &camera, QImage &out, double sourceMs = -1) const;
     void setTimedOverlays(const QVector<TimedOverlay> &overlays) { m_timed = overlays; }
+    // Motion blur (studio plan 6.11): the mean of the frame through each
+    // camera, all taken within one shutter.
+    void renderBlurred(const QImage &frame, const QVector<QRectF> &cameras, QImage &out, double sourceMs = -1) const;
 
 private:
     QSize m_source;

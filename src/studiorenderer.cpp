@@ -1,5 +1,6 @@
 #include "studiorenderer.h"
 #include <QPainter>
+#include <algorithm>
 
 namespace eddy {
 
@@ -31,6 +32,21 @@ void StudioRenderer::render(const QImage &frame, const QRectF &camera, QImage &o
     for (const TimedOverlay &timed : m_timed)
         if (sourceMs >= timed.fromMs && sourceMs < timed.toMs) overlay(timed.image);
     if (!m_frame.isNull()) p.drawImage(0, 0, m_frame);
+}
+
+void StudioRenderer::renderBlurred(const QImage &frame, const QVector<QRectF> &cameras, QImage &out,
+                                   double sourceMs) const {
+    if (cameras.isEmpty()) return;
+    render(frame, cameras.first(), out, sourceMs);
+    if (std::all_of(cameras.cbegin(), cameras.cend(), [&](const QRectF &c) { return c == cameras.first(); })) return;
+    // A running mean: the n-th image goes in at 1/n.
+    QImage sub(out.size(), out.format());
+    QPainter p(&out);
+    for (int i = 1; i < cameras.size(); ++i) {
+        render(frame, cameras[i], sub, sourceMs);
+        p.setOpacity(1.0 / (i + 1));
+        p.drawImage(0, 0, sub);
+    }
 }
 
 }

@@ -250,7 +250,21 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             connect(suggest, &QToolButton::clicked, this, &StudioPopover::suggestRequested);
         }
         setKeepZoomedInAvailable(camera.keepZoomedInAvailable);
-        rows->setRowStretch(3, 1);
+        rowLabel(tr("Blur"), 3);
+        auto *blur = new QSlider(Qt::Horizontal, cameraPage);
+        blur->setObjectName(QStringLiteral("StudioMotionBlur"));
+        blur->setRange(0, 100);
+        blur->setValue(camera.motionBlur);
+        blur->setFixedHeight(theme::kFloatButton.height());
+        blur->setAccessibleName(tr("Motion blur"));
+        blur->setToolTip(tr("Blurs camera moves in the export; the preview stays sharp"));
+        blur->setCursor(Qt::PointingHandCursor);
+        rows->addWidget(blur, 3, 1, 1, 2);
+        auto *exportOnly = new QLabel(tr("Export only"), cameraPage);
+        exportOnly->setObjectName(QStringLiteral("StudioLabel"));
+        rows->addWidget(exportOnly, 3, 3);
+        connect(blur, &QSlider::valueChanged, this, &StudioPopover::motionBlurChanged);
+        rows->setRowStretch(4, 1);
         outer->addWidget(cameraPage);
         cameraPage->hide();
         // Each page takes its own size; the right edge stays under the Studio button.

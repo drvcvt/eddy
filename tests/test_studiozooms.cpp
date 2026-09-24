@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QSlider>
 #include <QApplication>
 #include <QAudioOutput>
 #include <QGraphicsScene>
@@ -211,9 +212,13 @@ private slots:
         auto *keep = popover->findChild<QToolButton *>(QStringLiteral("StudioKeepZoomed"));
         QVERIFY(keep->isEnabled());
         keep->click();
+        auto *blur = popover->findChild<QSlider *>(QStringLiteral("StudioMotionBlur"));
+        blur->setValue(40);   // a drag: many values, still the one session step
+        blur->setValue(55);
         popover->close();
         QTRY_VERIFY(!w.findChild<StudioPopover *>());
         QCOMPARE(undo->count(), steps + 1);
+        QCOMPARE(w.studioDocument().motionBlur, 55);
         QCOMPARE(w.studioDocument().motion, ZoomSegment::Motion::Instant);
         QCOMPARE(w.studioDocument().zooms.first().motion, ZoomSegment::Motion::Instant);
         QVERIFY(w.studioDocument().keepZoomedIn);

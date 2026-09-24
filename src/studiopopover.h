@@ -17,6 +17,7 @@ struct StudioCameraSettings {
     bool keepZoomedIn = false;
     bool keepZoomedInAvailable = false;          // the ratio leaves room to fill
     bool suggestAvailable = false;               // a cursor track came with the video
+    int motionBlur = 0;
 };
 
 // Studio framing controls: background, spacing, corners, shadow and output
@@ -41,6 +42,7 @@ signals:
     void motionChosen(ZoomSegment::Motion motion);
     void keepZoomedInChanged(bool on);
     void suggestRequested();
+    void motionBlurChanged(int strength);
     void presetChosen(int index);
     void presetSaveRequested();
     void presetImportRequested();

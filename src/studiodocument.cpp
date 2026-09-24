@@ -170,6 +170,9 @@ struct Reader {
         if (!object(json, "camera", &camera)) return false;
         if (camera.contains(QLatin1String("motion")) && !name(camera, "motion", kMotions, &d->motion))
             return false;
+        double blur = 0;
+        if (!number(camera, "motionBlur", 0, 100, &blur, 0.0)) return false;
+        d->motionBlur = int(blur);
 
         QJsonObject keep;
         if (!object(json, "keepZoomedIn", &keep) || !flag(keep, "on", &d->keepZoomedIn)) return false;
@@ -215,7 +218,7 @@ QJsonObject studioToJson(const StudioDocument &doc) {
         {"style", style},
         {"zooms", zooms},
         {"fragments", fragments},
-        {"camera", QJsonObject{{"motion", nameOf(kMotions, doc.motion)}}},
+        {"camera", QJsonObject{{"motion", nameOf(kMotions, doc.motion)}, {"motionBlur", doc.motionBlur}}},
         {"keepZoomedIn", QJsonObject{{"on", doc.keepZoomedIn},
                                      {"center", QJsonArray{doc.keepCenter.x(), doc.keepCenter.y()}},
                                      {"followCursor", doc.keepFollowsCursor}}}};
