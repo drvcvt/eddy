@@ -166,6 +166,10 @@ struct Reader {
         }
         if (!kept) return fail(QStringLiteral("every fragment is cut"));
 
+        const QJsonValue audio = json.value(QLatin1String("audio"));
+        if (!audio.isUndefined() && !audio.isBool()) return fail(QStringLiteral("audio must be true or false"));
+        d->audio = audio.toBool(true);
+
         QJsonObject camera;
         if (!object(json, "camera", &camera)) return false;
         if (camera.contains(QLatin1String("motion")) && !name(camera, "motion", kMotions, &d->motion))
@@ -219,6 +223,7 @@ QJsonObject studioToJson(const StudioDocument &doc) {
         {"style", style},
         {"zooms", zooms},
         {"fragments", fragments},
+        {"audio", doc.audio},
         {"camera", QJsonObject{{"motion", nameOf(kMotions, doc.motion)}, {"motionBlur", doc.motionBlur}}},
         {"keepZoomedIn", QJsonObject{{"on", doc.keepZoomedIn},
                                      {"center", QJsonArray{doc.keepCenter.x(), doc.keepCenter.y()}},

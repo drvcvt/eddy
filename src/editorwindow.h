@@ -259,6 +259,8 @@ private:
     QGraphicsPixmapItem *m_videoStill = nullptr;
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
+    QAction *m_outputAudio = nullptr;
+    QLabel *m_noAudio = nullptr;
     QToolButton *m_loopButton = nullptr;
     QToolButton *m_speedButton = nullptr;
     bool m_loopSeeking = false;

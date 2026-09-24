@@ -757,6 +757,19 @@ QWidget *EditorWindow::createPlaybackBar() {
     auto *audioAction = new QWidgetAction(audioMenu);
     audioAction->setDefaultWidget(audioWidget);
     audioMenu->addAction(audioAction);
+    // Muting is the preview's; this one decides what the output carries.
+    m_outputAudio = audioMenu->addAction(tr("Include audio in output"));
+    m_outputAudio->setCheckable(true);
+    m_outputAudio->setChecked(true);
+    m_outputAudio->setEnabled(m_media.video.hasAudio);
+    m_outputAudio->setToolTip(tr("Off, the saved video has no sound; the preview still plays it"));
+    connect(m_outputAudio, &QAction::toggled, this, [this](bool on) {
+        editStudio([on](StudioDocument &d) { d.audio = on; });
+    });
+    m_noAudio = new QLabel(tr("No audio"), bar);
+    m_noAudio->setObjectName(QStringLiteral("NoAudio"));
+    m_noAudio->setToolTip(tr("The output has no sound; turn it back on in the speaker menu"));
+    m_noAudio->hide();
     m_muteButton->setMenu(audioMenu);
     m_muteButton->setPopupMode(QToolButton::DelayedPopup);
     m_muteButton->setFocusPolicy(Qt::StrongFocus);
@@ -871,6 +884,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     theme::setMenuArrow(m_speedButton);
     playback->addWidget(m_loopButton);
     playback->addWidget(m_speedButton);
+    playback->addWidget(m_noAudio);
     playback->addWidget(m_muteButton);
     playback->addWidget(m_volumeSlider);
     lay->addWidget(m_timeline);
@@ -1713,6 +1727,11 @@ void EditorWindow::setStudioDocument(const StudioDocument &doc) {
     if (m_studio.fragments.isEmpty() || m_selectedFragment >= m_studio.fragments.size()) m_selectedFragment = -1;
     if (m_timeline) m_timeline->setSelectedFragment(m_selectedFragment);
     setCropRect(m_cropRect);   // the base view follows the ratio and "keep zoomed in"
+    if (m_outputAudio) {
+        const QSignalBlocker quiet(m_outputAudio);
+        m_outputAudio->setChecked(doc.audio);
+        m_noAudio->setVisible(!doc.audio && m_media.video.hasAudio);
+    }
     if (isVideo()) onVideoContentChanged();
 }
 
@@ -2255,7 +2274,8 @@ bool EditorWindow::hasTrim() const {
 bool EditorWindow::hasVideoEdits() const {
     return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty() || m_studio.style.active()
         || !m_studio.zooms.isEmpty() || cameraBase() != cameraContent()
-        || m_exportSettings != ExportSettings{} || !m_studio.fragments.isEmpty();
+        || m_exportSettings != ExportSettings{} || !m_studio.fragments.isEmpty()
+        || (!m_studio.audio && m_media.video.hasAudio);
 }
 
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
@@ -2438,6 +2458,7 @@ void EditorWindow::startVideoExportCache() {
     request.cursorTrack = m_cursorTrack;
     request.baseFollowsCursor = m_studio.keepZoomedIn && m_studio.keepFollowsCursor;
     request.motionBlur = m_studio.motionBlur;
+    request.includeAudio = m_studio.audio;
     m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
     request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
     QPointer<EditorWindow> receiver(this);

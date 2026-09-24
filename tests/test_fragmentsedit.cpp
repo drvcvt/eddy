@@ -42,6 +42,33 @@ private slots:
         EditorWindow loud(doc, cfg, {});
         QVERIFY(loud.findChild<VideoTimeline *>()->waveformShown());   // its place is kept while it loads
     }
+    void leavingTheSoundOutIsAnEditThatUndoes() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        QAction *include = nullptr;
+        for (QAction *a : w.findChildren<QAction *>())
+            if (a->text() == QStringLiteral("Include audio in output")) include = a;
+        QVERIFY(include && include->isEnabled() && include->isChecked());
+        auto *label = w.findChild<QLabel *>(QStringLiteral("NoAudio"));
+        QVERIFY(label && !label->isVisible());
+        auto *undo = w.findChild<QUndoStack *>();
+        const int steps = undo->count();
+        include->trigger();
+        QVERIFY(!w.studioDocument().audio);
+        QVERIFY(label->isVisible());
+        QCOMPARE(undo->count(), steps + 1);
+        undo->undo();
+        QVERIFY(w.studioDocument().audio);
+        QVERIFY(include->isChecked() && !label->isVisible());
+        // Without sound there is nothing to leave out.
+        EditorWindow silent(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        for (QAction *a : silent.findChildren<QAction *>())
+            if (a->text() == QStringLiteral("Include audio in output")) QVERIFY(!a->isEnabled());
+    }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
