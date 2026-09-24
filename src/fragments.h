@@ -19,7 +19,8 @@ bool split(QVector<Fragment> &list, qint64 sourceMs, qint64 durationMs);
 void setSpeed(QVector<Fragment> &list, int index, double speed);
 // Cutting the last kept fragment is refused: the output never goes empty.
 bool setRemoved(QVector<Fragment> &list, int index, bool removed);
-// Merges fragment `index` into the one before it, which keeps its settings.
+// Merges kept fragment `index` into the kept one before it, which keeps its
+// speed. Restoring a cut merges it with equal neighbours on its own.
 bool join(QVector<Fragment> &list, int index);
 
 }

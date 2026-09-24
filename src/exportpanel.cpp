@@ -1,4 +1,5 @@
 #include "exportpanel.h"
+#include "mediaio.h"
 #include "theme.h"
 #include <QAbstractButton>
 #include <QButtonGroup>
@@ -11,11 +12,6 @@ namespace eddy {
 
 static const int kSides[] = {0, 1080, 720, 480};
 static const int kRates[] = {60, 30, 15};
-
-static QString formatTime(qint64 ms) {
-    const qint64 seconds = (ms + 500) / 1000;
-    return QStringLiteral("%1:%2").arg(seconds / 60).arg(seconds % 60, 2, 10, QLatin1Char('0'));
-}
 
 ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("ExportPanel"));

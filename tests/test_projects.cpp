@@ -71,6 +71,11 @@ private slots:
         QCOMPARE(reopened->findChild<QUndoStack *>()->count(), 0);
         // Saving again without a dialog, then as a copy with its own original.
         QVERIFY(saveAndWait(*reopened, project));
+        // Saving a reopened project again does not copy its original again:
+        // with the assets folder read-only it still succeeds.
+        QFile::setPermissions(projectAssetsDir(project), QFileDevice::ReadOwner | QFileDevice::ExeOwner);
+        QVERIFY(saveAndWait(*reopened, project));
+        QFile::setPermissions(projectAssetsDir(project), QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
         const QString copy = dir.filePath("copy.eddy");
         QVERIFY(saveAndWait(*reopened, copy, true));
         const OpenedProject opened = openProject(copy);

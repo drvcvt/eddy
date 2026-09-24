@@ -37,10 +37,25 @@ private slots:
         QVERIFY(fragments::split(list, 5000, 10000));
         QVERIFY(fragments::setRemoved(list, 1, true));
         QVERIFY(fragments::setRemoved(list, 1, false));
-        QCOMPARE(list.size(), 2);                          // the seam stays until joined
+        QVERIFY(list.isEmpty());                           // equal neighbours merge again
+        QVERIFY(fragments::split(list, 5000, 10000));
         QVERIFY(fragments::join(list, 1));
         QVERIFY(list.isEmpty());
         QVERIFY(!fragments::join(list, 0));
+        // Restoring beside a different speed keeps the seam.
+        QVERIFY(fragments::split(list, 3000, 10000));
+        QVERIFY(fragments::split(list, 6000, 10000));
+        fragments::setSpeed(list, 2, 2.0);
+        QVERIFY(fragments::setRemoved(list, 1, true));
+        QVERIFY(fragments::setRemoved(list, 1, false));
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list[1].startMs, 6000);
+    }
+    void joiningNeverCutsWhatWasKept() {
+        QVector<Fragment> list{{0, 1.0, true}, {5000, 1.0, false}};
+        QVERIFY(!fragments::join(list, 1));
+        QCOMPARE(list.size(), 2);
+        QVERIFY(!list[1].removed);
     }
 };
 

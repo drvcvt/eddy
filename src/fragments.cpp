@@ -50,13 +50,22 @@ bool setRemoved(QVector<Fragment> &list, int index, bool removed) {
         && !parts[index].removed)
         return false;
     parts[index].removed = removed;
+    if (!removed) {
+        // A restored fragment melts into equal neighbours again (studio plan 6.6).
+        auto same = [&](int other) {
+            return other >= 0 && other < parts.size() && !parts[other].removed && parts[other].speed == parts[index].speed;
+        };
+        if (same(index + 1)) parts.remove(index + 1);
+        if (same(index - 1)) parts.remove(index);
+    }
     list = simplified(parts);
     return true;
 }
 
 bool join(QVector<Fragment> &list, int index) {
     QVector<Fragment> parts = expanded(list);
-    if (index <= 0 || index >= parts.size()) return false;
+    // Only two kept fragments join; joining into a cut would cut what was kept.
+    if (index <= 0 || index >= parts.size() || parts[index].removed || parts[index - 1].removed) return false;
     parts.remove(index);
     list = simplified(parts);
     return true;

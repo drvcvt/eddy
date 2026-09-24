@@ -11,6 +11,7 @@
 #include "timemap.h"
 #include "exportsettings.h"
 #include "projectcodec.h"
+#include "projectstore.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
@@ -173,10 +174,11 @@ private:
     void openExportPanel();
     void openProjectDialog();
     QString m_projectPath;
-    QString m_projectAsset;
+    AssetResult m_projectAssetInfo;   // the original as it sits in m_projectPath's assets
     QString m_projectSourceName;
     bool m_projectSaving = false;
     bool shelfTakes() const;
+    QString outputSuffix() const;
     ExportSettings m_exportSettings;  // video only; remembered in the config
     ExportPanel *m_exportPanel = nullptr;
     StudioDocument m_studio;          // this document; off by default

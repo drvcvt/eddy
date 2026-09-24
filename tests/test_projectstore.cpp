@@ -65,6 +65,11 @@ private slots:
         QVERIFY(writeProject(manifest, p).ok);
         QVERIFY(QFile::remove(QDir(projectAssetsDir(manifest)).filePath(a.name)));
         QVERIFY(!openProject(manifest).ok);
+        QVERIFY(openProject(manifest).originalMissing);
+        // A broken manifest is not a missing original, whatever its name says.
+        const QString broken = write(dir.filePath("changed-missing.eddy"), "{ not json");
+        QVERIFY(!openProject(broken).ok);
+        QVERIFY(!openProject(broken).originalMissing);
         const DeliverResult wrong = relinkProjectSource(manifest, write(dir.filePath("other.png"), "look-alike"));
         QVERIFY(!wrong.ok && wrong.error.contains("not this project's original"));
         QVERIFY(relinkProjectSource(manifest, original).ok);

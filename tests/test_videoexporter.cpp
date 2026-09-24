@@ -831,6 +831,22 @@ private slots:
                          qPrintable(QStringLiteral("render %1 beep %2 at %3 s").arg(render).arg(i).arg(onsets[i])));
         }
     }
+    void refusesARangeThatIsAllCut() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=6:r=25", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay, 2000, 4000};
+        request.fragments = {{0, 1.0, false}, {1000, 1.0, true}, {5000, 1.0, false}};
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY(!result.ok);
+        QVERIFY2(result.error.contains(QStringLiteral("cut")), qPrintable(result.error));
+        QVERIFY(!QFileInfo::exists(request.outputPath));
+    }
     void renderedExportKeepsTrimAndAudio() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

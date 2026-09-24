@@ -38,6 +38,7 @@ struct OpenedProject {
     QString error;
     ProjectSnapshot snapshot;
     QString sourcePath;   // the asset, checked to exist with the recorded size
+    bool originalMissing = false;   // the manifest is fine; its original is gone or changed
 };
 OpenedProject openProject(const QString &manifestPath);
 // "Locate original": puts `candidate` back as the project's original, but only

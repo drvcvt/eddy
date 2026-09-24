@@ -94,14 +94,6 @@ static QString appendBlurFilters(QString &filter, QString current, const QVector
     return current;
 }
 
-static bool hasAudioStream(const QString &path) {
-    const QString ffprobe = QStandardPaths::findExecutable(QStringLiteral("ffprobe"));
-    if (ffprobe.isEmpty()) return false;
-    QProcess p;
-    p.start(ffprobe, {"-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", path});
-    return p.waitForFinished(15000) && !p.readAllStandardOutput().trimmed().isEmpty();
-}
-
 static QString seconds(double ms) { return QString::number(ms / 1000.0, 'f', 4); }
 
 // The kept pieces of the input after `label`, one after another: each trimmed
@@ -223,7 +215,7 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const QRect view = req.baseView.isNull() ? content : req.baseView;
     const TimeMap time(source.durationMs, req.trimInMs, endMs, req.fragments);
     const bool pieces = !req.fragments.isEmpty();
-    const bool sound = pieces && hasAudioStream(req.inputPath);
+    const bool sound = pieces && source.hasAudio;
     const CameraPath camera(req.zooms, time,
                             CameraFrame{QRectF(content),
                                         view == content ? 0.0 : double(view.width()) / view.height(),
@@ -432,10 +424,20 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     // to the same display-pixel coordinate system used by the editor.
     // Drop surplus frames before the filters: -fpsmax alone still scales,
     // blurs and overlays every frame of a 240 fps recording.
-    const VideoInfo source = probeVideoFile(req.inputPath).info;
+    const ProbeVideoResult probed = probeVideoFile(req.inputPath);
+    const VideoInfo source = probed.info;
+    // Pieces need to know the length and whether there is sound to cut along.
+    if (pieces && !probed.ok) {
+        r.error = probed.error;
+        return r;
+    }
     const int maxFps = std::clamp(req.maxFps, 1, 60);
     const bool highFps = source.fps > maxFps;
     const TimeMap time(source.durationMs, req.trimInMs, trimmed ? req.trimOutMs : source.durationMs, req.fragments);
+    if (pieces && time.pieces().isEmpty()) {
+        r.error = QStringLiteral("every part of the trimmed range is cut");
+        return r;
+    }
     const qint64 outputMs = qRound64(time.outputDurationMs());
     if (render) {
         const DeliverResult rendered = writeRendered(req, ffmpeg, actualOutput, codecArgs, source,
@@ -453,7 +455,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     // before crop and framing (studio plan 4.3).
     if (pieces)
         filter += QStringLiteral("[pre];") + fragmentVideo(time.pieces(), req.trimInMs, QStringLiteral("[pre]"));
-    const bool sound = pieces && !gif && hasAudioStream(req.inputPath);
+    const bool sound = pieces && !gif && source.hasAudio;
     const QString audioFilter = sound ? QStringLiteral(";") + fragmentAudio(time.pieces(), req.trimInMs, QStringLiteral("[0:a]"))
                                       : QString();
     if (!framed.isNull())

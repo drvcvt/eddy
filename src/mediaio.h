@@ -18,7 +18,12 @@ struct VideoInfo {
     qint64 durationMs = 0;
     double fps = 0.0;
     bool cropSupported = true;
+    bool hasAudio = false;
 };
+
+// "m:ss" or "h:mm:ss", and with milliseconds; the playback bar's clocks.
+QString formatTime(qint64 ms);
+QString formatPreciseTime(qint64 ms);
 
 struct MediaDocument {
     MediaKind kind = MediaKind::Image;
