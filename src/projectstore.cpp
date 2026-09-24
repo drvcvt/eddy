@@ -126,29 +126,53 @@ DeliverResult writeProject(const QString &manifestPath, const ProjectSnapshot &p
     return r;
 }
 
-OpenedProject openProject(const QString &manifestPath) {
-    OpenedProject p;
+static std::optional<ProjectSnapshot> readManifest(const QString &manifestPath, QString *error) {
     QFile file(manifestPath);
     if (!file.open(QIODevice::ReadOnly)) {
-        p.error = QStringLiteral("cannot open %1").arg(manifestPath);
-        return p;
+        *error = QStringLiteral("cannot open %1").arg(manifestPath);
+        return std::nullopt;
     }
     if (file.size() > kMaxManifest) {
-        p.error = QStringLiteral("%1 is too large for a project").arg(manifestPath);
-        return p;
+        *error = QStringLiteral("%1 is too large for a project").arg(manifestPath);
+        return std::nullopt;
     }
     QJsonParseError parse;
     const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parse);
     if (!doc.isObject()) {
-        p.error = QStringLiteral("%1 is not valid JSON: %2").arg(manifestPath, parse.errorString());
-        return p;
+        *error = QStringLiteral("%1 is not valid JSON: %2").arg(manifestPath, parse.errorString());
+        return std::nullopt;
     }
-    QString error;
-    const auto snapshot = projectFromJson(doc.object(), &error);
-    if (!snapshot) {
-        p.error = error;
-        return p;
+    return projectFromJson(doc.object(), error);
+}
+
+DeliverResult relinkProjectSource(const QString &manifestPath, const QString &candidate) {
+    DeliverResult r;
+    const auto project = readManifest(manifestPath, &r.error);
+    if (!project) return r;
+    QFile file(candidate);
+    if (!file.open(QIODevice::ReadOnly)) {
+        r.error = QStringLiteral("cannot read %1").arg(candidate);
+        return r;
     }
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!hash.addData(&file) || QString::fromLatin1(hash.result().toHex()) != project->sha256) {
+        r.error = QStringLiteral("%1 is not this project's original").arg(QFileInfo(candidate).fileName());
+        return r;
+    }
+    const AssetResult asset = storeAsset(candidate, projectAssetsDir(manifestPath));
+    if (!asset.ok) {
+        r.error = asset.error;
+        return r;
+    }
+    ProjectSnapshot relinked = *project;
+    relinked.asset = asset.name;
+    return writeProject(manifestPath, relinked);
+}
+
+OpenedProject openProject(const QString &manifestPath) {
+    OpenedProject p;
+    const auto snapshot = readManifest(manifestPath, &p.error);
+    if (!snapshot) return p;
     p.snapshot = *snapshot;
     p.sourcePath = QDir(projectAssetsDir(manifestPath)).filePath(p.snapshot.asset);
     const QFileInfo asset(p.sourcePath);

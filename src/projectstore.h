@@ -40,5 +40,8 @@ struct OpenedProject {
     QString sourcePath;   // the asset, checked to exist with the recorded size
 };
 OpenedProject openProject(const QString &manifestPath);
+// "Locate original": puts `candidate` back as the project's original, but only
+// when its bytes are the recorded ones (SHA-256), never a look-alike.
+DeliverResult relinkProjectSource(const QString &manifestPath, const QString &candidate);
 
 }
