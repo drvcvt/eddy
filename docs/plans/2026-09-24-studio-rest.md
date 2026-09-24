@@ -443,15 +443,26 @@ die Format-Reihe das Format der Quelle. Open project öffnet ein zweites Fenster
 Prozess. Der volle SHA-256 wird nur bei "Locate original" geprüft; beim normalen Öffnen
 genügen Existenz und Größe (Hash eines großen Videos bei jedem Öffnen wäre spürbar).
 
+Abweichungen W3: Join verbindet nur zwei behaltene Fragmente; ein Restore verschmilzt mit
+gleichen Nachbarn (ein bloßer Split bleibt als Fuge sichtbar, bis Join oder Restore ihn
+auflöst). Der Filmstreifen zeigt mit Fragmenten nur Thumbnails, das Kontaktblatt deckt die
+ganze Quelle ab. Beim Abspielen zeigt eine Fuge höchstens zwei Frames aus dem Schnitt
+(gemessen im Test), der Export ist exakt.
+
+Review W1 bis W3 (`/code-review high` über `d2d4bf3..e5adc67`): zehn Funde, alle behoben in
+einem Commit (Join ins Leere, Wiedergabe über einen Schnitt am Ende, Trim ganz im Schnitt,
+Format bei `-o`, Restore ohne Verschmelzen, springende Ansicht, Asset-Kopie bei jedem
+Speichern, zweites ffprobe, Textvergleich statt Zustand, doppelte Uhr). `ctest` 46/46.
+
 | Welle | ID | Punkt | Commit |
 | --- | --- | --- | --- |
 | W1 | C1 | Export-Popover und Presets | `3b40865` |
 | W1 | C2 | GIF-Export (mit Größe und Bildrate im Exporter) | `0a7afc4` |
 | W2 | A1 | Projektformat | `4d29dc5` |
 | W2 | A2 | Projekt speichern und öffnen, Locate original | `b91cb21`, siehe Log |
-| W3 | B1 | Fragmente: Modell und Timeline | |
-| W3 | B2 | Fragmente im Export | |
-| W3 | B3 | Fragmente in der Vorschau | |
+| W3 | B1 | Fragmente: Modell und Timeline | `cf7218e`, `e5adc67` |
+| W3 | B2 | Fragmente im Export | `c2c885c` |
+| W3 | B3 | Fragmente in der Vorschau | `cf7218e` |
 | W4 | D1 | Spur-Interpolation bei Stillstand | |
 | W4 | D2 | Follow Cursor | |
 | W4 | D3 | Zoom-Vorschläge | |
