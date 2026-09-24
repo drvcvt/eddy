@@ -29,6 +29,11 @@ struct VideoExportRequest {
     // "Always keep zoomed in" (studio plan 6.5): the unzoomed view inside the
     // crop, shaped like the output frame. Null: the whole crop.
     QRect baseView;
+    // Export presets (studio plan 6.9): the framed output shrunk to this
+    // shorter side (0: full size) and capped at this frame rate. A `.gif`
+    // output path makes a paletted GIF without sound.
+    int maxShortSide = 0;
+    int maxFps = 60;
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.
     std::function<void(int percent)> progress;

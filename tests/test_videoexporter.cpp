@@ -685,6 +685,77 @@ private slots:
         QVERIFY(!result.ok);
         QVERIFY2(result.error.contains(QStringLiteral("view")), qPrintable(result.error));
     }
+    void shrinksAndCapsFramesForSmallerExports() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "testsrc2=s=640x360:r=60:d=1", "-f", "lavfi", "-i", "sine=frequency=440:duration=1",
+            "-shortest", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(640, 360, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("small.mp4")), overlay};
+        request.maxShortSide = 180;
+        request.maxFps = 30;
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const auto probe = probeVideoFile(request.outputPath);
+        QCOMPARE(probe.info.size, QSize(320, 180));
+        QCOMPARE(qRound(probe.info.fps), 30);
+        // The same through the frame renderer.
+        request.outputPath = dir.filePath(QStringLiteral("small-zoom.mp4"));
+        request.zooms = {{1, 0, 1000, 2.0, ZoomSegment::Target::Point, QPointF(320, 180),
+                          ZoomSegment::Motion::Instant}};
+        const DeliverResult rendered = writeVideoWithOverlay(request);
+        QVERIFY2(rendered.ok, qPrintable(rendered.error));
+        const auto renderedProbe = probeVideoFile(request.outputPath);
+        QCOMPARE(renderedProbe.info.size, QSize(320, 180));
+        QCOMPARE(qRound(renderedProbe.info.fps), 30);
+    }
+    void exportsAPalettedGifWithoutSound() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QImage halves(320, 180, QImage::Format_RGB32);
+        {
+            QPainter p(&halves);
+            p.fillRect(0, 0, 160, 180, Qt::red);
+            p.fillRect(160, 0, 160, 180, Qt::blue);
+        }
+        const QString still = dir.filePath(QStringLiteral("halves.png"));
+        QVERIFY(halves.save(still));
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-loop", "1", "-i", still,
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-t", "1", "-r", "30",
+            "-vf", "setsar=1,format=yuv420p", "-shortest", input}));
+        QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        for (bool zoom : {false, true}) {
+            VideoExportRequest request{input, dir.filePath(zoom ? QStringLiteral("z.gif") : QStringLiteral("a.gif")), overlay};
+            request.maxShortSide = 90;
+            request.maxFps = 15;
+            if (zoom)
+                request.zooms = {{1, 0, 1000, 2.0, ZoomSegment::Target::Point, QPointF(80, 90),
+                                  ZoomSegment::Motion::Instant}};
+            const DeliverResult result = writeVideoWithOverlay(request);
+            QVERIFY2(result.ok, qPrintable(result.error));
+            QCOMPARE(processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-select_streams", "v:0",
+                     "-show_entries", "stream=codec_name,width,height,r_frame_rate", "-of", "csv=p=0",
+                     request.outputPath}), QByteArray("gif,160,90,15/1"));
+            QVERIFY(processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-select_streams", "a",
+                    "-show_entries", "stream=index", "-of", "csv=p=0", request.outputPath}).isEmpty());
+            const QString frame = dir.filePath(QStringLiteral("frame.png"));
+            QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", "0.5", "-i",
+                                                         request.outputPath, "-frames:v", "1", frame}));
+            // Zoomed 2x onto the red half, every sample is red; otherwise the halves stay apart.
+            const QImage decoded(frame);
+            const QColor left = decoded.pixelColor(20, 45), right = decoded.pixelColor(140, 45);
+            QVERIFY2(left.red() > 200 && left.blue() < 60, qPrintable(left.name()));
+            if (zoom) QVERIFY2(right.red() > 200 && right.blue() < 60, qPrintable(right.name()));
+            else QVERIFY2(right.blue() > 200 && right.red() < 60, qPrintable(right.name()));
+        }
+    }
     void renderedExportKeepsTrimAndAudio() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");
