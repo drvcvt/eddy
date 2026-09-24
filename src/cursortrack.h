@@ -30,8 +30,9 @@ struct CursorTrack {
     QVector<CursorSample> samples;
     QVector<CursorClick> clicks;
 
-    // Linear between visible samples; nothing before the first sample or
-    // while the pointer is hidden.
+    // Linear between visible samples, holding still across gaps over 50 ms
+    // (Boltsnap only records moves); nothing before the first sample or while
+    // the pointer is hidden.
     std::optional<QPointF> positionAt(qint64 ms) const;
 };
 

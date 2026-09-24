@@ -21,7 +21,16 @@ std::optional<QPointF> CursorTrack::positionAt(qint64 ms) const {
     const CursorSample &a = *(after - 1);
     if (!a.visible) return std::nullopt;
     if (after == samples.cend() || !after->visible || after->ms == a.ms) return a.pos;
-    const double f = double(ms - a.ms) / double(after->ms - a.ms);
+    // Boltsnap samples only moves, thinned to 120 Hz: a longer gap is the
+    // pointer at rest, which then moves within one sample period.
+    constexpr qint64 kRestGapMs = 50;
+    constexpr double kPeriodMs = 1000.0 / 120;
+    double from = double(a.ms);
+    if (after->ms - a.ms > kRestGapMs) {
+        from = after->ms - kPeriodMs;
+        if (ms <= from) return a.pos;
+    }
+    const double f = (ms - from) / (after->ms - from);
     return a.pos + (after->pos - a.pos) * f;
 }
 
