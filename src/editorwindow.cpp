@@ -27,6 +27,7 @@
 #include "zoombar.h"
 #include "fragmentbar.h"
 #include "fragments.h"
+#include "zoomsuggest.h"
 #include "exportpanel.h"
 #include "projectstore.h"
 #include <QThread>
@@ -534,6 +535,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             saveExportSettings(configPath(), settings);
             onVideoContentChanged();   // the cached export no longer matches
         });
+        if (m_media.cursorTrack) m_cursorTrack = std::make_shared<const CursorTrack>(*m_media.cursorTrack);
         m_cameraRebuild = new QTimer(this);
         m_cameraRebuild->setSingleShot(true);
         m_cameraRebuild->setInterval(16);
@@ -574,6 +576,10 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             editZoom(m_selectedZoom, [motion](ZoomSegment &z) { z.motion = motion; });
         });
         connect(m_zoomBar, &ZoomBar::removeRequested, this, [this] { removeZoom(m_selectedZoom); });
+        m_zoomBar->setCursorAvailable(m_cursorTrack != nullptr);
+        connect(m_zoomBar, &ZoomBar::targetChosen, this, [this](ZoomSegment::Target target) {
+            editZoom(m_selectedZoom, [target](ZoomSegment &z) { z.target = target; });
+        });
         connect(m_miniMap, &MiniMap::dragged, this, &EditorWindow::moveCameraTarget);
         connect(m_miniMap, &MiniMap::dragFinished, this, &EditorWindow::finishCameraGesture);
         connect(m_miniMap, &MiniMap::wheelZoom, this, [this](double steps) {
@@ -1690,6 +1696,7 @@ void EditorWindow::openStudio() {
         if (z.motion != m_studio.zooms.first().motion) camera.motion.reset();
     camera.keepZoomedIn = m_studio.keepZoomedIn;
     camera.keepZoomedInAvailable = keepAvailable(m_studio.style);
+    camera.suggestAvailable = isVideo() && m_cursorTrack != nullptr;
     auto *popover = new StudioPopover(m_studio.style, cameraBase().size(), camera, this);
     popover->setAttribute(Qt::WA_DeleteOnClose);
     popover->setAttribute(Qt::WA_TranslucentBackground);
@@ -1711,6 +1718,19 @@ void EditorWindow::openStudio() {
         if (on && doc.keepCenter.isNull()) doc.keepCenter = QRectF(cameraContent()).center();
         setStudioDocument(doc);
         popover->setContentSize(cameraBase().size());
+    });
+    // Suggestions are ordinary zooms; with the rest of the session one undo step.
+    connect(popover, &StudioPopover::suggestRequested, this, [this] {
+        const QVector<ZoomSegment> added = suggestZooms(*m_cursorTrack, m_timeMap, m_media.video.durationMs,
+            m_studio.zooms, zoomlane::nextId(m_studio.zooms), m_studio.motion);
+        if (added.isEmpty()) {
+            m_toast->showMessage(tr("No clicks or pauses to zoom on"));
+            return;
+        }
+        StudioDocument doc = m_studio;
+        for (const ZoomSegment &z : added) zoomlane::insert(doc.zooms, z);
+        setStudioDocument(doc);
+        m_toast->showMessage(added.size() == 1 ? tr("Added 1 zoom") : tr("Added %1 zooms").arg(added.size()));
     });
     connect(popover, &StudioPopover::imageRequested, this, [this, popover] {
         // The popover's deferred deletion runs after the dialog returns, so its
@@ -1743,14 +1763,15 @@ void EditorWindow::rebuildCamera() {
     m_cameraRebuild->stop();
     const QRect content = cameraContent(), base = cameraBase();
     // Simulating the springs costs time on long clips; style edits leave the path alone.
+    const bool follows = m_studio.keepZoomedIn && m_studio.keepFollowsCursor;
     CameraInputs inputs{m_studio.zooms, m_studio.fragments, content, base,
-                        m_trimInMs, m_trimOutMs, m_media.video.durationMs};
+                        m_trimInMs, m_trimOutMs, m_media.video.durationMs, follows};
     if (inputs != m_cameraInputs) {
         m_cameraInputs = inputs;
         m_timeMap = TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments);
         m_cameraPath = CameraPath(m_studio.zooms, m_timeMap,
             CameraFrame{QRectF(content), base == content ? 0.0 : double(base.width()) / base.height(),
-                        QRectF(base).center()});
+                        QRectF(base).center(), m_cursorTrack.get(), follows});
     }
     m_timeline->setFragments(m_studio.fragments);
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
@@ -1769,7 +1790,17 @@ QRectF EditorWindow::currentCamera() const {
     const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
     const int selected = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
     // A selected zoom shows where it comes to rest, not a moment of the ride.
-    if (!playing && selected >= 0) return m_cameraPath.targetRect(m_studio.zooms[selected]);
+    if (!playing && selected >= 0) {
+        const ZoomSegment &z = m_studio.zooms[selected];
+        if (z.target != ZoomSegment::Target::Cursor || !m_cursorTrack) return m_cameraPath.targetRect(z);
+        // A Cursor zoom rests around the pointer: at the playhead, or at the
+        // zoom's start when the playhead is elsewhere.
+        const qint64 at = m_timeline->position() >= z.startMs && m_timeline->position() < z.endMs
+            ? m_timeline->position() : z.startMs;
+        ZoomSegment resting = z;
+        if (const auto pointer = m_cursorTrack->positionAt(at)) resting.point = *pointer;
+        return m_cameraPath.targetRect(resting);
+    }
     const qint64 source = playing && m_presentedStart >= 0 ? m_presentedStart : m_timeline->position();
     const double out = source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(double(source));
     return m_cameraPath.rectAt(out);
@@ -1869,6 +1900,7 @@ void EditorWindow::moveCameraTarget(QPointF delta) {
     const int i = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
     if (i >= 0) {
         ZoomSegment &z = m_studio.zooms[i];
+        if (z.target == ZoomSegment::Target::Cursor && m_cursorTrack) return;   // the pointer leads
         z.point += delta;
         z.point = m_cameraPath.targetRect(z).center();   // no drift past the edges
         m_lastZoomPoint = z.point;
@@ -1876,6 +1908,7 @@ void EditorWindow::moveCameraTarget(QPointF delta) {
         const QRectF content(cameraContent());
         const QSizeF view = QRectF(cameraBase()).size();
         const QPointF c = m_studio.keepCenter + delta;
+        m_studio.keepFollowsCursor = false;   // placed by hand now (E10)
         m_studio.keepCenter = QPointF(
             qBound(content.left() + view.width() / 2, c.x(), content.right() - view.width() / 2),
             qBound(content.top() + view.height() / 2, c.y(), content.bottom() - view.height() / 2));
@@ -2177,6 +2210,8 @@ void EditorWindow::startVideoExportCache() {
     request.maxShortSide = m_exportSettings.shortSide;
     request.maxFps = m_exportSettings.fps;
     if (cameraBase() != cameraContent()) request.baseView = cameraBase();
+    request.cursorTrack = m_cursorTrack;
+    request.baseFollowsCursor = m_studio.keepZoomedIn && m_studio.keepFollowsCursor;
     m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
     request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
     QPointer<EditorWindow> receiver(this);

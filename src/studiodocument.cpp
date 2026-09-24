@@ -175,6 +175,9 @@ struct Reader {
         if (!object(json, "keepZoomedIn", &keep) || !flag(keep, "on", &d->keepZoomedIn)) return false;
         if (keep.contains(QLatin1String("center")) && !point(keep, "center", source, &d->keepCenter))
             return false;
+        const QJsonValue follows = keep.value(QLatin1String("followCursor"));
+        if (!follows.isUndefined() && !follows.isBool()) return fail(QStringLiteral("followCursor must be true or false"));
+        d->keepFollowsCursor = follows.toBool(true);
         return true;
     }
 };
@@ -214,7 +217,8 @@ QJsonObject studioToJson(const StudioDocument &doc) {
         {"fragments", fragments},
         {"camera", QJsonObject{{"motion", nameOf(kMotions, doc.motion)}}},
         {"keepZoomedIn", QJsonObject{{"on", doc.keepZoomedIn},
-                                     {"center", QJsonArray{doc.keepCenter.x(), doc.keepCenter.y()}}}}};
+                                     {"center", QJsonArray{doc.keepCenter.x(), doc.keepCenter.y()}},
+                                     {"followCursor", doc.keepFollowsCursor}}}};
 }
 
 std::optional<StudioDocument> studioFromJson(const QJsonObject &json, qint64 durationMs,

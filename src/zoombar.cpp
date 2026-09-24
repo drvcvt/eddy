@@ -43,6 +43,15 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
         connect(action, &QAction::triggered, this, [this, s] { emit scaleChosen(s); });
     }
     m_scale->setMenu(scales);
+    m_point = button(QStringLiteral("ZoomTarget"), tr("Zoom on a fixed point"));
+    m_point->setText(tr("Point"));
+    m_point->setCheckable(true);
+    m_cursor = button(QStringLiteral("ZoomTarget"), tr("Follow the pointer"));
+    m_cursor->setText(tr("Cursor"));
+    m_cursor->setCheckable(true);
+    connect(m_point, &QToolButton::clicked, this, [this] { emit targetChosen(ZoomSegment::Target::Point); });
+    connect(m_cursor, &QToolButton::clicked, this, [this] { emit targetChosen(ZoomSegment::Target::Cursor); });
+    setCursorAvailable(false);
     m_motion = button(QStringLiteral("ZoomMotion"), tr("How the camera moves into and out of this zoom"));
     m_motion->setPopupMode(QToolButton::InstantPopup);
     auto *motions = popupMenu(m_motion, QStringLiteral("ZoomMotionMenu"));
@@ -63,10 +72,17 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
 void ZoomBar::setZoom(const ZoomSegment &zoom) {
     theme::setMenuLabel(m_scale, QString::number(zoom.scale, 'g', 3) + QStringLiteral("×"));
     for (QAction *a : m_scale->menu()->actions()) a->setChecked(qFuzzyCompare(a->data().toDouble(), zoom.scale));
+    m_point->setChecked(zoom.target == ZoomSegment::Target::Point);
+    m_cursor->setChecked(zoom.target == ZoomSegment::Target::Cursor);
     theme::setMenuLabel(m_motion, motionName(zoom.motion));
     for (QAction *a : m_motion->menu()->actions())
         a->setChecked(a->data().value<ZoomSegment::Motion>() == zoom.motion);
     adjustSize();
+}
+
+void ZoomBar::setCursorAvailable(bool available) {
+    m_cursor->setEnabled(available);
+    m_cursor->setToolTip(available ? tr("Follow the pointer") : tr("Needs a Boltsnap cursor track"));
 }
 
 void ZoomBar::refreshTheme() {

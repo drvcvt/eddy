@@ -21,6 +21,14 @@ void springStep(double omega, double target, double dt, double &x, double &v) {
     v = (v - omega * b * dt) * e;
 }
 
+QPointF followWithDeadZone(QPointF centre, QPointF pointer, QSizeF window, double deadZone) {
+    const double hx = window.width() * deadZone / 2, hy = window.height() * deadZone / 2;
+    auto follow = [](double c, double p, double half) {
+        return p > c + half ? p - half : p < c - half ? p + half : c;
+    };
+    return QPointF(follow(centre.x(), pointer.x(), hx), follow(centre.y(), pointer.y(), hy));
+}
+
 // A centre that keeps a window of half-size `half` inside [lo, hi].
 static double clampCentre(double centre, double half, double lo, double hi) {
     return hi - lo <= 2 * half ? (lo + hi) / 2 : std::clamp(centre, lo + half, hi - half);
@@ -49,11 +57,28 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
 
     const int count = int(std::ceil(time.outputDurationMs() * kRate / 1000.0)) + 1;
     const double dt = 1.0 / kRate;
-    const QPointF home = m_base.center();
+    QPointF home = m_base.center();
     double x = home.x(), y = home.y(), ls = 0, vx = 0, vy = 0, vls = 0;
     double tx = x, ty = y, tls = 0;
     double omega = cameraOmega(ZoomSegment::Motion::Focused);
     int current = -1, next = 0;
+    QPointF followed;   // a Cursor zoom's dead-zoned centre
+    // Where the pointer is at output time t; empty without a track or while hidden.
+    auto pointer = [&](double t) -> std::optional<QPointF> {
+        if (!frame.cursor) return std::nullopt;
+        return frame.cursor->positionAt(qint64(std::llround(time.toSource(t))));
+    };
+    const bool baseFollows = frame.baseFollowsCursor && frame.cursor && frame.aspect > 0;
+    // A following base view starts on the pointer instead of gliding to it.
+    if (baseFollows) {
+        if (const auto first = pointer(0)) {
+            const QPointF moved = followWithDeadZone(home, *first, m_base.size());
+            home = QPointF(clampCentre(moved.x(), m_base.width() / 2, m_content.left(), m_content.right()),
+                           clampCentre(moved.y(), m_base.height() / 2, m_content.top(), m_content.bottom()));
+            x = tx = home.x();
+            y = ty = home.y();
+        }
+    }
     m_samples.reserve(count);
     for (int i = 0; i < count; ++i) {
         // The step into sample i follows the target that held before it, so a
@@ -64,30 +89,49 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
             springStep(omega, tls, dt, ls, vls);
         }
         const double t = i * 1000.0 / kRate;
+        const std::optional<QPointF> at = pointer(t);
+        // A following base view keeps the pointer in its middle 40 %, held
+        // where it was while the pointer is away.
+        if (baseFollows && at) {
+            const QPointF moved = followWithDeadZone(home, *at, m_base.size());
+            home = QPointF(clampCentre(moved.x(), m_base.width() / 2, m_content.left(), m_content.right()),
+                           clampCentre(moved.y(), m_base.height() / 2, m_content.top(), m_content.bottom()));
+        }
         while (next < spans.size() && spans[next].end <= t) ++next;
         const int active = next < spans.size() && spans[next].start <= t ? next : -1;
+        const ZoomSegment *zoom = active >= 0 ? spans[active].zoom : nullptr;
+        const bool cursorZoom = zoom && zoom->target == ZoomSegment::Target::Cursor && frame.cursor;
         bool jump = false;
         if (active != current) {
             // Moving into a zoom uses its motion, moving out uses the one being left.
             omega = cameraOmega(spans[active >= 0 ? active : current].zoom->motion);
             current = active;
-            if (active >= 0) {
-                const ZoomSegment &z = *spans[active].zoom;
-                tls = std::log(z.scale);
-                tx = clampCentre(z.point.x(), m_base.width() / z.scale / 2, m_content.left(), m_content.right());
-                ty = clampCentre(z.point.y(), m_base.height() / z.scale / 2, m_content.top(), m_content.bottom());
+            if (zoom) {
+                tls = std::log(zoom->scale);
+                followed = cursorZoom && at ? *at : zoom->point;
+                tx = clampCentre(followed.x(), m_base.width() / zoom->scale / 2, m_content.left(), m_content.right());
+                ty = clampCentre(followed.y(), m_base.height() / zoom->scale / 2, m_content.top(), m_content.bottom());
             } else {
-                tx = home.x();
-                ty = home.y();
                 tls = 0;
             }
             if (omega == 0) {
+                if (!zoom) { tx = home.x(); ty = home.y(); }
                 x = tx;
                 y = ty;
                 ls = tls;
                 vx = vy = vls = 0;
                 jump = true;
             }
+        }
+        if (cursorZoom && at) {
+            const QSizeF window = m_base.size() / zoom->scale;
+            followed = followWithDeadZone(followed, *at, window);
+            tx = clampCentre(followed.x(), window.width() / 2, m_content.left(), m_content.right());
+            ty = clampCentre(followed.y(), window.height() / 2, m_content.top(), m_content.bottom());
+        }
+        if (!zoom) {
+            tx = home.x();
+            ty = home.y();
         }
         m_samples.append({float(x), float(y), float(ls), float(vx), float(vy), float(vls), jump});
     }

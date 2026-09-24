@@ -4,6 +4,8 @@
 #include <QString>
 #include <QVector>
 #include <functional>
+#include <memory>
+#include "cursortrack.h"
 #include "exporter.h"
 #include "studiodocument.h"
 #include "studiostyle.h"
@@ -37,6 +39,10 @@ struct VideoExportRequest {
     // Split, cut and sped-up stretches of the source (studio plan 6.6); empty
     // keeps the whole trimmed range at 1x.
     QVector<Fragment> fragments;
+    // Boltsnap's pointer track: Cursor zooms follow it, and the base view does
+    // when `baseFollowsCursor` (studio plan 6.2 and 6.5).
+    std::shared_ptr<const CursorTrack> cursorTrack;
+    bool baseFollowsCursor = false;
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.
     std::function<void(int percent)> progress;

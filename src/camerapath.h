@@ -5,6 +5,7 @@
 #include <cmath>
 #include "studiodocument.h"
 #include "timemap.h"
+#include "cursortrack.h"
 
 namespace eddy {
 
@@ -19,7 +20,15 @@ struct CameraFrame {
     QRectF content;      // document pixels the camera may show: the crop or the whole frame
     double aspect = 0;   // width/height of the output frame it fills; 0 = the content's own
     QPointF baseCenter;  // centre of the unzoomed view when `aspect` narrows it
+    // Boltsnap's pointer track: Cursor zooms follow it, and so does a narrowed
+    // base view when `baseFollowsCursor` (studio plan 6.2 and 6.5).
+    const CursorTrack *cursor = nullptr;
+    bool baseFollowsCursor = false;
 };
+
+// Moves `centre` only as far as keeps `pointer` inside the central box of
+// `deadZone` times `window` (studio plan 6.2).
+QPointF followWithDeadZone(QPointF centre, QPointF pointer, QSizeF window, double deadZone = 0.4);
 
 // The camera over output time, simulated once at a fixed rate and cached, so
 // preview and export read the same curve (studio plan 3.4). Rebuild it after

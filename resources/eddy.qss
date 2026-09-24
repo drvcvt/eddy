@@ -318,6 +318,8 @@ QWidget#ZoomBar QToolButton, QWidget#FragmentBar QToolButton {
 }
 QWidget#ZoomBar QToolButton:hover, QWidget#ZoomBar QToolButton:focus,
 QWidget#FragmentBar QToolButton:hover, QWidget#FragmentBar QToolButton:focus { background: @raise2; color: @fg; }
+QWidget#ZoomBar QToolButton#ZoomTarget:checked { background: @raise3; color: @fg; }
+QWidget#ZoomBar QToolButton#ZoomTarget:disabled { color: @faint; }
 QWidget#ZoomBar QToolButton#ZoomScale, QWidget#FragmentBar QToolButton#FragmentSpeed { font-family: @font-mono; font-weight: 400; }
 QToolButton#ZoomScale::menu-indicator, QToolButton#ZoomMotion::menu-indicator,
 QToolButton#FragmentSpeed::menu-indicator { image: none; width: 0; height: 0; }

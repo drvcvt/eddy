@@ -189,9 +189,11 @@ private:
         QVector<Fragment> fragments;
         QRect content, base;
         qint64 trimIn = -1, trimOut = -1, duration = -1;
+        bool follows = false;
         bool operator==(const CameraInputs &) const = default;
     };
     CameraInputs m_cameraInputs;      // what m_cameraPath was built from
+    std::shared_ptr<const CursorTrack> m_cursorTrack;   // Boltsnap's pointer, when it came along
     TimeMap m_timeMap;
     CameraPath m_cameraPath;
     QTimer *m_cameraRebuild = nullptr;   // coalesces rebuilds while a lane drag previews

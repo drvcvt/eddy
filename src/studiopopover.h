@@ -16,6 +16,7 @@ struct StudioCameraSettings {
     std::optional<ZoomSegment::Motion> motion;   // empty while the zooms differ
     bool keepZoomedIn = false;
     bool keepZoomedInAvailable = false;          // the ratio leaves room to fill
+    bool suggestAvailable = false;               // a cursor track came with the video
 };
 
 // Studio framing controls: background, spacing, corners, shadow and output
@@ -37,6 +38,7 @@ signals:
     void imageRequested();   // "Image…": the caller opens a file dialog
     void motionChosen(ZoomSegment::Motion motion);
     void keepZoomedInChanged(bool on);
+    void suggestRequested();
 private:
     void apply();
     void showSize();

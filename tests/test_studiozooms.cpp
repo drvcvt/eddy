@@ -294,6 +294,91 @@ private slots:
         QVERIFY(probe.waitForFinished(10000));
         QCOMPARE(probe.readAllStandardOutput().trimmed(), QByteArray("gif,320,180"));
     }
+    void followCursorNeedsATrackAndFollowsIt() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        {
+            EditorWindow plain(videoDoc(dir.filePath(QStringLiteral("none.mp4"))), cfg, {});
+            plain.show();
+            QTest::keyClick(&plain, Qt::Key_Z);
+            QToolButton *cursor = nullptr;
+            for (auto *b : plain.findChildren<QToolButton *>(QStringLiteral("ZoomTarget")))
+                if (b->text() == QStringLiteral("Cursor")) cursor = b;
+            QVERIFY(cursor && !cursor->isEnabled());
+        }
+        MediaDocument doc = videoDoc(dir.filePath(QStringLiteral("none.mp4")));
+        CursorTrack track;
+        track.videoSize = QSize(320, 180);
+        track.samples = {{0, QPointF(280, 40), true}};
+        doc.cursorTrack = track;
+        EditorWindow w(doc, cfg, {});
+        w.resize(900, 640);
+        w.show();
+        QTest::keyClick(&w, Qt::Key_Z);
+        auto *undo = w.findChild<QUndoStack *>();
+        const int steps = undo->count();
+        for (auto *b : w.findChildren<QToolButton *>(QStringLiteral("ZoomTarget")))
+            if (b->text() == QStringLiteral("Cursor")) { QVERIFY(b->isEnabled()); b->click(); }
+        QCOMPARE(w.studioDocument().zooms.first().target, ZoomSegment::Target::Cursor);
+        QCOMPARE(undo->count(), steps + 1);
+        // The selected Cursor zoom shows the window around the pointer, clamped in.
+        const QRectF camera = w.findChild<Canvas *>()->camera();
+        QCOMPARE(camera.size(), QSizeF(160, 90));
+        QCOMPARE(camera.topLeft(), QPointF(160, 0));
+    }
+    void keepZoomedInFollowsThePointerUntilPlacedByHand() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath(QStringLiteral("none.mp4")));
+        CursorTrack track;
+        track.videoSize = QSize(320, 180);
+        track.samples = {{0, QPointF(300, 90), true}};
+        doc.cursorTrack = track;
+        EditorWindow w(doc, cfg, {});
+        w.resize(900, 640);
+        w.show();
+        StudioDocument studio;
+        studio.style = dusk();
+        studio.style.aspect = QSize(9, 16);
+        studio.keepZoomedIn = true;
+        studio.keepCenter = QPointF(160, 90);
+        w.setStudioDocument(studio);
+        auto *canvas = w.findChild<Canvas *>();
+        const QRectF base = canvas->contentRect();
+        // The canvas shows the base view moved right, to the pointer.
+        QVERIFY2(canvas->camera().center().x() > base.center().x() + 50,
+                 qPrintable(QStringLiteral("%1 vs %2").arg(canvas->camera().center().x()).arg(base.center().x())));
+        // Dragging the centre places it by hand; from then on it stays.
+        emit canvas->cameraDragged(QPointF(10, 0));
+        emit canvas->cameraDragFinished(false);
+        QVERIFY(!w.studioDocument().keepFollowsCursor);
+        QVERIFY(canvas->camera().isEmpty());
+    }
+    void suggestionsJoinThePopoverSession() {
+        QTemporaryDir dir;
+        CliOptions cli; cli.configPath = dir.filePath(QStringLiteral("config"));
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath(QStringLiteral("none.mp4")));
+        CursorTrack track;
+        track.videoSize = QSize(320, 180);
+        for (qint64 ms = 0; ms < 4000; ms += 8)
+            if (ms < 1000 || ms >= 2200 || ms == 1000) track.samples.append({ms, ms < 1000 || ms >= 2200 ? QPointF(10 + ms / 8, 20) : QPointF(200, 100), true});
+        doc.cursorTrack = track;
+        EditorWindow w(doc, cfg, cli);
+        w.show();
+        auto *undo = w.findChild<QUndoStack *>();
+        const int steps = undo->count();
+        w.openStudio();
+        auto *popover = w.findChild<StudioPopover *>();
+        auto *suggest = popover->findChild<QToolButton *>(QStringLiteral("StudioSuggest"));
+        QVERIFY(suggest);
+        suggest->click();
+        QCOMPARE(w.studioDocument().zooms.size(), 1);
+        QCOMPARE(w.studioDocument().zooms.first().point, QPointF(200, 100));
+        popover->close();
+        QTRY_VERIFY(!w.findChild<StudioPopover *>());
+        QCOMPARE(undo->count(), steps + 1);
+    }
     void exportedZoomMatchesThePreview() {
         if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
         QTemporaryDir dir;

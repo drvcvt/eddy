@@ -11,14 +11,19 @@ class ZoomBar : public QWidget {
 public:
     explicit ZoomBar(QWidget *parent = nullptr);
     void setZoom(const ZoomSegment &zoom);
+    // Follow Cursor needs Boltsnap's pointer track beside the video.
+    void setCursorAvailable(bool available);
     void refreshTheme();
 signals:
     void scaleChosen(double scale);
     void motionChosen(ZoomSegment::Motion motion);
+    void targetChosen(ZoomSegment::Target target);
     void removeRequested();
 private:
     QToolButton *m_scale = nullptr;
     QToolButton *m_motion = nullptr;
+    QToolButton *m_point = nullptr;
+    QToolButton *m_cursor = nullptr;
 };
 
 }
