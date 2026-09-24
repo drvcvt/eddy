@@ -332,6 +332,13 @@ Teilzeitpunkte im halben Frame-Intervall rendern und mitteln. Vorschau: Entschei
 **Was brechen kann.** Bis 6× Renderzeit in Kamerafahrten: messen am echten Clip, vor Abnahme.
 **Test.** Renderer: bei stehender Kamera bitgleich zu ohne Blur, in der Fahrt weicher (Kanten-
 Gradient breiter); Export-Zeit gemessen und dokumentiert.
+**Umgesetzt.** Statt `CameraPath::speedAt` vergleicht der Export die Kamera am Anfang und Ende
+des Verschlusses (Blur/100 × halbes Frame-Intervall); ab 0,5 Ausgabe-Pixel Weg (gemessen an der
+Kamerabreite) werden 6 Zeitpunkte gerendert und laufend gemittelt
+(`StudioRenderer::renderBlurred`), sonst einmal. `timeVarying()` bleibt unverändert: ohne
+Zoom oder Cursor-Basis steht die Kamera, Blur hat dann nichts zu tun. Regler "Blur" mit
+"Export only" auf der Camera-Seite, Teil der einen Undo-Sitzung. Die Export-Zeit am echten
+Clip ist noch nicht gemessen; Mehraufwand fällt nur in Frames mit Kamerafahrt an.
 
 ### G1 Audio-Probe und Wellenform-Daten (P3)
 
@@ -482,9 +489,9 @@ Speichern, zweites ffprobe, Textvergleich statt Zustand, doppelte Uhr). `ctest` 
 | W4 | D3 | Zoom-Vorschläge | `5b68b73` |
 | W4 | D4 | keep zoomed in mit Cursor | `5b68b73` |
 | W5 | A3 | Autosave, Recovery, Resume | `486f14d` |
-| W6 | E1 | Zeitfenster: Modell und Export | |
-| W6 | E2 | Masken-Spur und Leisten | |
-| W6 | F1 | Studio-Presets | |
+| W6 | E1 | Zeitfenster: Modell und Export | `675e8a0` |
+| W6 | E2 | Masken-Spur und Leisten | `675e8a0` |
+| W6 | F1 | Studio-Presets | `dd54861` |
 | W6 | F2 | Motion Blur | |
 | W7 | G1 | Audio-Probe und Wellenform-Daten | |
 | W7 | G2 | Wellenform-Spur | |

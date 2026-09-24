@@ -1,4 +1,5 @@
 #include "videoexporter.h"
+#include <QLineF>
 #include "exportsettings.h"
 #include <algorithm>
 #include "exporter.h"
@@ -259,9 +260,25 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
         + QStringList{"-filter_complex", filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "-"};
     job.outputSize = size;
     job.expectedFrames = qRound64(time.outputDurationMs() * fps / 1000.0);
+    // Motion blur: six moments within a shutter of up to half a frame, only
+    // while the camera moves visibly; a still camera renders once.
+    const double shutter = std::clamp(req.motionBlur, 0, 100) / 100.0 * 500.0 / fps;
     job.render = [&](qint64 index, const QImage &frame, QImage &out) {
         const double outMs = index * 1000.0 / fps;
-        renderer.render(frame, camera.rectAt(outMs), out, time.toSource(outMs));
+        const double sourceMs = time.toSource(outMs);
+        if (shutter > 0) {
+            const QRectF a = camera.rectAt(outMs - shutter / 2), b = camera.rectAt(outMs + shutter / 2);
+            const double moved = std::max({QLineF(a.topLeft(), b.topLeft()).length(),
+                                           QLineF(a.bottomRight(), b.bottomRight()).length()})
+                                 * size.width() / std::max(1.0, a.width());
+            if (moved > 0.5) {
+                QVector<QRectF> cameras;
+                for (int i = 0; i < 6; ++i) cameras.append(camera.rectAt(outMs - shutter / 2 + shutter * i / 5));
+                renderer.renderBlurred(frame, cameras, out, sourceMs);
+                return;
+            }
+        }
+        renderer.render(frame, camera.rectAt(outMs), out, sourceMs);
     };
     job.stallTimeoutMs = req.stallTimeoutMs;
     job.progress = req.progress;

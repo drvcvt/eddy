@@ -627,6 +627,62 @@ private slots:
         }
     }
 
+    void motionBlurSmearsOnlyAMovingCamera() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QImage halves(320, 180, QImage::Format_RGB32);
+        {
+            QPainter p(&halves);
+            p.fillRect(0, 0, 160, 180, Qt::red);
+            p.fillRect(160, 0, 160, 180, Qt::blue);
+        }
+        const QString still = dir.filePath(QStringLiteral("halves.png"));
+        QVERIFY(halves.save(still));
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-loop", "1", "-i", still, "-t", "2",
+            "-r", "30", "-vf", "setsar=1,format=yuv444p", input}));
+        QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        // Zooming in on a point right of the edge slides the edge left while the camera moves.
+        VideoExportRequest request{input, QString(), overlay};
+        request.zooms = {{1, 400, 2000, 2.0, ZoomSegment::Target::Point, QPointF(200, 90),
+                          ZoomSegment::Motion::Focused}};
+        request.maxFps = 10;   // a long frame, so half of it is a clear smear
+        // The widest mixed red and blue run across the middle row, per frame.
+        auto edges = [&](int blur) {
+            request.motionBlur = blur;
+            request.outputPath = dir.filePath(QStringLiteral("out%1.mp4").arg(blur));
+            const DeliverResult result = writeVideoRendered(request);
+            if (!result.ok) return QVector<int>();
+            const QString pattern = dir.filePath(QStringLiteral("b%1-%03d.png").arg(blur));
+            if (!runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-i", request.outputPath, pattern}))
+                return QVector<int>();
+            QVector<int> widths;
+            for (int i = 1;; ++i) {
+                const QImage frame(dir.filePath(QStringLiteral("b%1-%2.png").arg(blur).arg(i, 3, 10, QLatin1Char('0'))));
+                if (frame.isNull()) break;
+                int mixed = 0;
+                for (int x = 0; x < frame.width(); ++x) {
+                    const QColor c = frame.pixelColor(x, 90);
+                    mixed += c.red() > 50 && c.blue() > 50;
+                }
+                widths.append(mixed);
+            }
+            return widths;
+        };
+        const QVector<int> sharp = edges(0), smeared = edges(100);
+        QVERIFY(!sharp.isEmpty());
+        QCOMPARE(smeared.size(), sharp.size());
+        // Before the zoom the camera stands still: no smear there.
+        QVERIFY2(qAbs(smeared.first() - sharp.first()) <= 1,
+                 qPrintable(QStringLiteral("%1 vs %2").arg(smeared.first()).arg(sharp.first())));
+        const int widest = *std::max_element(smeared.cbegin(), smeared.cend());
+        const int widestSharp = *std::max_element(sharp.cbegin(), sharp.cend());
+        QVERIFY2(widest >= widestSharp + 6, qPrintable(QStringLiteral("%1 vs %2").arg(widest).arg(widestSharp)));
+    }
+
     void keepZoomedInCropsToTheFramesRatio() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

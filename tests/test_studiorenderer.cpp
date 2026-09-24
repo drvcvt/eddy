@@ -29,6 +29,28 @@ static QImage draw(const StudioRenderer &renderer, const QImage &frame, const QR
 class TestStudioRenderer : public QObject {
     Q_OBJECT
 private slots:
+    void motionBlurAveragesAMovingCameraOnly() {
+        const StudioRenderer renderer(QSize(200, 100), QRect(0, 0, 200, 100), StudioStyle(), QImage());
+        const QRectF still(50, 25, 100, 50);
+        QImage single(renderer.outputSize(), QImage::Format_RGB32), blurred = single;
+        renderer.render(source(), still, single);
+        renderer.renderBlurred(source(), {still, still, still}, blurred);
+        QCOMPARE(blurred, single);   // a camera at rest stays sharp
+        // Sliding right, the red and blue edge smears across many pixels.
+        QVector<QRectF> moving;
+        for (int i = 0; i < 6; ++i) moving.append(still.translated(i * 4, 0));
+        renderer.renderBlurred(source(), moving, blurred);
+        auto mixed = [](const QImage &image) {
+            int count = 0;
+            for (int x = 0; x < image.width(); ++x) {
+                const QColor c = image.pixelColor(x, 20);
+                count += c.red() > 30 && c.blue() > 30;
+            }
+            return count;
+        };
+        QVERIFY2(mixed(blurred) > mixed(single) + 20,
+                 qPrintable(QStringLiteral("%1 vs %2").arg(mixed(blurred)).arg(mixed(single))));
+    }
     void aStillCameraCopiesTheContent() {
         const StudioRenderer renderer(QSize(200, 100), QRect(0, 0, 200, 100), StudioStyle(), QImage());
         QCOMPARE(renderer.outputSize(), QSize(200, 100));

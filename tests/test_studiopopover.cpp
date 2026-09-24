@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QSlider>
 #include <QToolButton>
 #include "studiopopover.h"
 
@@ -23,6 +24,7 @@ private slots:
         StudioCameraSettings camera;
         camera.available = true;
         camera.motion = ZoomSegment::Motion::Focused;
+        camera.motionBlur = 30;
         StudioPopover popover(style, QSize(1920, 1080), camera, nullptr);
         popover.show();
         const QSize size = popover.size();
@@ -44,6 +46,12 @@ private slots:
         QSignalSpy keeps(&popover, &StudioPopover::keepZoomedInChanged);
         keep->click();
         QCOMPARE(keeps.first().first().toBool(), true);
+        auto *blur = popover.findChild<QSlider *>(QStringLiteral("StudioMotionBlur"));
+        QVERIFY(blur);
+        QCOMPARE(blur->value(), 30);
+        QSignalSpy blurs(&popover, &StudioPopover::motionBlurChanged);
+        blur->setValue(70);
+        QCOMPARE(blurs.first().first().toInt(), 70);
     }
     void mixedMotionsCheckNone() {
         StudioCameraSettings camera;

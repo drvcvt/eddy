@@ -1767,6 +1767,7 @@ void EditorWindow::openStudio() {
     camera.keepZoomedIn = m_studio.keepZoomedIn;
     camera.keepZoomedInAvailable = keepAvailable(m_studio.style);
     camera.suggestAvailable = isVideo() && m_cursorTrack != nullptr;
+    camera.motionBlur = m_studio.motionBlur;
     auto *popover = new StudioPopover(m_studio.style, cameraBase().size(), camera, this);
     popover->setAttribute(Qt::WA_DeleteOnClose);
     popover->setAttribute(Qt::WA_TranslucentBackground);
@@ -1845,6 +1846,11 @@ void EditorWindow::openStudio() {
             return;
         }
         m_toast->showMessage(tr("Preset exported"));
+    });
+    connect(popover, &StudioPopover::motionBlurChanged, this, [this](int strength) {
+        StudioDocument doc = m_studio;
+        doc.motionBlur = strength;
+        setStudioDocument(doc);
     });
     // Suggestions are ordinary zooms; with the rest of the session one undo step.
     connect(popover, &StudioPopover::suggestRequested, this, [this] {
@@ -2412,6 +2418,7 @@ void EditorWindow::startVideoExportCache() {
     if (cameraBase() != cameraContent()) request.baseView = cameraBase();
     request.cursorTrack = m_cursorTrack;
     request.baseFollowsCursor = m_studio.keepZoomedIn && m_studio.keepFollowsCursor;
+    request.motionBlur = m_studio.motionBlur;
     m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
     request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
     QPointer<EditorWindow> receiver(this);
