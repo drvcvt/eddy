@@ -77,14 +77,14 @@ QWidget#ColorPopover {
     border: none;
     border-radius: 14px;
 }
-QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar {
+QWidget#RedactBar, QWidget#TextBar, QWidget#SpotlightBar, QWidget#StepBar {
     background-color: @raise1;
     border: none;
     /* 8px chip inset by the 4px margin, so the gap stays concentric; any larger
        and these bars round off into a stadium. */
     border-radius: 12px;
 }
-QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar QToolButton {
+QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar QToolButton, QWidget#StepBar QToolButton {
     color: @sub;
     padding: 0 8px;
     border-radius: 8px;
@@ -94,9 +94,21 @@ QWidget#RedactBar QToolButton, QWidget#TextBar QToolButton, QWidget#SpotlightBar
 }
 /* The text bar is icons throughout, letterforms included: padding would clip
    the wider glyphs at 20px. */
-QWidget#TextBar QToolButton { padding: 0; }
-QWidget#RedactBar QToolButton:hover, QWidget#TextBar QToolButton:hover, QWidget#SpotlightBar QToolButton:hover { background-color: @raise2; color: @fg; }
-QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked { background-color: @raise3; color: @fg; }
+QWidget#TextBar QToolButton, QWidget#StepBar QToolButton { padding: 0; }
+QWidget#StepBar QToolButton::menu-indicator { image: none; }
+QLineEdit#StepNumber {
+    background-color: @raise2;
+    color: @fg;
+    border: none;
+    border-radius: 8px;
+    padding: 0 4px;
+    font-family: @font-mono;
+    font-size: @fs-small;
+    selection-background-color: @raise3;
+}
+QLineEdit#StepNumber:focus { background-color: @raise3; }
+QWidget#RedactBar QToolButton:hover, QWidget#TextBar QToolButton:hover, QWidget#SpotlightBar QToolButton:hover, QWidget#StepBar QToolButton:hover { background-color: @raise2; color: @fg; }
+QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked, QWidget#StepBar QToolButton:checked { background-color: @raise3; color: @fg; }
 
 QWidget#PlaybackBar {
     background-color: @bar;

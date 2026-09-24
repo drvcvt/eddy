@@ -1,4 +1,6 @@
 #include "editorwindow.h"
+#include "stepbar.h"
+#include "items/stepitem.h"
 #include "audiowaveform.h"
 #include "canvas.h"
 #include "cropcontroller.h"
@@ -374,6 +376,21 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_textBar->hide();
     m_spotlightBar = new SpotlightBar(m_canvas->viewport());
     m_spotlightBar->hide();
+    m_stepBar = new StepBar(m_canvas->viewport());
+    m_stepBar->hide();
+    connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshStepBar);
+    connect(m_undo, &QUndoStack::indexChanged, this, &EditorWindow::refreshStepBar);
+    connect(m_scene, &QGraphicsScene::changed, this, &EditorWindow::refreshStepBar);
+    connect(m_stepBar, &StepBar::numberChosen, this, [this](int number) {
+        if (StepItem *step = selectedStep())
+            m_undo->push(new SetStepCommand(step, step->number(), step->size(), number, step->size()));
+    });
+    connect(m_stepBar, &StepBar::sizeChosen, this, [this](StepItem::Size size) {
+        m_tools->setStepSize(size);   // the next step takes it too
+        if (StepItem *step = selectedStep(); step && step->size() != size)
+            m_undo->push(new SetStepCommand(step, step->number(), step->size(), step->number(), size));
+    });
+    connect(m_stepBar, &StepBar::renumberRequested, this, &EditorWindow::renumberSteps);
     m_toast = new Toast(this);
     m_tooltip = new QLabel(this);
     m_tooltip->setObjectName(QStringLiteral("CompactTooltip"));
@@ -1477,6 +1494,36 @@ void EditorWindow::updateSelectedText(const std::function<void(TextItem *)> &cha
     refreshTextBar();
 }
 
+StepItem *EditorWindow::selectedStep() const {
+    const auto selected = m_scene->selectedItems();
+    return selected.size() == 1 ? dynamic_cast<StepItem *>(selected.first()) : nullptr;
+}
+
+void EditorWindow::refreshStepBar() {
+    StepItem *step = selectedStep();
+    if (!step) { m_stepBar->hide(); return; }
+    m_stepBar->setStep(step->number(), step->size());
+    m_stepBar->adjustSize();
+    const QRectF bounds = step->sceneBoundingRect();
+    const QRect item(m_canvas->mapFromScene(bounds.topLeft()), m_canvas->mapFromScene(bounds.bottomRight()));
+    m_stepBar->move(contextBarPosition(item.normalized(), m_stepBar->size(), m_canvas->viewport()->size()));
+    m_stepBar->show();
+    m_stepBar->raise();
+}
+
+// 1, 2, 3 in the order the steps were made (their stacking order), as one undo step.
+void EditorWindow::renumberSteps() {
+    QList<StepItem *> steps;
+    for (QGraphicsItem *item : m_scene->items(Qt::AscendingOrder))
+        if (auto *step = dynamic_cast<StepItem *>(item)) steps.append(step);
+    auto *all = new QUndoCommand(tr("Renumber steps"));
+    for (int i = 0; i < steps.size(); ++i)
+        if (steps[i]->number() != i + 1)
+            new SetStepCommand(steps[i], steps[i]->number(), steps[i]->size(), i + 1, steps[i]->size(), all);
+    if (all->childCount() == 0) { delete all; return; }
+    m_undo->push(all);
+}
+
 SpotlightItem *EditorWindow::selectedSpotlight() const {
     const auto selected = m_scene->selectedItems();
     return selected.size() == 1 ? dynamic_cast<SpotlightItem *>(selected.first()) : nullptr;
@@ -1683,6 +1730,7 @@ void EditorWindow::toggleTheme() {
         if (m_speedButton) theme::setMenuArrow(m_speedButton);
     }
     m_textBar->refreshTheme();
+    m_stepBar->refreshTheme();
     m_dragPill->refreshTheme();
     if (m_zoomBar) m_zoomBar->refreshTheme();
     m_scene->update();
@@ -3516,6 +3564,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         case Qt::Key_E: m_tools->setTool(ToolType::Ellipse); break;
         case Qt::Key_H: m_tools->setTool(ToolType::Highlight); break;
         case Qt::Key_T: m_tools->setTool(ToolType::Text); break;
+        case Qt::Key_N: m_tools->setTool(ToolType::Step); break;
         case Qt::Key_X: m_tools->setTool(ToolType::Redact); break;
         case Qt::Key_M: m_tools->setTool(ToolType::Move); break;
         case Qt::Key_Z: if (e->modifiers() & Qt::ControlModifier) {

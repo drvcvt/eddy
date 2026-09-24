@@ -39,6 +39,7 @@
 #include <QElapsedTimer>
 #include <memory>
 #include <QPainter>
+#include "items/stepitem.h"
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -170,6 +171,23 @@ int main(int argc, char **argv) {
         text->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
         window->findChild<QGraphicsScene *>()->addItem(text);
         text->setSelected(true);
+        app.processEvents();
+    }
+    if (mode == QStringLiteral("steps")) {
+        auto *scene = window->findChild<QGraphicsScene *>();
+        const QColor colors[] = {QColor("#ff3b30"), QColor("#ffd60a"), QColor("#0a84ff"), QColor("#ececec")};
+        const int numbers[] = {1, 8, 10, 99, 100};
+        eddy::StepItem *last = nullptr;
+        for (int i = 0; i < 5; ++i)
+            for (int size = 0; size < 3; ++size) {
+                auto *step = new eddy::StepItem(numbers[i], eddy::StepItem::Size(size));
+                step->setStrokeColor(colors[(i + size) % 4]);
+                step->setPos(140 + 150 * i, 120 + 110 * size);
+                step->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+                scene->addItem(step);
+                last = step;
+            }
+        last->setSelected(true);
         app.processEvents();
     }
     if (mode == QStringLiteral("tooltip")) {

@@ -458,6 +458,48 @@ Abstände. Nur Positionen, ein Undo-Schritt, No-op innerhalb Toleranz.
 **Test.** Ausrichten und Verteilen mit gemischten Typen, exakte Zwischenräume, zu wenig Platz
 deaktiviert.
 
+### Umsetzungsplan W8 (vor dem Bau, 24.09.)
+
+Grundlage: 21.09.-Plan Abschnitt 6. Reihenfolge H1, H2, H3, je ein Commit mit Tests.
+
+**H1.** `src/items/stepitem.{h,cpp}`: `StepItem : AnnotationItem`, Mitte = `pos()`, Nummer,
+Größe S/M/L (Durchmesser 28/40/56 Szenen-px), Füllung in der Annotationsfarbe, Ziffern in Weiß
+oder Schwarz nach Helligkeit, fett, optisch mittig (`QFontMetricsF::tightBoundingRect`).
+Mehrstellig wächst der Durchmesser, nicht die Schrift kleiner. `rect()` bleibt leer, also keine
+Größen-Anfasser. `ToolType::Step` nach Text im Rail, Taste `N`, Name "step"; Klick setzt über
+den vorhandenen begin/update/finish-Weg (Ziehen verschiebt noch), `finish` vergibt die Nummer.
+Nächste Nummer = höchste vorhandene + 1 (abgeleitet statt eigener Folge: die Items sind
+gespeichert, also die Folge auch; Undo gibt die Nummer mit dem Item zurück; Duplizieren und
+Alt-Ziehen nehmen die nächsten Nummern). `StepBar` wie `TextBar`: Nummernfeld (QSpinBox 1 bis
+999, Enter/Escape), S/M/L, Menü-Knopf "Renumber by creation order" (Stapelreihenfolge, ein
+Undo-Makro). `SetStepCommand` (Nummer/Größe) in `undocommands`. Farbe wie bei anderen Items.
+Codec: Typ "step" mit `pos`, `number`, `size`, `color`. Icon `step.svg` (Kreis mit "1"
+als Pfad, kein Text-Glyph) über `tools/normalize_icons.py 20 2.8`.
+Test `test_stepitem`: 1/8/10/99/100 zentriert (Render: Ziffern-Tinte mittig ±1 px), Durchmesser
+wächst ab zwei Stellen, Platzieren 1-2-3, Löschen und Undo geben die Nummer zurück,
+Duplizieren nimmt die nächste, Renumber ist ein Undo-Schritt; Projekt-Roundtrip.
+
+**H2.** `src/snapping.{h,cpp}`: `alignmentBounds(item)` (Spotlight: nur Fokusregion; Text,
+Pfeil, Stift, Step: Szenen-Bounding der Geometrie), `Snapper` mit Zustand pro Achse (Anker des
+bewegten Rahmens links/Mitte/rechts gegen Kanten und Mitten der Ziele und des
+Inhaltsrahmens; einrasten ab 5, lösen ab 8 Bildschirm-px, geteilt durch den View-Maßstab;
+bei Gleichstand gewinnt der kleinere Abstand, dann die Zielreihenfolge). Canvas: nach dem
+nativen `QGraphicsView::mouseMoveEvent` im Move/Text-Zug mit gegriffenem Item wird die Gruppe
+(Auswahl) um den Versatz verschoben; Ctrl aus; Guides in `drawForeground` (1 px, neutral),
+weg bei Release/Cancel. Kontextmenü "Snap to objects" (Canvas, Sitzungswert). Ziele: sichtbare
+Annotationen außerhalb der Auswahl plus Inhaltsrahmen; keine Handles/Hintergrund.
+Test `test_snapping` (Logik) und Canvas-Test (Ziehen nahe Kante rastet, mit Ctrl nicht,
+Gruppe hält Abstände, Guides nach Release weg).
+
+**H3.** `src/selectionbar.{h,cpp}`: ab zwei gewählten verschiebbaren Items; sechs Ausrichten,
+zwei Verteilen (ab drei, sonst aus; ohne Platz aus mit Tooltip "Not enough room"). Logik in
+`snapping` (`alignDeltas`, `distributeDeltas`, sichtbare Zwischenräume, äußere bleiben stehen,
+Reihenfolge nach Achse). Ein `MoveItemsCommand`; Änderungen unter 0,01 px sind No-op. Acht
+Icons `objects-*.svg`/`distribute-*.svg`, normalisiert. Position wie die anderen
+Kontextleisten über der Auswahlgrenze.
+Test: Ausrichten gemischter Typen, exakte Abstände beim Verteilen, zu wenig Platz aus,
+ein Undo-Schritt.
+
 ## 3. Entscheidungen
 
 **Entschieden am 2026-09-24: alle zehn Empfehlungen** (E1 a, E2 a, E3 a, E4 a, E5 a, E6 a, E7 a,
@@ -552,9 +594,9 @@ im Resume-Dialog (Raster-Test aus W5). `ctest` 49/49.
 | W6 | E2 | Masken-Spur und Leisten | `675e8a0` |
 | W6 | F1 | Studio-Presets | `dd54861` |
 | W6 | F2 | Motion Blur | `9a42553` |
-| W7 | G1 | Audio-Probe und Wellenform-Daten | |
-| W7 | G2 | Wellenform-Spur | |
-| W7 | G3 | Ton in der Ausgabe | |
+| W7 | G1 | Audio-Probe und Wellenform-Daten | `d84b51b` |
+| W7 | G2 | Wellenform-Spur | `f59cb2e` |
+| W7 | G3 | Ton in der Ausgabe | `40dd2cf` |
 | W8 | H1 | Nummerierte Schritte | |
 | W8 | H2 | Hilfslinien und Einrasten | |
 | W8 | H3 | Ausrichten und Verteilen | |

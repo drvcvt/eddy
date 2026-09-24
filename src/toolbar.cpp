@@ -170,6 +170,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         {ToolType::Pen,"pen","Pen","P"}, {ToolType::Rect,"rect","Rectangle","R"},
         {ToolType::Ellipse,"ellipse","Ellipse","E"}, {ToolType::Highlight,"highlight","Highlight","H"},
         {ToolType::Text,"text","Text","T"},
+        {ToolType::Step,"step","Step","N"},
         {ToolType::Redact,"redact","Redact","X"},
         {ToolType::Spotlight,"spotlight","Spotlight",""},
         {ToolType::Crop,"crop","Crop","C"},

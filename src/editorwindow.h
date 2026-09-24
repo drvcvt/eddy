@@ -104,6 +104,9 @@ private:
     void refreshTextBar();
     void positionTextBar();
     TextItem *selectedText() const;
+    class StepItem *selectedStep() const;
+    void refreshStepBar();
+    void renumberSteps();
     void updateSelectedText(const std::function<void(TextItem *)> &change);
     SpotlightItem *selectedSpotlight() const;
     void refreshSpotlightBar();
@@ -335,6 +338,7 @@ private:
     RedactOcrController *m_ocr = nullptr;
     RedactBar *m_redactBar = nullptr;
     TextBar *m_textBar = nullptr;
+    class StepBar *m_stepBar = nullptr;
     SpotlightBar *m_spotlightBar = nullptr;
     Toast *m_toast = nullptr;
     DragPill *m_dragPill = nullptr;

@@ -9,6 +9,7 @@
 #include "items/penpathitem.h"
 #include "items/textitem.h"
 #include "items/spotlightitem.h"
+#include "items/stepitem.h"
 #include <QGraphicsScene>
 #include <QFont>
 #include <QUndoStack>
@@ -27,6 +28,7 @@ ToolType toolFromName(const QString &name) {
     if (n=="ellipse"||n=="circle") return ToolType::Ellipse;
     if (n=="highlight") return ToolType::Highlight;
     if (n=="text") return ToolType::Text;
+    if (n=="step") return ToolType::Step;
     if (n=="blur"||n=="pixelate") return ToolType::Redact;   // legacy aliases -> unified redact
     if (n=="redact") return ToolType::Redact;
     if (n=="spotlight") return ToolType::Spotlight;
@@ -110,6 +112,13 @@ void ToolController::begin(const QPointF &p) {
         case ToolType::Redact: { auto *r = new RedactItem(RedactMode::Blur, m_bg, QRectF(p,p)); m_active=r; break; }
         case ToolType::Spotlight: { auto *s = new SpotlightItem(QRectF(p,p), m_bg.size()); m_active=s; break; }
         case ToolType::Pen: { auto *pp = new PenPathItem(p); style(pp,m_color,m_width); m_active=pp; break; }
+        case ToolType::Step: {
+            auto *s = new StepItem(StepItem::nextNumber(m_scene), m_stepSize);
+            style(s, m_color, m_width);
+            s->setPos(p);
+            m_active = s;
+            break;
+        }
         default: break; // Move/Text handled elsewhere
     }
     if (m_active) {
@@ -128,6 +137,7 @@ void ToolController::update(const QPointF &p, Qt::KeyboardModifiers modifiers) {
     else if (auto *rd = dynamic_cast<RedactItem*>(m_active)) rd->setRect(creationRect(m_start,p,modifiers));
     else if (auto *s = dynamic_cast<SpotlightItem*>(m_active)) s->setRect(creationRect(m_start,p,modifiers));
     else if (auto *pp = dynamic_cast<PenPathItem*>(m_active)) pp->addPoint(p);
+    else if (auto *st = dynamic_cast<StepItem*>(m_active)) st->setPos(p);   // a drag still places it
 }
 
 void ToolController::finish(const QPointF &p, Qt::KeyboardModifiers modifiers) {
@@ -310,9 +320,11 @@ static void copyItemState(const QGraphicsItem *source, QGraphicsItem *copy, cons
 
 bool ToolController::duplicateSelection(const QPointF &offset) {
     QList<QGraphicsItem *> copies;
+    int nextStep = StepItem::nextNumber(m_scene);
     for (QGraphicsItem *item : m_scene->selectedItems()) {
         if (QGraphicsItem *copy = cloneItem(item)) {
             copyItemState(item, copy, offset);
+            if (auto *step = dynamic_cast<StepItem *>(copy)) step->setNumber(nextStep++);   // copies continue the count
             copies.append(copy);
         }
     }
