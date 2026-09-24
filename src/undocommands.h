@@ -8,6 +8,7 @@
 #include <functional>
 #include "items/textitem.h"
 #include "items/spotlightitem.h"
+#include "studiostyle.h"
 namespace eddy {
 class AddItemCommand : public QUndoCommand {
 public:
@@ -92,6 +93,19 @@ private:
     qint64 m_beforeIn, m_beforeOut, m_afterIn, m_afterOut;
     Apply m_apply;
 };
+class SetStudioStyleCommand : public QUndoCommand {
+public:
+    using Apply = std::function<void(const StudioStyle &)>;
+    SetStudioStyleCommand(StudioStyle before, StudioStyle after, Apply apply)
+        : QUndoCommand(QStringLiteral("Studio")), m_before(std::move(before)),
+          m_after(std::move(after)), m_apply(std::move(apply)) {}
+    void undo() override { m_apply(m_before); }
+    void redo() override { m_apply(m_after); }
+private:
+    StudioStyle m_before, m_after;
+    Apply m_apply;
+};
+
 class SetCropCommand : public QUndoCommand {
 public:
     using Apply = std::function<void(QRect)>;

@@ -69,7 +69,9 @@ QMenu#PlaybackRateMenu::item:selected { background-color: @raise3; color: @fg; }
 /* The filled row marks the current rate, without a separate radio-button gutter. */
 QMenu#PlaybackRateMenu::indicator { image: none; width: 0; height: 0; }
 
-QToolButton#SendToShelf { padding: 0 8px; }
+QToolButton#SendToShelf, QToolButton#Studio { padding: 0 8px; }
+/* Studio being on is a document state, not the primary action: one step up. */
+QToolButton#Studio:checked, QToolButton#Studio:checked:hover { background-color: @raise3; color: @fg; }
 
 QWidget#ColorPopover {
     background-color: @raise1;
@@ -254,6 +256,41 @@ QWidget#ColorPopover QToolButton:hover,
 QWidget#ColorPopover QToolButton:focus { background-color: @raise3; }
 QWidget#ColorPopover QToolButton:checked { background-color: @raise3; }
 
+QWidget#StudioPopover {
+    background-color: @raise1;
+    border: none;
+    border-radius: 14px;
+}
+QWidget#StudioPopover QLabel#StudioSection {
+    color: @faint;
+    font-size: @fs-micro;
+    font-weight: 600;
+}
+QWidget#StudioPopover QLabel#StudioLabel { color: @sub; font-size: @fs-small; }
+QWidget#StudioPopover QLabel#StudioSize { color: @sub; font-family: @font-mono; font-size: @fs-micro; }
+QWidget#StudioPopover QLabel:disabled { color: @faint; }
+QWidget#StudioPopover QToolButton {
+    border-radius: 6px;
+    padding: 0 8px;
+    font-size: @fs-small;
+    font-weight: 500;
+}
+QWidget#StudioPopover QToolButton#StudioBackground { padding: 0; }
+QWidget#StudioPopover QToolButton:hover,
+QWidget#StudioPopover QToolButton:focus { background-color: @raise2; color: @fg; }
+QWidget#StudioPopover QToolButton:checked { background-color: @raise3; color: @fg; }
+QWidget#StudioPopover QSlider::groove:horizontal { height: 4px; background: @raise3; border-radius: 2px; }
+QWidget#StudioPopover QSlider::sub-page:horizontal { background: @sub; border-radius: 2px; }
+QWidget#StudioPopover QSlider::sub-page:horizontal:disabled { background: @raise3; }
+QWidget#StudioPopover QSlider::handle:horizontal {
+    width: 8px;
+    margin: -2px 0;
+    border-radius: 3px;
+    background: @sub;
+}
+QWidget#StudioPopover QSlider::handle:horizontal:hover { background: @fg; }
+QWidget#StudioPopover QSlider::handle:horizontal:disabled { background: @raise3; }
+
 /* Crop shares the floating annotation controls' compact geometry. */
 QWidget#CropBar { background: @raise1; border: none; border-radius: 12px; }
 QWidget#CropBar QToolButton {
@@ -274,6 +311,6 @@ QMenu#CropRatioMenu::item:checked { background: @raise2; color: @fg; }
 QMenu#CropRatioMenu::item:selected { background: @raise3; color: @fg; }
 QMenu#CropRatioMenu::indicator { image: none; width: 0; height: 0; }
 /* The one labelled chrome action: its text steps up to sit with the 18px icon. */
-QWidget#Toolbar QToolButton#SendToShelf { font-size: @fs-body; }
+QWidget#Toolbar QToolButton#SendToShelf, QWidget#Toolbar QToolButton#Studio { font-size: @fs-body; }
 /* Rates are technical values like the timecodes beside them. */
 QWidget#PlaybackBar QToolButton#PlaybackSpeed, QMenu#PlaybackRateMenu { font-family: @font-mono; font-weight: 400; }

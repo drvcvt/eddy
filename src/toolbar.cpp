@@ -159,6 +159,21 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     lay->addStretch(1);
     lay->addSpacing(6);
 
+    // Studio frames the output, so it sits with the output actions. Its checked
+    // state mirrors the document; a click always opens the popover.
+    m_studioBtn = mkBtn(true, false); m_studioBtn->setObjectName("Studio");
+    m_studioBtn->setIcon(theme::tintedIcon(QStringLiteral(":/icons/studio.svg"), iconRest, iconHover));
+    m_studioBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+    m_studioBtn->setText(QStringLiteral("Studio"));
+    m_studioBtn->setToolTip(QStringLiteral("Studio background and framing"));
+    m_studioBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    connect(m_studioBtn, &QToolButton::clicked, this, [this] {
+        m_studioBtn->setChecked(!m_studioBtn->isChecked());   // undo Qt's toggle
+        emit studioRequested();
+    });
+    lay->addWidget(m_studioBtn);
+    lay->addSpacing(6);
+
     // Actions brighten on hover; the active tool keeps its own selection state.
     auto *save = mkBtn(false, true); save->setObjectName("Save");
     save->setIcon(theme::tintedIcon(QStringLiteral(":/icons/save.svg"),
@@ -232,6 +247,10 @@ void Toolbar::setSwatchColor(const QColor &c) {
     m_swatch->setIconSize(QSize(d, d));
 }
 
+void Toolbar::setStudioActive(bool on) {
+    m_studioBtn->setChecked(on);
+}
+
 void Toolbar::setDark(bool dark) {
     const QPalette palette = QApplication::palette();
     const QColor rest = palette.color(QPalette::PlaceholderText);
@@ -242,7 +261,7 @@ void Toolbar::setDark(bool dark) {
             QStringLiteral(":/icons/%1.svg").arg(button->objectName()), rest, active));
     const struct { const char *name; const char *icon; } actions[] = {
         {"Undo", "undo"}, {"Redo", "redo"},
-        {"Save", "save"}, {"Copy", "copy"}, {"SendToShelf", "shelf"},
+        {"Save", "save"}, {"Copy", "copy"}, {"SendToShelf", "shelf"}, {"Studio", "studio"},
         {"WidthS", "width-thin"}, {"WidthM", "width-medium"}, {"WidthL", "width-thick"}};
     for (const auto &action : actions)
         if (auto *button = findChild<QToolButton *>(QString::fromLatin1(action.name)))

@@ -51,6 +51,8 @@ add_library(eddy_core STATIC
     src/imageio.cpp
     src/mediaio.cpp
     src/cursortrack.cpp
+    src/studiostyle.cpp
+    src/studiopopover.cpp
     src/videoexporter.cpp
     src/waylanddrag.cpp
     src/ocr.cpp
@@ -128,6 +130,7 @@ eddy_test(test_cli)
 eddy_test(test_config)
 eddy_test(test_mediaio)
 eddy_test(test_cursortrack)
+eddy_test(test_studiostyle)
 eddy_test(test_exporter)
 eddy_test(test_boltsnapipc)
 eddy_test(test_videoexporter)

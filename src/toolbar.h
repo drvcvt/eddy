@@ -16,6 +16,7 @@ public slots:
     void setRedoEnabled(bool on);
     void setSwatchColor(const QColor &c); // tint the colour-swatch dot to the current stroke colour
     void setDark(bool dark);
+    void setStudioActive(bool on);        // Studio framing is on for this document
 signals:
     void toolChosen(ToolType t);
     void colorChosen(const QColor &c);
@@ -28,6 +29,7 @@ signals:
     void redoRequested();
     void eyedropperRequested();   // user chose the pipette in the colour popover
     void themeToggleRequested();
+    void studioRequested();
 private:
     QWidget *m_toolRail = nullptr;
     QHash<int, QToolButton*> m_btns;      // keyed by int(ToolType)
@@ -35,6 +37,7 @@ private:
     QToolButton *m_redoBtn = nullptr;
     QToolButton *m_swatch = nullptr;
     QToolButton *m_themeBtn = nullptr;
+    QToolButton *m_studioBtn = nullptr;
     QColor m_swatchColor;
 };
 }

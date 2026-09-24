@@ -1,5 +1,6 @@
 #include "videoexporter.h"
 #include "exporter.h"
+#include "mediaio.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -157,6 +158,26 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     }
     const QString overlayPath = overlayTmp.fileName();
 
+    // Studio framing: an opaque background still and a coverage mask, merged
+    // with the video padded to the output size.
+    const QSize contentSize = crop.isNull() ? req.overlay.size() : crop.size();
+    const StudioLayout studio = studioLayout(contentSize, req.studio);
+    QTemporaryFile studioBackground(QDir::tempPath() + QStringLiteral("/eddy-studio-bg-XXXXXX.png"));
+    QTemporaryFile studioMask(QDir::tempPath() + QStringLiteral("/eddy-studio-mask-XXXXXX.png"));
+    if (req.studio.active()) {
+        const std::pair<QTemporaryFile *, QImage> stills[] = {
+            {&studioBackground, renderStudioBackground(contentSize, req.studio)},
+            {&studioMask, renderStudioFrameMask(contentSize, req.studio)}};
+        for (const auto &[file, image] : stills) {
+            const QByteArray png = encodePng(image);
+            if (!file->open() || png.isEmpty() || file->write(png) != png.size()) {
+                r.error = QStringLiteral("cannot write temporary studio frame");
+                return r;
+            }
+            file->close();
+        }
+    }
+
     QString actualOutput = req.outputPath;
     QTemporaryFile samePathOutput;
     const bool replaceInput = sameExistingPath(req.inputPath, req.outputPath);
@@ -200,7 +221,14 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     constexpr int videoBlurRadius = 12;
     // ffmpeg autorotates before the filter graph. Normalize sample aspect ratio
     // to the same display-pixel coordinate system used by the editor.
-    QString filter = QStringLiteral("[0:v]scale=%1:%2,setsar=1[base];")
+    // Drop surplus frames before the filters: -fpsmax alone still scales,
+    // blurs and overlays every frame of a 240 fps recording.
+    const VideoInfo source = probeVideoFile(req.inputPath).info;
+    const bool highFps = source.fps > 60.0;
+    const qint64 outputMs = trimmed ? req.trimOutMs - req.trimInMs
+                                    : source.durationMs - req.trimInMs;
+    QString filter = QStringLiteral("[0:v]%1scale=%2:%3,setsar=1[base];")
+        .arg(highFps ? QStringLiteral("fps=60,") : QString())
         .arg(req.overlay.width()).arg(req.overlay.height());
     QString current = QStringLiteral("[base]");
     int blurIndex = 0;
@@ -227,10 +255,28 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
                                        : QStringLiteral("null"));
     if (!crop.isNull())
         filter += QStringLiteral(",crop=%1:%2:%3:%4").arg(crop.width()).arg(crop.height()).arg(crop.x()).arg(crop.y());
+    if (req.studio.active()) {
+        // maskedmerge on planar yuv is SIMD work, where an RGBA overlay of the
+        // whole output more than doubled export time. The stills are single
+        // frames that framesync repeats, so the video keeps the frame timing.
+        // Chroma planes take the mask at half size. Qt's PNGs carry a DPI that
+        // ffmpeg reads as a 3780:3780 aspect, which mergeplanes rejects.
+        const int background = overlayVisible ? 2 : 1;
+        filter += QStringLiteral(",pad=%1:%2:%3:%4,format=yuv420p[padded];"
+                                 "[%5:v]setsar=1,format=yuv420p[studiobg];"
+                                 "[%6:v]setsar=1,format=gray,split=3[my][mu][mv];"
+                                 "[mu]scale=iw/2:ih/2:flags=area[mu2];[mv]scale=iw/2:ih/2:flags=area[mv2];"
+                                 "[my][mu2][mv2]mergeplanes=0x001020:yuv420p[studiomask];"
+                                 "[padded][studiobg][studiomask]maskedmerge")
+            .arg(studio.output.width()).arg(studio.output.height())
+            .arg(studio.content.x()).arg(studio.content.y())
+            .arg(background).arg(background + 1);
+    }
 
     QStringList args = {
         QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"),
         QStringLiteral("-nostdin"), QStringLiteral("-y"),
+        QStringLiteral("-nostats"), QStringLiteral("-progress"), QStringLiteral("pipe:1"),
         QStringLiteral("-threads"), QStringLiteral("2"),
         QStringLiteral("-filter_complex_threads"), QStringLiteral("1"),
     };
@@ -242,6 +288,8 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     args += {QStringLiteral("-i"), req.inputPath};
     if (overlayVisible)
         args += {QStringLiteral("-loop"), QStringLiteral("1"), QStringLiteral("-i"), overlayPath};
+    if (req.studio.active())
+        args += {QStringLiteral("-i"), studioBackground.fileName(), QStringLiteral("-i"), studioMask.fileName()};
     const QStringList inputs = args;
     const QStringList maps = {
         QStringLiteral("-map"), QStringLiteral("[v]"),
@@ -268,6 +316,10 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     if (!hardware.isEmpty()) encoders.append(hardware);
     encoders.append(QString()); // CPU fallback also handles unsupported sizes/formats.
     for (const QString &encoder : encoders) {
+        if (req.cancelled && req.cancelled()) {
+            r.error = QStringLiteral("video export cancelled");
+            return r;
+        }
         const QStringList device = deviceArgs(encoder);
         QStringList codecs = codecArgs;
         if (!encoder.isEmpty()) {
@@ -281,12 +333,55 @@ DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
         p.start(ffmpeg, device + inputs + QStringList{"-filter_complex", filter
             + (device.isEmpty() ? QString() : QStringLiteral(",format=nv12,hwupload"))
             + "[v]"} + maps + codecs + outputs);
-        const int remaining = req.timeoutMs < 0 ? -1 : qMax(0, req.timeoutMs - int(elapsed.elapsed()));
-        if (!p.waitForFinished(remaining)) {
-            p.kill();
-            p.waitForFinished(5000);
-            r.error = QStringLiteral("ffmpeg export timed out");
-            return r;
+        QElapsedTimer quiet;
+        quiet.start();
+        qint64 lastUs = -1;
+        int lastPercent = -2;
+        bool stalled = false;
+        for (;;) {
+            const int remaining = req.timeoutMs < 0 ? 250
+                : qBound(0, req.timeoutMs - int(elapsed.elapsed()), 250);
+            const bool done = p.waitForFinished(remaining) || p.state() == QProcess::NotRunning;
+            while (p.canReadLine()) {
+                const QByteArray line = p.readLine().trimmed();
+                if (!line.startsWith("out_time_us=")) continue;
+                bool ok = false;
+                const qint64 us = line.mid(12).toLongLong(&ok);
+                if (!ok || us == lastUs) continue;
+                lastUs = us;
+                quiet.restart();
+                const int percent = outputMs > 0 ? int(qBound(qint64(0), us / 10 / outputMs, qint64(99))) : -1;
+                if (req.progress && percent != lastPercent) req.progress(percent);
+                lastPercent = percent;
+            }
+            if (done) break;
+            if (req.cancelled && req.cancelled()) {
+                p.kill();
+                p.waitForFinished(5000);
+                r.error = QStringLiteral("video export cancelled");
+                return r;
+            }
+            if (req.timeoutMs >= 0 && elapsed.elapsed() >= req.timeoutMs) {
+                p.kill();
+                p.waitForFinished(5000);
+                r.error = QStringLiteral("ffmpeg export timed out");
+                return r;
+            }
+            if (req.stallTimeoutMs >= 0 && quiet.elapsed() >= req.stallTimeoutMs) {
+                p.kill();
+                p.waitForFinished(5000);
+                stalled = true;
+                break;
+            }
+        }
+        if (stalled) {
+            r.error = QStringLiteral("ffmpeg stopped making progress")
+                + (encoder.isEmpty() ? QString() : QStringLiteral(" with ") + encoder);
+            continue;
+        }
+        if (p.error() == QProcess::FailedToStart) {
+            r.error = QStringLiteral("cannot start ffmpeg: ") + p.errorString();
+            continue;
         }
         if (p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0) {
             r.error.clear();

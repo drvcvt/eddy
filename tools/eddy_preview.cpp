@@ -28,6 +28,7 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <memory>
+#include <QPainter>
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -162,6 +163,20 @@ int main(int argc, char **argv) {
         app.processEvents();
     }
     QPixmap pm = window->grab();
+    if (mode.contains(QStringLiteral("studio"))) {
+        // Studio on with its default style; "studio-open" also paints the
+        // popover where it opens (a separate popup, so grab() misses it).
+        window->openStudio();
+        app.processEvents();
+        pm = window->grab();
+        auto *popover = window->findChild<QWidget *>(QStringLiteral("StudioPopover"));
+        if (mode.contains(QStringLiteral("open")) && popover) {
+            QPainter painter(&pm);
+            painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
+        } else if (popover) {
+            popover->close();
+        }
+    }
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");
     pm.save(out);
     return 0;
