@@ -154,7 +154,10 @@ void ToolController::finish(const QPointF &p, Qt::KeyboardModifiers modifiers) {
                 if (w->first > m_playhead) nextStart = std::min(nextStart, w->first);
             }
         }
-        if (others) spot->setTimeWindow(std::pair{m_playhead, nextStart});
+        if (others) {
+            const qint64 from = AnnotationItem::windowStart(m_playhead, m_duration);
+            spot->setTimeWindow(std::pair{from, std::max(nextStart, from + AnnotationItem::kMinWindowMs)});
+        }
         m_undo->beginMacro(QStringLiteral("Replace Spotlight"));
         for (SpotlightItem *old : replaced) m_undo->push(new RemoveItemCommand(m_scene, old));
         m_undo->push(new AddItemCommand(m_scene, m_active));

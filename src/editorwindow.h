@@ -169,6 +169,7 @@ private:
     void applyContentRect();
     QRect cameraContent() const;
     QRectF currentCamera() const;
+    double cameraTime() const;
     void rebuildCamera();
     void updateCamera();
     void refreshZoomUi();
@@ -195,6 +196,8 @@ private:
     bool gestureRunning() const;
     void writeRecovery();
     void flushRecovery();
+    bool claimRecovery();   // a fresh entry, locked by this window
+    void dropRecovery();    // removes an entry that never got a snapshot
     void offerKeptEdit();
     QTimer *m_recoveryIdle = nullptr;
     QTimer *m_recoveryMax = nullptr;
@@ -205,6 +208,7 @@ private:
     bool m_recoveryEnabled = false;
     bool m_recoveryPending = false;
     bool m_recoveryWriting = false;
+    bool m_closeAfterRecovery = false;   // closing waits for the running snapshot
     bool m_recoveryPaused = false;
     bool m_restoring = false;
     QString m_projectPath;

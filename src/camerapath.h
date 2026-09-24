@@ -55,10 +55,15 @@ public:
         return r.width() > 0 ? m_base.width() / r.width() : 1.0;
     }
     int sampleCount() const { return m_samples.size(); }
+    // Whether an Instant cut lands within (fromMs, toMs]; a shutter across it would ghost.
+    bool cutWithin(double fromMs, double toMs) const;
+    // The base view's centre at `outMs`: it moves when the base follows the pointer.
+    QPointF homeAt(double outMs) const;
 
 private:
     struct Sample {
         float x, y, logScale, vx, vy, vLogScale;
+        float homeX, homeY;
         bool jump;   // an Instant cut lands here: hold the previous sample until then
     };
     QRectF rectFor(double x, double y, double logScale) const;

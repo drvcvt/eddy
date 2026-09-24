@@ -201,6 +201,10 @@ private slots:
         QVERIFY(redact->isVisible() && redact->isSelected());
         wholeClip->click();
         QVERIFY(!redact->timeWindow());
+        // At the very end the window still gets a length, or the project could not be read again.
+        timeline->setPosition(4000);
+        fromPlayhead->click();
+        QCOMPARE(redact->timeWindow(), (AnnotationItem::TimeWindow{{3900, 4000}}));
     }
 };
 

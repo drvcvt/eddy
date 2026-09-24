@@ -77,6 +77,9 @@ private slots:
         QVERIFY(near(zoomed, QRectF(point.x() - 480, point.y() - 270, 960, 540)));
         QVERIFY(near(p.rectAt(2999), zoomed));
         QVERIFY(near(p.rectAt(3000), kContent));
+        // A motion blur shutter must not straddle either cut.
+        QVERIFY(p.cutWithin(995, 1005) && p.cutWithin(2995, 3005));
+        QVERIFY(!p.cutWithin(1005, 2995) && !p.cutWithin(990, 999));
     }
 
     void neverShowsAnythingOutsideTheContent() {
@@ -171,6 +174,7 @@ private slots:
         // Base 607.5 wide: the pointer rests 0.2 of it right of the centre.
         QVERIFY(qAbs(follows.rectAt(5000).center().x() - (1700 - 121.5)) < 1);
         QVERIFY(QRectF(kContent).contains(follows.rectAt(5000)));
+        QVERIFY(QLineF(follows.homeAt(5000), follows.rectAt(5000).center()).length() < 0.01);
     }
 
     void narrowOutputsShowTheLargestFittingWindow() {

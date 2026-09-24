@@ -2,6 +2,7 @@
 #include <QGraphicsScene>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QToolButton>
 #include <QUndoStack>
 #include "editorwindow.h"
 #include "projectstore.h"
@@ -204,6 +205,50 @@ private slots:
         QCOMPARE(resumedWritten.first().first().toString(), manifest);
         QCOMPARE(RecoveryStore().entries().size(), 1);
         QCOMPARE(openProject(manifest).snapshot.items.size(), 3);
+    }
+    void aPlainToastDropsTheOffer() {
+        QWidget parent;
+        Toast toast(&parent);
+        int runs = 0;
+        toast.showAction(QStringLiteral("A kept edit is newer"), QStringLiteral("Resume"), [&] { ++runs; });
+        auto *action = toast.findChild<QToolButton *>(QStringLiteral("ToastAction"));
+        QVERIFY(!action->isHidden());
+        toast.showMessage(QStringLiteral("Preset saved"));
+        QVERIFY(action->isHidden());
+        action->click();
+        QCOMPARE(runs, 0);
+    }
+    void closingWaitsForTheRunningSnapshot() {
+        QTemporaryDir dir, recovery;
+        qputenv("EDDY_RECOVERY_DIR", recovery.path().toLocal8Bit());
+        EditorWindow::setRecoveryEnabledByDefault(true);
+        const auto off = qScopeGuard([] { EditorWindow::setRecoveryEnabledByDefault(false); qunsetenv("EDDY_RECOVERY_DIR"); });
+        // Noise does not compress: a large file makes the first copy take a while.
+        QImage noise(1600, 1600, QImage::Format_RGB32);
+        QRandomGenerator random(7);
+        for (int y = 0; y < noise.height(); ++y)
+            random.fillRange(reinterpret_cast<quint32 *>(noise.scanLine(y)), noise.width());
+        const QString source = dir.filePath("noise.png");
+        QVERIFY(noise.save(source, nullptr, 0));
+        Config cfg; cfg.animations = false;
+        auto w = std::make_unique<EditorWindow>(loadMediaInput({InputSpec::File, source}).document, cfg, CliOptions{});
+        w->setRecoveryDelays(1, 60000);
+        auto *scene = w->findChild<QGraphicsScene *>();
+        auto *undo = w->findChild<QUndoStack *>();
+        undo->push(new AddItemCommand(scene, new RectItem(QRectF(20, 20, 60, 40))));
+        // Stop as soon as the first snapshot has started, before it can report back.
+        QElapsedTimer started;
+        started.start();
+        while (w->recoveryManifest().isEmpty() && started.elapsed() < 5000) QCoreApplication::processEvents();
+        QVERIFY(!w->recoveryManifest().isEmpty());
+        undo->push(new AddItemCommand(scene, new RectItem(QRectF(100, 100, 30, 30))));
+        const QString manifest = w->recoveryManifest();
+        QSignalSpy written(w.get(), &EditorWindow::recoveryWritten);
+        QVERIFY(!w->close());   // not while the original is still being copied
+        QVERIFY(written.wait(20000));
+        // Then it closes by itself, with the last change kept as well.
+        QCOMPARE(openProject(manifest).snapshot.items.size(), 2);
+        QCOMPARE(RecoveryStore().entries().size(), 1);
     }
 };
 

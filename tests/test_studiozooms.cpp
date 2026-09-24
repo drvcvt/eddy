@@ -354,10 +354,13 @@ private slots:
         // The canvas shows the base view moved right, to the pointer.
         QVERIFY2(canvas->camera().center().x() > base.center().x() + 50,
                  qPrintable(QStringLiteral("%1 vs %2").arg(canvas->camera().center().x()).arg(base.center().x())));
-        // Dragging the centre places it by hand; from then on it stays.
-        emit canvas->cameraDragged(QPointF(10, 0));
+        // Dragging the centre places it by hand, moved from where it followed to; from then on it stays.
+        const double followed = canvas->camera().center().x();
+        emit canvas->cameraDragged(QPointF(10, 0));   // grabbing the picture: the view goes left
         emit canvas->cameraDragFinished(false);
         QVERIFY(!w.studioDocument().keepFollowsCursor);
+        QVERIFY2(qAbs(w.studioDocument().keepCenter.x() - (followed - 10)) < 0.5,
+                 qPrintable(QStringLiteral("%1 vs %2").arg(w.studioDocument().keepCenter.x()).arg(followed - 10)));
         QVERIFY(canvas->camera().isEmpty());
     }
     void suggestionsJoinThePopoverSession() {
