@@ -166,6 +166,11 @@ struct Reader {
         }
         if (!kept) return fail(QStringLiteral("every fragment is cut"));
 
+        QJsonObject camera;
+        if (!object(json, "camera", &camera)) return false;
+        if (camera.contains(QLatin1String("motion")) && !name(camera, "motion", kMotions, &d->motion))
+            return false;
+
         QJsonObject keep;
         if (!object(json, "keepZoomedIn", &keep) || !flag(keep, "on", &d->keepZoomedIn)) return false;
         if (keep.contains(QLatin1String("center")) && !point(keep, "center", source, &d->keepCenter))
@@ -207,6 +212,7 @@ QJsonObject studioToJson(const StudioDocument &doc) {
         {"style", style},
         {"zooms", zooms},
         {"fragments", fragments},
+        {"camera", QJsonObject{{"motion", nameOf(kMotions, doc.motion)}}},
         {"keepZoomedIn", QJsonObject{{"on", doc.keepZoomedIn},
                                      {"center", QJsonArray{doc.keepCenter.x(), doc.keepCenter.y()}}}}};
 }

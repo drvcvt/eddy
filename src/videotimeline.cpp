@@ -1,5 +1,8 @@
 #include "videotimeline.h"
 #include "theme.h"
+#include "zoomlane.h"
+#include "motionicon.h"
+#include <QFontDatabase>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -32,7 +35,19 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setContextMenuPolicy(Qt::CustomContextMenu);
     connect(this, &QWidget::customContextMenuRequested, this, [this](QPoint pos) {
         emit hoverLeft();
+        Drag part = Drag::None;
+        if (const quint32 id = zoomAt(pos, &part)) {
+            setSelectedZoom(id);
+            emit zoomSelected(id);
+            emit zoomMenuRequested(id, mapToGlobal(pos));
+            return;
+        }
         QMenu menu(this);
+        if (m_laneVisible && pos.y() >= zoomLaneRect().top() - 2) {
+            const qint64 time = timeForX(pos.x());
+            menu.addAction(tr("Add zoom here"), this, [this, time] { emit zoomAddRequested(time); });
+            menu.addSeparator();
+        }
         menu.addAction(tr("Zoom in · +"), this, [this] { zoomAt(2, m_position); });
         menu.addAction(tr("Zoom out · −"), this, [this] { zoomAt(0.5, m_position); });
         menu.addAction(tr("Fit clip · 0"), this, &VideoTimeline::fitClip);
@@ -137,7 +152,77 @@ void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
 }
 
 QRectF VideoTimeline::trackRect() const {
-    return QRectF(6, 18, qMax(1, width() - 12), height() - 22);
+    return QRectF(6, 18, qMax(1, width() - 12), height() - 22 - (m_laneVisible ? 32 : 0));
+}
+
+void VideoTimeline::setZoomLaneVisible(bool visible) {
+    if (visible == m_laneVisible) return;
+    cancelInteraction();
+    m_laneVisible = visible;
+    setFixedHeight(visible ? 84 : 52);
+    update();
+}
+
+void VideoTimeline::setZooms(const QVector<ZoomSegment> &zooms, std::function<double(qint64)> level) {
+    if (zoomDragging()) return;   // the drag owns the list until it ends
+    m_zooms = zooms;
+    m_zoomLevel = std::move(level);
+    if (zoomlane::indexOf(m_zooms, m_selectedZoom) < 0) m_selectedZoom = 0;
+    update();
+}
+
+void VideoTimeline::setSelectedZoom(quint32 id) {
+    if (zoomlane::indexOf(m_zooms, id) < 0) id = 0;
+    if (id == m_selectedZoom) return;
+    m_selectedZoom = id;
+    update();
+}
+
+QRectF VideoTimeline::zoomLaneRect() const {
+    if (!m_laneVisible) return {};
+    const QRectF track = trackRect();
+    return QRectF(track.left(), track.bottom() + 4, track.width(), 28);
+}
+
+quint32 VideoTimeline::zoomAt(QPointF pos, Drag *part) const {
+    *part = Drag::None;
+    const QRectF lane = zoomLaneRect();
+    if (lane.isEmpty() || pos.y() < lane.top() - 2 || pos.y() > lane.bottom() + 2) return 0;
+    for (const ZoomSegment &z : m_zooms) {
+        const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
+        const qreal d0 = qAbs(pos.x() - x0), d1 = qAbs(pos.x() - x1);
+        if (qMin(d0, d1) <= 6) *part = d0 <= d1 ? Drag::ZoomStart : Drag::ZoomEnd;
+        else if (pos.x() > x0 && pos.x() < x1) *part = Drag::ZoomMove;
+        else continue;
+        return z.id;
+    }
+    return 0;
+}
+
+void VideoTimeline::moveZoomDrag(qreal x) {
+    // A click without movement only selects, even beside an anchor.
+    if (!m_zoomMoved && qAbs(x - m_dragX) < 3) return;
+    m_zoomMoved = true;
+    const int index = zoomlane::indexOf(m_zooms, m_dragZoom);
+    if (index < 0) return;
+    const qint64 reach = qRound64(6.0 * (m_viewEnd - m_viewStart) / trackRect().width());
+    QVector<qint64> anchors{m_position, m_in, m_out};
+    for (const ZoomSegment &z : std::as_const(m_zooms))
+        if (z.id != m_dragZoom) anchors << z.startMs << z.endMs;
+    const qint64 time = timeForX(x) - m_grabOffset;
+    if (m_drag == Drag::ZoomMove) {
+        const qint64 length = m_zooms[index].endMs - m_zooms[index].startMs;
+        const qint64 byStart = zoomlane::snap(time, anchors, reach);
+        const qint64 byEnd = zoomlane::snap(time + length, anchors, reach) - length;
+        qint64 start = byStart;
+        if (byEnd != time && (byStart == time || qAbs(byEnd - time) < qAbs(byStart - time))) start = byEnd;
+        zoomlane::move(m_zooms, m_dragZoom, start, m_duration);
+    } else {
+        zoomlane::resize(m_zooms, m_dragZoom, m_drag == Drag::ZoomStart,
+                         zoomlane::snap(time, anchors, reach), m_duration);
+    }
+    emit zoomsPreviewed(m_zooms);
+    update();
 }
 
 qreal VideoTimeline::xForTime(qint64 timeMs) const {
@@ -206,10 +291,83 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
                            qMax(0.0, track.right() - outX), track.height()), shade);
     painter.restore();
 
+    if (m_laneVisible) {
+        const QRectF lane = zoomLaneRect();
+        QPainterPath laneShape;
+        laneShape.addRoundedRect(lane, 6, 6);
+        painter.save();
+        painter.setClipPath(laneShape);
+        painter.fillRect(lane, ink(0.07));
+        double top = 2;
+        for (const ZoomSegment &z : std::as_const(m_zooms)) top = qMax(top, z.scale);
+        for (const ZoomSegment &z : std::as_const(m_zooms)) {
+            const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
+            if (x1 < lane.left() || x0 > lane.right()) continue;
+            painter.fillRect(QRectF(x0, lane.top(), qMax<qreal>(2, x1 - x0), lane.height()),
+                             ink(z.id == m_selectedZoom ? 0.2 : 0.13));
+        }
+        if (m_zoomLevel && !m_zooms.isEmpty()) {
+            // The camera's actual zoom over time, ramps and all (Q1 = C).
+            QPainterPath area;
+            area.moveTo(lane.left(), lane.bottom());
+            for (qreal x = lane.left();; x += 2) {
+                const qreal at = qMin(x, lane.right());
+                const double level = m_zoomLevel(timeForX(at));
+                area.lineTo(at, lane.bottom() - (lane.height() - 4) * qBound(0.0, (level - 1) / (top - 1), 1.0));
+                if (at >= lane.right()) break;
+            }
+            area.lineTo(lane.right(), lane.bottom());
+            area.closeSubpath();
+            QColor curve = foreground;
+            curve.setAlphaF(0.16);
+            painter.fillPath(area, curve);
+        }
+        QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        mono.setPixelSize(theme::kFsMicro);
+        QFont label = font();
+        label.setPixelSize(theme::kFsMicro);
+        for (const ZoomSegment &z : std::as_const(m_zooms)) {
+            const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
+            if (x1 < lane.left() || x0 > lane.right()) continue;
+            const bool selected = z.id == m_selectedZoom;
+            // Numbers in mono, words in the UI face (studio plan 6.1).
+            const QString scale = QString::number(z.scale, 'g', 3) + QStringLiteral("×");
+            const QString motion = QStringLiteral(" · ") + motionName(z.motion);
+            const qreal scaleWidth = QFontMetricsF(mono).horizontalAdvance(scale);
+            const qreal motionWidth = QFontMetricsF(label).horizontalAdvance(motion);
+            const qreal left = qMax(x0, lane.left()) + 8;
+            const qreal room = qMin(x1, lane.right()) - 8 - left;
+            painter.setPen(ink(selected ? 0.9 : 0.7));
+            if (room >= scaleWidth) {
+                painter.setFont(mono);
+                painter.drawText(QRectF(left, lane.top(), scaleWidth, lane.height()), Qt::AlignVCenter, scale);
+            }
+            if (room >= scaleWidth + motionWidth) {
+                painter.setFont(label);
+                painter.drawText(QRectF(left + scaleWidth, lane.top(), motionWidth, lane.height()),
+                                 Qt::AlignVCenter, motion);
+            }
+            if (selected) {
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(ink(0.7));
+                for (qreal x : {x0 + 3, x1 - 5})
+                    painter.drawRoundedRect(QRectF(x, lane.center().y() - 6, 2, 12), 1, 1);
+            }
+        }
+        if (m_zooms.isEmpty()) {
+            painter.setFont(label);
+            painter.setPen(ink(0.45));
+            painter.drawText(lane, Qt::AlignCenter, tr("Click to add a zoom · Z"));
+        }
+        painter.restore();
+        painter.setPen(Qt::NoPen);
+    }
+
     const qreal playX = xForTime(m_position);
     painter.setBrush(ink(0.86));
     if (playX >= track.left() && playX <= track.right()) {
-        painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, track.height() + 3), 1, 1);
+        const qreal playBottom = m_laneVisible ? zoomLaneRect().bottom() : track.bottom() + 3;
+        painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, playBottom - track.top()), 1, 1);
         painter.drawRoundedRect(QRectF(playX - 3, track.top() - 4, 6, 5), 2, 2);
     }
     auto handle = [&](qreal x, Drag kind) {
@@ -277,6 +435,28 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
 void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton || m_duration <= 0) return;
     setFocus(Qt::MouseFocusReason);
+    if (m_laneVisible && event->position().y() >= zoomLaneRect().top() - 2) {
+        Drag part = Drag::None;
+        const quint32 id = zoomAt(event->position(), &part);
+        if (!id) {
+            emit zoomAddRequested(timeForX(event->position().x()));
+            event->accept();
+            return;
+        }
+        setSelectedZoom(id);
+        emit zoomSelected(id);
+        const ZoomSegment &z = m_zooms[zoomlane::indexOf(m_zooms, id)];
+        m_drag = part;
+        m_dragZoom = id;
+        m_zoomsBefore = m_zooms;
+        m_zoomMoved = false;
+        m_dragX = m_pointerX = event->position().x();   // the edge-pan timer reads it
+        m_modifiers = event->modifiers();
+        m_grabOffset = timeForX(m_dragX) - (part == Drag::ZoomEnd ? z.endMs : z.startMs);
+        m_edgePan.start();
+        event->accept();
+        return;
+    }
     const qreal x = event->position().x();
     const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_in));
     const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_out));
@@ -296,6 +476,15 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
 
 void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
     if (m_drag == Drag::None) {
+        if (m_laneVisible && event->position().y() >= zoomLaneRect().top() - 2) {
+            Drag part = Drag::None;
+            zoomAt(event->position(), &part);
+            setCursor(part == Drag::ZoomStart || part == Drag::ZoomEnd ? Qt::SizeHorCursor
+                                                                     : Qt::PointingHandCursor);
+            if (m_hover != Drag::None) { m_hover = Drag::None; update(); }
+            emit hoverLeft();
+            return;
+        }
         const qreal x = event->position().x();
         const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_in));
         const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_out));
@@ -303,9 +492,9 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
             ? (inDistance <= outDistance ? Drag::In : Drag::Out) : Drag::None;
         if (hover != m_hover) {
             m_hover = hover;
-            setCursor(hover == Drag::None ? Qt::PointingHandCursor : Qt::SizeHorCursor);
             update();
         }
+        setCursor(hover == Drag::None ? Qt::PointingHandCursor : Qt::SizeHorCursor);
         emit hoverRequested(timeForX(x), event->pos());
         return;
     }
@@ -316,6 +505,7 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
 void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     m_pointerX = x;
     m_modifiers = modifiers;
+    if (zoomDragging()) { moveZoomDrag(x); return; }
     const bool fine = modifiers.testFlag(Qt::ShiftModifier);
     if (fine != m_fine) {
         m_dragTime = m_drag == Drag::In ? m_in : m_out;
@@ -343,6 +533,15 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
 
 void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton || m_drag == Drag::None) return;
+    if (zoomDragging()) {
+        moveZoomDrag(event->position().x());
+        m_drag = Drag::None;
+        m_edgePan.stop();
+        if (m_zooms != m_zoomsBefore) emit zoomsEdited(m_zoomsBefore, m_zooms);
+        update();
+        event->accept();
+        return;
+    }
     moveDrag(event->position().x(), event->modifiers());
     const bool trimmed = m_drag == Drag::In || m_drag == Drag::Out;
     m_drag = Drag::None;
@@ -364,6 +563,14 @@ void VideoTimeline::leaveEvent(QEvent *event) {
 
 void VideoTimeline::cancelInteraction() {
     if (!interacting()) return;
+    if (zoomDragging()) {
+        m_drag = Drag::None;
+        m_edgePan.stop();
+        m_zooms = m_zoomsBefore;
+        emit zoomsPreviewed(m_zooms);
+        update();
+        return;
+    }
     m_drag = Drag::None;
     m_edgePan.stop();
     m_in = m_beforeIn; m_out = m_beforeOut; m_position = m_beforePosition;

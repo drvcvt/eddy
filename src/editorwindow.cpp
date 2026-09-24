@@ -23,6 +23,10 @@
 #include "redactocrcontroller.h"
 #include "items/redactitem.h"
 #include "previewitems.h"
+#include "zoomlane.h"
+#include "zoombar.h"
+#include "minimap.h"
+#include "motionicon.h"
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <cstdio>
@@ -66,6 +70,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QActionGroup>
+#include <cmath>
 #include <QtMath>
 #include <QSignalBlocker>
 #include <QScopeGuard>
@@ -529,6 +534,33 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
     setupCrop();
     if (isVideo()) {
+        m_cameraRebuild = new QTimer(this);
+        m_cameraRebuild->setSingleShot(true);
+        m_cameraRebuild->setInterval(16);
+        connect(m_cameraRebuild, &QTimer::timeout, this, &EditorWindow::rebuildCamera);
+        m_zoomBar = new ZoomBar(m_canvas->viewport());
+        m_zoomBar->hide();
+        m_miniMap = new MiniMap(m_canvas->viewport());
+        m_miniMap->hide();
+        connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionZoomUi);
+        connect(m_zoomBar, &ZoomBar::scaleChosen, this, [this](double scale) {
+            editZoom(m_selectedZoom, [scale](ZoomSegment &z) { z.scale = scale; });
+        });
+        connect(m_zoomBar, &ZoomBar::motionChosen, this, [this](ZoomSegment::Motion motion) {
+            editZoom(m_selectedZoom, [motion](ZoomSegment &z) { z.motion = motion; });
+        });
+        connect(m_zoomBar, &ZoomBar::removeRequested, this, [this] { removeZoom(m_selectedZoom); });
+        connect(m_miniMap, &MiniMap::dragged, this, &EditorWindow::moveCameraTarget);
+        connect(m_miniMap, &MiniMap::dragFinished, this, &EditorWindow::finishCameraGesture);
+        connect(m_miniMap, &MiniMap::wheelZoom, this, [this](double steps) {
+            editZoom(m_selectedZoom, [steps](ZoomSegment &z) {
+                z.scale = qBound(1.1, z.scale * std::pow(1.1, steps), 4.0);
+            }, int(m_selectedZoom));
+        });
+        // The content follows the pointer, so the camera moves the other way.
+        connect(m_canvas, &Canvas::cameraDragged, this, [this](QPointF d) { moveCameraTarget(-d); });
+        connect(m_canvas, &Canvas::cameraDragFinished, this, &EditorWindow::finishCameraGesture);
+        rebuildCamera();
         connect(m_tools, &ToolController::toolChanged, this, [this](ToolType type) {
             if (type == ToolType::Redact) updateVideoBackground();
         });
@@ -894,6 +926,36 @@ QWidget *EditorWindow::createPlaybackBar() {
             this, &EditorWindow::applyTrimRange);
     connect(m_timeline, &VideoTimeline::trimPreviewed,
             this, &EditorWindow::updateTrimTimeLabels);
+    connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);
+    connect(m_timeline, &VideoTimeline::zoomSelected, this, &EditorWindow::selectZoom);
+    connect(m_timeline, &VideoTimeline::zoomsPreviewed, this, [this](const QVector<ZoomSegment> &zooms) {
+        m_studio.zooms = zooms;   // the drag's own preview; the edit is one undo step at release
+        if (!m_cameraRebuild->isActive()) m_cameraRebuild->start();
+    });
+    connect(m_timeline, &VideoTimeline::zoomsEdited, this,
+            [this](const QVector<ZoomSegment> &before, const QVector<ZoomSegment> &after) {
+        StudioDocument from = m_studio, to = m_studio;
+        from.zooms = before;
+        to.zooms = after;
+        m_undo->push(new SetStudioDocumentCommand(from, to,
+            [this](const StudioDocument &d) { setStudioDocument(d); }));
+    });
+    connect(m_timeline, &VideoTimeline::zoomMenuRequested, this, [this](quint32 id, QPoint global) {
+        selectZoom(id);
+        QMenu menu(this);
+        const QColor ink = palette().color(QPalette::WindowText);
+        for (auto motion : {ZoomSegment::Motion::Focused, ZoomSegment::Motion::Smooth,
+                            ZoomSegment::Motion::Instant}) {
+            QAction *action = menu.addAction(motionIcon(motion, ink, theme::kFsSmall), motionName(motion));
+            connect(action, &QAction::triggered, this, [this, id, motion] {
+                editZoom(id, [motion](ZoomSegment &z) { z.motion = motion; });
+            });
+        }
+        menu.addSeparator();
+        connect(menu.addAction(tr("Remove zoom · Delete")), &QAction::triggered, this,
+                [this, id] { removeZoom(id); });
+        menu.exec(global);
+    });
     connect(setIn, &QToolButton::clicked, this, [this]{
         m_timeline->setTrimRange(m_timeline->position(), m_timeline->trimOut());
         applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
@@ -1145,6 +1207,10 @@ void EditorWindow::ensureVideoPlayer() {
                 && m_seekTarget < (m_presentedEnd > m_presentedStart ? m_presentedEnd
                     : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
                 finishVideoSeek();
+            updateCamera();
+            if (m_miniMap && m_miniMap->isVisible() && updateVideoBackground())
+                m_miniMap->setContent(m_bg.copy(cameraContent())
+                    .scaled(304, 224, Qt::KeepAspectRatio, Qt::SmoothTransformation), QRectF(cameraContent()));
         });
     }
     m_player = new QMediaPlayer(this);
@@ -1154,6 +1220,8 @@ void EditorWindow::ensureVideoPlayer() {
     m_player->setVideoOutput(m_videoItem);
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state){
         if (state != QMediaPlayer::PlayingState) showVideoStill();
+        updateCamera();
+        refreshZoomUi();
         if (m_playButton) {
             const QColor color = palette().color(QPalette::ButtonText);
             m_playButton->setIcon(theme::tintedIcon(
@@ -1191,6 +1259,7 @@ void EditorWindow::ensureVideoPlayer() {
         m_trimInMs = m_timeline->trimIn();
         m_trimOutMs = m_timeline->trimOut();
         updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+        rebuildCamera();
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(m_player->position()) + QStringLiteral(" / ") + formatTime(duration));
     });
@@ -1325,8 +1394,17 @@ void EditorWindow::onRedactModeChosen(RedactMode m) {
     positionRedactBar();
 }
 
-void EditorWindow::doUndo() { if (m_crop && m_crop->active()) m_crop->cancel(); m_ocr->cancel(); m_undo->undo(); refreshRedactBar(); }
-void EditorWindow::doRedo() { if (m_crop && m_crop->active()) m_crop->cancel(); m_ocr->cancel(); m_undo->redo(); refreshRedactBar(); }
+void EditorWindow::doUndo() { cancelGestures(); m_undo->undo(); refreshRedactBar(); }
+void EditorWindow::doRedo() { cancelGestures(); m_undo->redo(); refreshRedactBar(); }
+
+// Undo and redo land on a settled document: no gesture keeps a stale copy.
+void EditorWindow::cancelGestures() {
+    if (m_crop && m_crop->active()) m_crop->cancel();
+    m_ocr->cancel();
+    if (m_timeline && m_timeline->zoomDragging()) m_timeline->cancelInteraction();
+    if (m_canvas->cameraDragging()) m_canvas->cancelCameraDrag();
+    finishCameraGesture(true);
+}
 
 void EditorWindow::setupCrop() {
     m_crop = new CropController(this);
@@ -1363,7 +1441,7 @@ void EditorWindow::setupCrop() {
         if (isVideo() && hasVideoEdits()) scheduleVideoExportCache();
     });
     connect(m_crop, &CropController::cancelled, this, [this] {
-        m_canvas->setContentRect(m_cropRect);
+        setCropRect(m_cropRect);
         m_canvas->restoreView(m_beforeCropView, m_beforeCropCenter, m_beforeCropFit);
         const auto items = m_scene->items();
         for (auto *item : m_beforeCropSelection)
@@ -1386,6 +1464,8 @@ void EditorWindow::setupCrop() {
         m_scene->clearSelection();
         m_scene->clearFocus();
         m_handles->setVisible(false);
+        m_canvas->setCamera({});
+        refreshZoomUi();
         m_beforeCropView = m_canvas->transform();
         m_beforeCropCenter = m_canvas->mapToScene(m_canvas->viewport()->rect().center());
         m_beforeCropFit = m_canvas->fitted();
@@ -1409,12 +1489,19 @@ void EditorWindow::finishCrop() {
 
 void EditorWindow::setCropRect(QRect rect) {
     m_cropRect = rect;
-    m_canvas->setContentRect(rect);
-    updateStudioPreview();
+    applyContentRect();
+    rebuildCamera();
     const QSize size = rect.isEmpty() ? m_media.nativeSize() : rect.size();
     const QString name = m_media.path.isEmpty() ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
     setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
         .arg(name).arg(size.width()).arg(size.height()));
+}
+
+// The canvas shows the base view: the crop, narrowed by "keep zoomed in".
+void EditorWindow::applyContentRect() {
+    const QRect base = cameraBase();
+    m_canvas->setContentRect(base == QRect(QPoint(), m_media.nativeSize()) ? QRect() : base);
+    updateStudioPreview();
 }
 
 void EditorWindow::positionCropBar() {
@@ -1454,6 +1541,7 @@ void EditorWindow::toggleTheme() {
     }
     m_textBar->refreshTheme();
     m_dragPill->refreshTheme();
+    if (m_zoomBar) m_zoomBar->refreshTheme();
     m_scene->update();
 #ifdef Q_OS_WIN
     applyWindowsTitleBarTheme(this, m_dark);
@@ -1476,7 +1564,7 @@ QImage EditorWindow::exportComposite() {
     m_scene->clearSelection();          // drop selection handles so they aren't baked into the image
     QImage image = renderToImage(*m_scene, m_bg.size());
     for (QGraphicsItem *item : selection) item->setSelected(true);
-    return renderStudioImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect), m_studioStyle);
+    return renderStudioImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect), m_studio.style);
 }
 
 QString EditorWindow::configPath() const {
@@ -1484,21 +1572,57 @@ QString EditorWindow::configPath() const {
 }
 
 void EditorWindow::setStudioStyle(const StudioStyle &style) {
-    m_studioStyle = style;
-    m_toolbar->setStudioActive(style.active());
-    updateStudioPreview();
+    StudioDocument doc = m_studio;
+    doc.style = style;
+    setStudioDocument(doc);
+}
+
+void EditorWindow::setStudioDocument(const StudioDocument &doc) {
+    m_studio = doc;
+    m_toolbar->setStudioActive(doc.style.active());
+    if (zoomlane::indexOf(m_studio.zooms, m_selectedZoom) < 0) m_selectedZoom = 0;
+    setCropRect(m_cropRect);   // the base view follows the ratio and "keep zoomed in"
     if (isVideo()) onVideoContentChanged();
 }
 
+void EditorWindow::editStudio(const std::function<void(StudioDocument &)> &change, int mergeKey) {
+    StudioDocument after = m_studio;
+    change(after);
+    if (after == m_studio) return;
+    m_undo->push(new SetStudioDocumentCommand(m_studio, after,
+        [this](const StudioDocument &d) { setStudioDocument(d); }, mergeKey));
+}
+
+void EditorWindow::editZoom(quint32 id, const std::function<void(ZoomSegment &)> &change, int mergeKey) {
+    editStudio([&](StudioDocument &d) {
+        const int i = zoomlane::indexOf(d.zooms, id);
+        if (i >= 0) change(d.zooms[i]);
+    }, mergeKey);
+}
+
+void EditorWindow::removeZoom(quint32 id) {
+    editStudio([id](StudioDocument &d) { d.zooms.removeIf([id](const ZoomSegment &z) { return z.id == id; }); });
+}
+
+QRect EditorWindow::cameraContent() const {
+    return m_cropRect.isEmpty() ? QRect(QPoint(), m_media.nativeSize()) : m_cropRect;
+}
+
+QRect EditorWindow::cameraBase() const {
+    const QRect content = cameraContent();
+    return isVideo() && m_studio.keepZoomedIn
+        ? keepZoomedInRect(content, m_studio.style, m_studio.keepCenter) : content;
+}
+
 void EditorWindow::updateStudioPreview() {
-    if (!m_studioStyle.active()) { m_canvas->clearStudioFrame(); return; }
-    const QRect content = m_cropRect.isEmpty() ? QRect(QPoint(), m_media.nativeSize()) : m_cropRect;
-    const StudioLayout layout = studioLayout(content.size(), m_studioStyle);
+    if (!m_studio.style.active()) { m_canvas->clearStudioFrame(); return; }
+    const QRect content = cameraBase();
+    const StudioLayout layout = studioLayout(content.size(), m_studio.style);
     // Lengths are relative to the content, so a smaller render looks the same;
     // this keeps slider drags cheap on 4K media.
     const qreal scale = qMin(1.0, 1600.0 / qMax(1, qMax(content.width(), content.height())));
     const QSize previewSize = (QSizeF(content.size()) * scale).toSize().expandedTo(QSize(1, 1));
-    const QPixmap background = QPixmap::fromImage(renderStudioBackground(previewSize, m_studioStyle));
+    const QPixmap background = QPixmap::fromImage(renderStudioBackground(previewSize, m_studio.style));
     m_canvas->setStudioFrame(background,
         QRectF(content.topLeft() - layout.content.topLeft(), layout.output), layout.radius);
 }
@@ -1507,15 +1631,43 @@ void EditorWindow::openStudio() {
     // A second click on the button closes the popover instead of stacking one.
     if (m_studioPopover) { m_studioPopover->close(); return; }
     finishCrop();
-    const StudioStyle before = m_studioStyle;
+    const StudioDocument before = m_studio;
     // Switching Studio on starts from the style used last time.
-    if (!m_studioStyle.active()) setStudioStyle(loadLastStudioStyle(configPath()));
-    auto *popover = new StudioPopover(m_studioStyle,
-        m_cropRect.isEmpty() ? m_media.nativeSize() : m_cropRect.size(), this);
+    if (!m_studio.style.active()) setStudioStyle(loadLastStudioStyle(configPath()));
+    const QRect content = cameraContent();
+    auto keepAvailable = [this, content](const StudioStyle &style) {
+        return keepZoomedInRect(content, style, QRectF(content).center()) != content;
+    };
+    StudioCameraSettings camera;
+    camera.available = isVideo();
+    // The zooms' one shared motion; the default while there are none.
+    camera.motion = m_studio.zooms.isEmpty() ? m_studio.motion : m_studio.zooms.first().motion;
+    for (const ZoomSegment &z : std::as_const(m_studio.zooms))
+        if (z.motion != m_studio.zooms.first().motion) camera.motion.reset();
+    camera.keepZoomedIn = m_studio.keepZoomedIn;
+    camera.keepZoomedInAvailable = keepAvailable(m_studio.style);
+    auto *popover = new StudioPopover(m_studio.style, cameraBase().size(), camera, this);
     popover->setAttribute(Qt::WA_DeleteOnClose);
     popover->setAttribute(Qt::WA_TranslucentBackground);
     m_studioPopover = popover;
-    connect(popover, &StudioPopover::styleChanged, this, &EditorWindow::setStudioStyle);
+    connect(popover, &StudioPopover::styleChanged, this, [this, popover, keepAvailable](const StudioStyle &style) {
+        setStudioStyle(style);
+        popover->setKeepZoomedInAvailable(keepAvailable(style));
+        popover->setContentSize(cameraBase().size());
+    });
+    connect(popover, &StudioPopover::motionChosen, this, [this](ZoomSegment::Motion motion) {
+        StudioDocument doc = m_studio;
+        doc.motion = motion;
+        for (ZoomSegment &z : doc.zooms) z.motion = motion;
+        setStudioDocument(doc);
+    });
+    connect(popover, &StudioPopover::keepZoomedInChanged, this, [this, popover](bool on) {
+        StudioDocument doc = m_studio;
+        doc.keepZoomedIn = on;
+        if (on && doc.keepCenter.isNull()) doc.keepCenter = QRectF(cameraContent()).center();
+        setStudioDocument(doc);
+        popover->setContentSize(cameraBase().size());
+    });
     connect(popover, &StudioPopover::imageRequested, this, [this, popover] {
         // The popover's deferred deletion runs after the dialog returns, so its
         // single undo step still includes the chosen image.
@@ -1523,21 +1675,176 @@ void EditorWindow::openStudio() {
         const QString path = QFileDialog::getOpenFileName(this, tr("Background image"), {},
             tr("Images (*.png *.jpg *.jpeg *.webp *.bmp)"));
         if (path.isEmpty()) return;
-        StudioStyle style = m_studioStyle;
+        StudioStyle style = m_studio.style;
         style.background = StudioStyle::Background::Image;
         style.imagePath = path;
         setStudioStyle(style);
     });
     connect(popover, &QObject::destroyed, this, [this, before] {
-        if (m_studioStyle == before) return;
-        saveLastStudioStyle(configPath(), m_studioStyle);
-        m_undo->push(new SetStudioStyleCommand(before, m_studioStyle,
-            [this](const StudioStyle &style) { setStudioStyle(style); }));
+        if (m_studio == before) return;
+        if (m_studio.style != before.style) saveLastStudioStyle(configPath(), m_studio.style);
+        m_undo->push(new SetStudioDocumentCommand(before, m_studio,
+            [this](const StudioDocument &d) { setStudioDocument(d); }));
     });
     auto *button = m_toolbar->findChild<QToolButton *>(QStringLiteral("Studio"));
     const QPoint anchor = button->mapToGlobal(QPoint(button->width(), button->height() + 4));
     popover->move(anchor - QPoint(popover->width(), 0));
     popover->show();
+}
+
+// The camera (studio plan 3.4 and 5): one curve for preview and export, rebuilt
+// after every edit and read per shown frame.
+void EditorWindow::rebuildCamera() {
+    if (!isVideo() || !m_timeline || !m_cameraRebuild) return;
+    m_cameraRebuild->stop();
+    const QRect content = cameraContent(), base = cameraBase();
+    // Simulating the springs costs time on long clips; style edits leave the path alone.
+    CameraInputs inputs{m_studio.zooms, m_studio.fragments, content, base,
+                        m_trimInMs, m_trimOutMs, m_media.video.durationMs};
+    if (inputs != m_cameraInputs) {
+        m_cameraInputs = inputs;
+        m_timeMap = TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments);
+        m_cameraPath = CameraPath(m_studio.zooms, m_timeMap,
+            CameraFrame{QRectF(content), base == content ? 0.0 : double(base.width()) / base.height(),
+                        QRectF(base).center()});
+    }
+    m_timeline->setZoomLaneVisible(m_studio.style.active() || !m_studio.zooms.isEmpty());
+    m_timeline->setZooms(m_studio.zooms, [this](qint64 source) {
+        const auto out = m_timeMap.toOutput(double(source));
+        return out ? m_cameraPath.zoomAt(*out) : 1.0;
+    });
+    m_timeline->setSelectedZoom(m_selectedZoom);
+    updateCamera();
+    refreshZoomUi();
+}
+
+QRectF EditorWindow::currentCamera() const {
+    if (m_showBaseView) return QRectF(cameraBase());
+    const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
+    const int selected = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
+    // A selected zoom shows where it comes to rest, not a moment of the ride.
+    if (!playing && selected >= 0) return m_cameraPath.targetRect(m_studio.zooms[selected]);
+    const qint64 source = playing && m_presentedStart >= 0 ? m_presentedStart : m_timeline->position();
+    const double out = source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(double(source));
+    return m_cameraPath.rectAt(out);
+}
+
+void EditorWindow::updateCamera() {
+    if (!isVideo() || !m_timeline) return;
+    const bool cropping = m_crop && m_crop->active();
+    m_canvas->setCamera(cropping ? QRectF() : currentCamera());
+    if (m_miniMap && m_miniMap->isVisible()) m_miniMap->setCamera(currentCamera());
+}
+
+void EditorWindow::selectZoom(quint32 id) {
+    if (zoomlane::indexOf(m_studio.zooms, id) < 0) id = 0;
+    m_selectedZoom = id;
+    if (m_timeline) m_timeline->setSelectedZoom(id);
+    updateCamera();
+    refreshZoomUi();
+}
+
+void EditorWindow::addZoomAt(qint64 sourceMs) {
+    const auto span = zoomlane::placeNew(m_studio.zooms, sourceMs, m_media.video.durationMs);
+    if (!span) {
+        m_toast->showMessage(tr("No room for a zoom here"));
+        return;
+    }
+    ZoomSegment z;
+    z.id = zoomlane::nextId(m_studio.zooms);
+    z.startMs = span->first;
+    z.endMs = span->second;
+    z.point = m_lastZoomPoint.isNull() ? QRectF(cameraBase()).center() : m_lastZoomPoint;
+    z.motion = m_studio.motion;
+    if (m_player) m_player->pause();
+    editStudio([&](StudioDocument &d) { zoomlane::insert(d.zooms, z); });
+    selectZoom(z.id);
+}
+
+// Steers the selected zoom's target, or the "keep zoomed in" centre when no
+// zoom is selected. The whole drag becomes one undo step when it ends.
+void EditorWindow::moveCameraTarget(QPointF delta) {
+    if (!m_cameraGesture) {
+        m_cameraGesture = true;
+        m_cameraGestureBefore = m_studio;
+    }
+    const int i = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
+    if (i >= 0) {
+        ZoomSegment &z = m_studio.zooms[i];
+        z.point += delta;
+        z.point = m_cameraPath.targetRect(z).center();   // no drift past the edges
+        m_lastZoomPoint = z.point;
+    } else if (m_studio.keepZoomedIn) {
+        const QRectF content(cameraContent());
+        const QSizeF view = QRectF(cameraBase()).size();
+        const QPointF c = m_studio.keepCenter + delta;
+        m_studio.keepCenter = QPointF(
+            qBound(content.left() + view.width() / 2, c.x(), content.right() - view.width() / 2),
+            qBound(content.top() + view.height() / 2, c.y(), content.bottom() - view.height() / 2));
+        m_showBaseView = true;
+        applyContentRect();
+    }
+    // The selected zoom's resting view and the base view need no new path; the
+    // path is rebuilt once when the drag ends.
+    updateCamera();
+    refreshZoomUi();
+}
+
+void EditorWindow::finishCameraGesture(bool cancelled) {
+    if (!m_cameraGesture) return;
+    m_cameraGesture = false;
+    m_showBaseView = false;
+    const StudioDocument before = m_cameraGestureBefore, after = m_studio;
+    if (cancelled || before == after) {
+        setStudioDocument(before);
+        return;
+    }
+    m_undo->push(new SetStudioDocumentCommand(before, after,
+        [this](const StudioDocument &d) { setStudioDocument(d); }));
+}
+
+void EditorWindow::refreshZoomUi() {
+    if (!m_zoomBar) return;
+    const bool cropping = m_crop && m_crop->active();
+    const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
+    const int i = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
+    const bool keep = cameraBase() != cameraContent();
+    if (i >= 0 && !cropping) m_zoomBar->setZoom(m_studio.zooms[i]);
+    m_zoomBar->setVisible(i >= 0 && !cropping);
+    const bool map = !cropping && !playing && (i >= 0 || keep);
+    if (map && !m_miniMap->isVisible()) {
+        // The picture only changes with the frame; see videoFrameChanged. m_bg is
+        // the frame in document orientation and size, like the canvas shows it.
+        const QRect content = cameraContent();
+        m_miniMap->setContent(m_lastVideoFrame.isValid() && updateVideoBackground()
+            ? m_bg.copy(content).scaled(304, 224, Qt::KeepAspectRatio, Qt::SmoothTransformation) : QImage(),
+            QRectF(content));
+    }
+    if (map) m_miniMap->setCamera(currentCamera());
+    m_miniMap->setVisible(map);
+    m_canvas->setCameraDragEnabled(map);
+    positionZoomUi();
+}
+
+void EditorWindow::positionZoomUi() {
+    if (!m_zoomBar) return;
+    const QSize viewport = m_canvas->viewport()->size();
+    m_zoomBar->adjustSize();
+    const QRect bar(QPoint((viewport.width() - m_zoomBar->width()) / 2,
+                           viewport.height() - m_zoomBar->height() - 12), m_zoomBar->size());
+    m_zoomBar->move(bar.topLeft());
+    // Bottom right inside the content; above the bar when they would meet.
+    const QRectF camera = m_canvas->camera().isEmpty() ? m_canvas->contentRect() : m_canvas->camera();
+    const QRect content = QRect(m_canvas->mapFromScene(camera.topLeft()),
+                                m_canvas->mapFromScene(camera.bottomRight()))
+                              .intersected(QRect(QPoint(), viewport));
+    m_miniMap->setWidthLimit(qBound(72, content.width() / 4, 152));
+    QRect map(QPoint(content.right() - m_miniMap->width() - 12, content.bottom() - m_miniMap->height() - 12),
+              m_miniMap->size());
+    if (m_zoomBar->isVisible() && map.intersects(bar.adjusted(-6, -6, 6, 6))) map.moveBottom(bar.top() - 12);
+    m_miniMap->move(map.topLeft());
+    m_zoomBar->raise();
+    m_miniMap->raise();
 }
 
 QImage EditorWindow::renderAnnotationOverlay() {
@@ -1581,7 +1888,8 @@ bool EditorWindow::hasTrim() const {
 }
 
 bool EditorWindow::hasVideoEdits() const {
-    return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty() || m_studioStyle.active();
+    return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty() || m_studio.style.active()
+        || !m_studio.zooms.isEmpty() || cameraBase() != cameraContent();
 }
 
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
@@ -1601,6 +1909,7 @@ void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
     m_trimInMs = m_timeline->trimIn();
     m_trimOutMs = m_timeline->trimOut();
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+    rebuildCamera();
     if (m_player && !m_timelineActive) {
         m_player->pause();
         m_resumeAfterSeek = false;
@@ -1755,7 +2064,9 @@ void EditorWindow::startVideoExportCache() {
         m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000
     };
     request.cropRect = m_cropRect;
-    request.studio = m_studioStyle;
+    request.studio = m_studio.style;
+    request.zooms = m_studio.zooms;
+    if (cameraBase() != cameraContent()) request.baseView = cameraBase();
     m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
     request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
     QPointer<EditorWindow> receiver(this);
@@ -2269,8 +2580,12 @@ void EditorWindow::copyVideoFrame() {
     m_scene->clearSelection();
     m_scene->clearFocus();
     const QImage image = renderToImage(*m_scene, m_media.nativeSize());
-    QApplication::clipboard()->setImage(
-        renderStudioImage(m_cropRect.isEmpty() ? image : image.copy(m_cropRect), m_studioStyle));
+    // What the canvas shows: the camera's window at the base view's size.
+    const QRect base = cameraBase();
+    const QRectF view = m_canvas->camera().isEmpty() ? QRectF(base) : m_canvas->camera();
+    const QImage visible = image.copy(view.toAlignedRect())
+        .scaled(base.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    QApplication::clipboard()->setImage(renderStudioImage(visible, m_studio.style));
     m_toast->showMessage(tr("Frame copied"));
 }
 
@@ -2312,6 +2627,36 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         }
         QWidget::keyPressEvent(e);
         return;
+    }
+    if (isVideo() && m_timeline && e->modifiers() == Qt::NoModifier && e->key() == Qt::Key_Z) {
+        addZoomAt(m_timeline->position());
+        e->accept();
+        return;
+    }
+    // A selected zoom takes Delete and the arrows while no annotation is selected.
+    if (const int i = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
+        i >= 0 && m_scene->selectedItems().isEmpty()) {
+        if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) {
+            removeZoom(m_selectedZoom);
+            e->accept();
+            return;
+        }
+        if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right) {
+            const double fps = m_media.video.fps > 0 ? m_media.video.fps : 30.0;
+            const int frames = (e->key() == Qt::Key_Left ? -1 : 1)
+                * (e->modifiers().testFlag(Qt::ShiftModifier) ? 10 : 1);
+            const qint64 start = m_studio.zooms[i].startMs + qRound64(frames * 1000.0 / fps);
+            editStudio([this, start](StudioDocument &d) {
+                zoomlane::move(d.zooms, m_selectedZoom, start, m_media.video.durationMs);
+            }, 0x10000 + int(m_selectedZoom));
+            e->accept();
+            return;
+        }
+    }
+    if (e->key() == Qt::Key_Escape) {
+        if (m_canvas->cameraDragging()) { m_canvas->cancelCameraDrag(); e->accept(); return; }
+        if (m_timeline && m_timeline->zoomDragging()) { m_timeline->cancelInteraction(); e->accept(); return; }
+        if (m_selectedZoom) { selectZoom(0); e->accept(); return; }
     }
     switch (e->key()) {
         case Qt::Key_I:

@@ -6,6 +6,9 @@
 #include "mediaio.h"
 #include "exporter.h"
 #include "studiostyle.h"
+#include "studiodocument.h"
+#include "camerapath.h"
+#include "timemap.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
@@ -28,6 +31,8 @@ class VideoTimeline;
 class VideoPreviewProvider;
 class CropController;
 class CropBar;
+class ZoomBar;
+class MiniMap;
 enum class RedactMode;
 
 enum class SaveRoute { ExplicitOutput, BoltsnapCard, ConfigDirectory, Shelf };
@@ -35,13 +40,21 @@ SaveRoute saveRoute(const CliOptions &cli, const Config &cfg);
 
 class EditorWindow : public QWidget {
     Q_OBJECT
+    // Start of the last shown video frame in source ms, for preview tests.
+    Q_PROPERTY(qint64 presentedStart MEMBER m_presentedStart)
 public:
     EditorWindow(const QImage &image, const Config &cfg, const CliOptions &cli, QWidget *parent=nullptr);
     EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent=nullptr);
     ~EditorWindow() override;
     QImage exportComposite();   // for tests + save/copy
-    StudioStyle studioStyle() const { return m_studioStyle; }
+    StudioStyle studioStyle() const { return m_studio.style; }
     void setStudioStyle(const StudioStyle &style);   // not an undo step on its own
+    StudioDocument studioDocument() const { return m_studio; }
+    void setStudioDocument(const StudioDocument &doc);   // not an undo step on its own
+    quint32 selectedZoom() const { return m_selectedZoom; }
+    void selectZoom(quint32 id);
+    // The unzoomed view: the crop, narrowed by "keep zoomed in".
+    QRect cameraBase() const;
     void openStudio();
 public slots:
     void save();   // to file/save-dir per cli/config
@@ -111,6 +124,7 @@ private:
     void setVideoPreviewImage(const QImage &image);
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();
+    void cancelGestures();
     void doRedo();
     void toggleTheme();
     void setupCrop();
@@ -119,7 +133,38 @@ private:
     void positionCropBar();
     void updateStudioPreview();
     QString configPath() const;
-    StudioStyle m_studioStyle;       // this document; off by default
+    void editStudio(const std::function<void(StudioDocument &)> &change, int mergeKey = 0);
+    void editZoom(quint32 id, const std::function<void(ZoomSegment &)> &change, int mergeKey = 0);
+    void removeZoom(quint32 id);
+    void applyContentRect();
+    QRect cameraContent() const;
+    QRectF currentCamera() const;
+    void rebuildCamera();
+    void updateCamera();
+    void refreshZoomUi();
+    void positionZoomUi();
+    void addZoomAt(qint64 sourceMs);
+    void moveCameraTarget(QPointF delta);
+    void finishCameraGesture(bool cancelled);
+    StudioDocument m_studio;          // this document; off by default
+    quint32 m_selectedZoom = 0;
+    QPointF m_lastZoomPoint;          // where a new zoom points first
+    struct CameraInputs {
+        QVector<ZoomSegment> zooms;
+        QVector<Fragment> fragments;
+        QRect content, base;
+        qint64 trimIn = -1, trimOut = -1, duration = -1;
+        bool operator==(const CameraInputs &) const = default;
+    };
+    CameraInputs m_cameraInputs;      // what m_cameraPath was built from
+    TimeMap m_timeMap;
+    CameraPath m_cameraPath;
+    QTimer *m_cameraRebuild = nullptr;   // coalesces rebuilds while a lane drag previews
+    ZoomBar *m_zoomBar = nullptr;
+    MiniMap *m_miniMap = nullptr;
+    bool m_cameraGesture = false;
+    bool m_showBaseView = false;      // while "keep zoomed in" is dragged
+    StudioDocument m_cameraGestureBefore;
     QPointer<QWidget> m_studioPopover;
     CropController *m_crop = nullptr;
     CropBar *m_cropBar = nullptr;

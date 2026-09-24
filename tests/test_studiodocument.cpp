@@ -1,7 +1,9 @@
 #include <QtTest>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QUndoStack>
 #include "studiodocument.h"
+#include "undocommands.h"
 
 using namespace eddy;
 
@@ -23,6 +25,7 @@ static StudioDocument everything() {
     d.fragments = {{0, 1.0, false}, {4000, 1.0, true}, {8000, 2.0, false}};
     d.keepZoomedIn = true;
     d.keepCenter = QPointF(800, 540);
+    d.motion = ZoomSegment::Motion::Smooth;
     return d;
 }
 
@@ -70,13 +73,14 @@ private slots:
 
     void onlyVersionAndStyleAreRequired() {
         QJsonObject json = studioToJson(everything());
-        for (const char *key : {"zooms", "fragments", "keepZoomedIn"}) json.remove(QLatin1String(key));
+        for (const char *key : {"zooms", "fragments", "keepZoomedIn", "camera"}) json.remove(QLatin1String(key));
         QString error;
         const auto doc = studioFromJson(json, kDuration, kSource, &error);
         QVERIFY2(doc, qPrintable(error));
         QVERIFY(doc->zooms.isEmpty() && doc->fragments.isEmpty());
         QVERIFY(!doc->keepZoomedIn);
         QCOMPARE(doc->keepCenter, QPointF(960, 540));   // the source centre
+        QCOMPARE(doc->motion, ZoomSegment::Motion::Focused);
     }
 
     void writesACompactStableShape() {
@@ -86,6 +90,7 @@ private slots:
         QCOMPARE(json["style"]["aspect"].toArray(), (QJsonArray{9, 16}));
         QCOMPARE(json["zooms"][0]["motion"].toString(), QStringLiteral("smooth"));
         QCOMPARE(json["zooms"][1]["target"].toString(), QStringLiteral("cursor"));
+        QCOMPARE(json["camera"]["motion"].toString(), QStringLiteral("smooth"));
         // Defaults are left out of fragments, which may number in the hundreds.
         const QJsonObject first = json["fragments"][0].toObject();
         QCOMPARE(first.keys(), QStringList{QStringLiteral("start")});
@@ -173,6 +178,36 @@ private slots:
         QString error;
         QVERIFY(studioFromJson(studioToJson(StudioDocument()), 0, kSource, &error));
         QVERIFY(rejects(studioToJson(everything()), 0));
+    }
+
+    void rejectsAnUnknownCameraMotion() {
+        QJsonObject json = studioToJson(everything());
+        json["camera"] = QJsonObject{{"motion", "wobbly"}};
+        QVERIFY(rejects(json));
+        json["camera"] = 3;
+        QVERIFY(rejects(json));
+    }
+
+    void documentCommandsUndoAndMergeWheelSteps() {
+        StudioDocument current;
+        QUndoStack stack;
+        auto apply = [&](const StudioDocument &d) { current = d; };
+        StudioDocument a = current, b = current, c = current;
+        b.motion = ZoomSegment::Motion::Smooth;
+        c.motion = ZoomSegment::Motion::Instant;
+        stack.push(new SetStudioDocumentCommand(a, b, apply));
+        QCOMPARE(current.motion, ZoomSegment::Motion::Smooth);
+        // Wheel steps on one zoom fold into one undo step; other edits never do.
+        stack.push(new SetStudioDocumentCommand(b, c, apply, 7));
+        stack.push(new SetStudioDocumentCommand(c, b, apply, 7));
+        QCOMPARE(stack.count(), 2);
+        stack.push(new SetStudioDocumentCommand(b, c, apply, 8));
+        QCOMPARE(stack.count(), 3);
+        stack.undo();
+        stack.undo();
+        QCOMPARE(current.motion, ZoomSegment::Motion::Smooth);
+        stack.undo();
+        QCOMPARE(current.motion, ZoomSegment::Motion::Focused);
     }
 
     void onlyZoomsNeedTheRenderPath() {

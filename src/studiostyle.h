@@ -43,6 +43,11 @@ struct StudioLayout {
 };
 
 StudioLayout studioLayout(QSize content, const StudioStyle &style);
+// "Always keep zoomed in" (studio plan 6.5): the largest window of `content`
+// whose framed output has the style's ratio without background bars, centred
+// as near `center` as it fits. Even origin and size, like any video crop.
+// `content` itself when the style sets no ratio.
+QRect keepZoomedInRect(QRect content, const StudioStyle &style, QPointF center);
 // The background with the content's shadow already cast; the content is drawn
 // over it through renderStudioMask.
 QImage renderStudioBackground(QSize content, const StudioStyle &style);

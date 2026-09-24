@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <QSignalSpy>
 #include "videotimeline.h"
 
 using namespace eddy;
@@ -51,6 +52,117 @@ private slots:
         QCOMPARE(timeline.position(), target);
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(226, 22));
         QCOMPARE(timeline.trimIn(), 3000);
+    }
+    void zoomLaneGrowsTheTimelineUnderTheFilmStrip() {
+        VideoTimeline timeline;
+        QCOMPARE(timeline.height(), 52);
+        QVERIFY(timeline.zoomLaneRect().isEmpty());
+        timeline.setZoomLaneVisible(true);
+        QCOMPARE(timeline.height(), 84);
+        QCOMPARE(timeline.zoomLaneRect().top(), 52.0);
+        QCOMPARE(timeline.zoomLaneRect().height(), 28.0);
+        timeline.setZoomLaneVisible(false);
+        QCOMPARE(timeline.height(), 52);
+    }
+    void clickingTheEmptyLaneAsksForAZoomThere() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        timeline.show();
+        QSignalSpy add(&timeline, &VideoTimeline::zoomAddRequested);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(add.count(), 1);
+        QCOMPARE(add.first().first().toLongLong(), 5000);
+    }
+    void draggingAZoomMovesItAsOneEdit() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 1; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        timeline.show();
+        QSignalSpy selected(&timeline, &VideoTimeline::zoomSelected);
+        QSignalSpy edited(&timeline, &VideoTimeline::zoomsEdited);
+        // A plain click selects without moving, even next to an anchor.
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QCOMPARE(selected.count(), 1);
+        QCOMPARE(timeline.selectedZoom(), 1u);
+        QCOMPARE(edited.count(), 0);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QTest::mouseMove(&timeline, QPoint(126, 66));
+        QTest::mouseMove(&timeline, QPoint(156, 66));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(edited.count(), 1);
+        const auto after = edited.first().at(1).value<QVector<ZoomSegment>>();
+        QCOMPARE(after.first().startMs, 4000);
+        QCOMPARE(after.first().endMs, 6000);
+        QCOMPARE(timeline.zooms().first().startMs, 4000);
+    }
+    void holdingAZoomWithoutMovingNeverMovesIt() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 1; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        timeline.show();
+        QSignalSpy edited(&timeline, &VideoTimeline::zoomsEdited);
+        // The edge-pan timer must not drag with a stale pointer while the button is held.
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QTest::qWait(120);
+        QCOMPARE(timeline.zooms().first().startMs, 2000);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QCOMPARE(edited.count(), 0);
+    }
+    void edgesSnapToThePlayheadAndEscapeRestores() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setPosition(7000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 3; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        timeline.show();
+        QSignalSpy edited(&timeline, &VideoTimeline::zoomsEdited);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(126, 66));   // end edge
+        QTest::mouseMove(&timeline, QPoint(170, 66));
+        QTest::mouseMove(&timeline, QPoint(218, 66));   // 7066 ms, 6 px snap reach = 200 ms
+        QCOMPARE(timeline.zooms().first().endMs, 7000);
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QCOMPARE(timeline.zooms().first().endMs, 4000);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(218, 66));
+        QCOMPARE(edited.count(), 0);
+    }
+    void rightClickOnAZoomAsksForItsMenu() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 5; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        QSignalSpy menu(&timeline, &VideoTimeline::zoomMenuRequested);
+        emit timeline.customContextMenuRequested(QPoint(96, 66));
+        QCOMPARE(menu.count(), 1);
+        QCOMPARE(menu.first().first().toUInt(), 5u);
+        QCOMPARE(timeline.selectedZoom(), 5u);
+    }
+    void laneShowsTheCameraCurve() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 1; z.startMs = 2000; z.endMs = 8000; z.scale = 2;
+        timeline.setZooms({z}, [](qint64 t) { return t >= 3000 && t < 8000 ? 2.0 : 1.0; });
+        const QImage shot = timeline.grab().toImage();
+        // Zoomed in, the curve fills the block near its top; before the ramp it does not.
+        QVERIFY(qGray(shot.pixel(156, 58)) != qGray(shot.pixel(72, 58)));
     }
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;

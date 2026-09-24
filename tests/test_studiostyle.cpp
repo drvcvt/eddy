@@ -17,6 +17,34 @@ static StudioStyle colorStyle() {
 class TestStudioStyle : public QObject {
     Q_OBJECT
 private slots:
+    void keepZoomedInFillsTheFramesRatio() {
+        StudioStyle s = colorStyle();                 // padding 10 %
+        const QRect source(0, 0, 1920, 1080);
+        QCOMPARE(keepZoomedInRect(source, s, QPointF(960, 540)), source);   // no ratio set
+        s.aspect = QSize(9, 16);
+        const QRect middle = keepZoomedInRect(source, s, QPointF(960, 540));
+        QCOMPARE(middle.height(), 1080);
+        QVERIFY(middle.width() < 1080);
+        QCOMPARE(middle.x() % 2, 0);
+        QCOMPARE(middle.width() % 2, 0);
+        QVERIFY(qAbs(middle.center().x() - 960) <= 2);
+        // The frame fills the ratio: at most 2 px of background grow beside the padding.
+        const StudioLayout layout = studioLayout(middle.size(), s);
+        QVERIFY2(layout.content.x() - layout.content.y() <= 2,
+                 qPrintable(QStringLiteral("%1 vs %2").arg(layout.content.x()).arg(layout.content.y())));
+        // The window never leaves the content.
+        QCOMPARE(keepZoomedInRect(source, s, QPointF(0, 540)).x(), 0);
+        const QRect right = keepZoomedInRect(source, s, QPointF(1920, 540));
+        QCOMPARE(right.x() + right.width(), 1920);
+        // Wide ratios cut the height instead; inside a crop the window stays inside it.
+        s.aspect = QSize(21, 9);
+        const QRect crop(100, 50, 800, 600);
+        const QRect wide = keepZoomedInRect(crop, s, QPointF(500, 350));
+        QCOMPARE(wide.width(), 800);
+        QVERIFY(wide.height() < 600);
+        QVERIFY(crop.contains(wide));
+    }
+
     void offLeavesContentUntouched() {
         QImage content(40, 30, QImage::Format_ARGB32);
         content.fill(Qt::red);

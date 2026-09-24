@@ -25,6 +25,15 @@ public:
     // the content rect, whose corners are rounded by `radius` scene units.
     void setStudioFrame(const QPixmap &background, QRectF output, qreal radius);
     void clearStudioFrame();
+    // Studio zoom preview (studio plan 5): the `camera` window (document
+    // pixels) fills the place of the content rect. The Studio frame and the
+    // user's own zoom and pan stay where they are.
+    void setCamera(const QRectF &camera);
+    QRectF camera() const { return m_cameraRect; }
+    // Move-tool drags on empty content steer the camera instead of selecting.
+    void setCameraDragEnabled(bool on) { m_cameraDrag = on; }
+    bool cameraDragging() const { return m_cameraDragging; }
+    void cancelCameraDrag();
     bool fitted() const { return m_fitted; }
     void restoreView(const QTransform &transform, QPointF center, bool fitted);
     void setSpacePan(bool on);
@@ -38,6 +47,8 @@ public:
 signals:
     void viewChanged();   // emitted on zoom / pan / resize so overlays can re-anchor
     void colorPicked(const QColor &c);
+    void cameraDragged(QPointF documentDelta);   // the pointer moved this far over the document
+    void cameraDragFinished(bool cancelled);
 protected:
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
@@ -56,6 +67,16 @@ private:
     void updateLoupe(const QPoint &viewPos);
     void updateCursor();
     void updateNavigationBounds();
+    template <typename Change> void withoutCamera(Change change);
+    void applyCamera();
+    QTransform viewWithoutCamera() const;
+    QPointF viewportCentreInScene() const;
+    QTransform m_camera;         // scene -> scene: the camera window onto the content rect
+    QRectF m_cameraRect;
+    double m_viewZoom = 1.0;     // the user's own view while a camera is on
+    QPointF m_viewCentre;
+    bool m_cameraDrag = false, m_cameraDragging = false;
+    QPointF m_cameraDragLast;
     ToolController *m_tools;
     CropController *m_crop = nullptr;
     QRectF m_contentRect;

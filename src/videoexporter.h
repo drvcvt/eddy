@@ -26,6 +26,9 @@ struct VideoExportRequest {
     // Zoom segments in source time. Any at all send the export through the
     // frame renderer (renderexport.h) instead of the filter graph.
     QVector<ZoomSegment> zooms;
+    // "Always keep zoomed in" (studio plan 6.5): the unzoomed view inside the
+    // crop, shaped like the output frame. Null: the whole crop.
+    QRect baseView;
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.
     std::function<void(int percent)> progress;

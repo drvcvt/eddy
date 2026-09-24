@@ -2,6 +2,7 @@
 #include <QPointF>
 #include <QRectF>
 #include <QVector>
+#include <cmath>
 #include "studiodocument.h"
 #include "timemap.h"
 
@@ -34,6 +35,16 @@ public:
     QRectF baseRect() const { return m_base; }
     // Document pixels, always inside the frame's content.
     QRectF rectAt(double outMs) const;
+    // Where a zoom's camera comes to rest: its window around the point, kept
+    // inside the content. What the editor shows while that zoom is selected.
+    QRectF targetRect(const ZoomSegment &zoom) const {
+        return rectFor(zoom.point.x(), zoom.point.y(), std::log(zoom.scale));
+    }
+    // How far the camera is zoomed in at `outMs`; 1 is the base view.
+    double zoomAt(double outMs) const {
+        const QRectF r = rectAt(outMs);
+        return r.width() > 0 ? m_base.width() / r.width() : 1.0;
+    }
     int sampleCount() const { return m_samples.size(); }
 
 private:

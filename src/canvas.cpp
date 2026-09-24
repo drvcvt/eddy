@@ -73,6 +73,67 @@ void Canvas::updateNavigationBounds() {
     centerOn(center);
 }
 
+QPointF Canvas::viewportCentreInScene() const {
+    return viewportTransform().inverted().map(QPointF(viewport()->width() / 2.0, viewport()->height() / 2.0));
+}
+
+// Every zoom, pan and fit works on the user's own view as if there were no
+// camera; the camera goes back on afterwards.
+template <typename Change> void Canvas::withoutCamera(Change change) {
+    if (m_camera.isIdentity()) { change(); return; }
+    const QTransform camera = m_camera;
+    m_camera = QTransform();
+    setTransform(QTransform::fromScale(m_viewZoom, m_viewZoom));
+    updateNavigationBounds();
+    centerOn(m_viewCentre);
+    change();
+    m_viewZoom = transform().m11();
+    m_viewCentre = viewportCentreInScene();
+    m_camera = camera;
+    applyCamera();
+}
+
+void Canvas::applyCamera() {
+    const qreal k = m_camera.m11();
+    setTransform(QTransform::fromScale(m_viewZoom * k, m_viewZoom * k));
+    updateNavigationBounds();
+    centerOn(m_camera.inverted().map(m_viewCentre));
+}
+
+QTransform Canvas::viewWithoutCamera() const {
+    if (m_camera.isIdentity()) return viewportTransform();
+    return QTransform::fromTranslate(-m_viewCentre.x(), -m_viewCentre.y())
+         * QTransform::fromScale(m_viewZoom, m_viewZoom)
+         * QTransform::fromTranslate(viewport()->width() / 2.0, viewport()->height() / 2.0);
+}
+
+void Canvas::setCamera(const QRectF &camera) {
+    const QRectF base = contentRect();
+    QTransform next;
+    if (!camera.isEmpty() && !base.isEmpty() && camera != base) {
+        const qreal k = base.width() / camera.width();
+        next = QTransform::fromTranslate(-camera.left(), -camera.top()) * QTransform::fromScale(k, k)
+             * QTransform::fromTranslate(base.left(), base.top());
+    }
+    m_cameraRect = next.isIdentity() ? QRectF() : camera;
+    if (next == m_camera) return;
+    if (m_camera.isIdentity()) {
+        m_viewZoom = transform().m11();
+        m_viewCentre = viewportCentreInScene();
+    }
+    m_camera = next;
+    applyCamera();
+    viewport()->update();
+    emit viewChanged();
+}
+
+void Canvas::cancelCameraDrag() {
+    if (!m_cameraDragging) return;
+    m_cameraDragging = false;
+    updateCursor();
+    emit cameraDragFinished(true);
+}
+
 void Canvas::zoomBy(double factor) {
     const double next = qBound(0.05, m_targetZoom * factor, 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
@@ -81,8 +142,7 @@ void Canvas::zoomBy(double factor) {
     if (!m_animations) {
         const double inc = m_targetZoom / m_zoom;
         m_zoom = m_targetZoom;
-        scale(inc, inc);
-        updateNavigationBounds();
+        withoutCamera([&] { scale(inc, inc); updateNavigationBounds(); });
         emit viewChanged();
         return;
     }
@@ -94,8 +154,7 @@ void Canvas::zoomBy(double factor) {
             const double target = v.toDouble();
             const double inc = target / m_zoom;
             m_zoom = target;
-            scale(inc, inc);
-            updateNavigationBounds();
+            withoutCamera([&] { scale(inc, inc); updateNavigationBounds(); });
             emit viewChanged();
         });
     }
@@ -108,26 +167,30 @@ void Canvas::zoomBy(double factor) {
 void Canvas::resetZoom() {
     m_fitted = false;
     if (m_zoomAnim) m_zoomAnim->stop();
-    resetTransform();
-    m_zoom = m_targetZoom = 1.0;
-    updateNavigationBounds();
+    withoutCamera([&] {
+        resetTransform();
+        m_zoom = m_targetZoom = 1.0;
+        updateNavigationBounds();
+    });
     emit viewChanged();
 }
 
 void Canvas::fitMedia() {
     if (m_zoomAnim) m_zoomAnim->stop();
-    resetTransform();
-    m_fitted = true;
-    QRectF fittedRect = (m_crop && m_crop->active()) ? contentRect() : viewRect();
-    if (m_crop && m_crop->active()) {
-        const qreal scale = qMax(0.001, qMin((viewport()->width() - 4.0) / fittedRect.width(),
-                                            (viewport()->height() - 4.0) / fittedRect.height()));
-        fittedRect.adjust(-10 / scale, -10 / scale, 10 / scale, 10 / scale);
-    }
-    fitInView(fittedRect, Qt::KeepAspectRatio);
-    m_zoom = m_targetZoom = transform().m11();
-    updateNavigationBounds();
-    centerOn(fittedRect.center());
+    withoutCamera([&] {
+        resetTransform();
+        m_fitted = true;
+        QRectF fittedRect = (m_crop && m_crop->active()) ? contentRect() : viewRect();
+        if (m_crop && m_crop->active()) {
+            const qreal scale = qMax(0.001, qMin((viewport()->width() - 4.0) / fittedRect.width(),
+                                                (viewport()->height() - 4.0) / fittedRect.height()));
+            fittedRect.adjust(-10 / scale, -10 / scale, 10 / scale, 10 / scale);
+        }
+        fitInView(fittedRect, Qt::KeepAspectRatio);
+        m_zoom = m_targetZoom = transform().m11();
+        updateNavigationBounds();
+        centerOn(fittedRect.center());
+    });
     emit viewChanged();
 }
 
@@ -158,16 +221,24 @@ QRectF Canvas::contentRect() const {
 void Canvas::setContentRect(QRectF rect) {
     m_contentRect = rect;
     if (m_fitted) fitMedia();
+    if (!m_cameraRect.isEmpty()) {
+        // The camera maps onto the content rect, which just moved.
+        const QRectF camera = m_cameraRect;
+        setCamera({});
+        setCamera(camera);
+    }
     viewport()->update();
 }
 
 void Canvas::restoreView(const QTransform &transform, QPointF center, bool fitted) {
     if (m_zoomAnim) m_zoomAnim->stop();
-    setTransform(transform);
-    m_zoom = m_targetZoom = transform.m11();
-    m_fitted = fitted;
-    updateNavigationBounds();
-    centerOn(center);
+    withoutCamera([&] {
+        setTransform(transform);
+        m_zoom = m_targetZoom = transform.m11();
+        m_fitted = fitted;
+        updateNavigationBounds();
+        centerOn(center);
+    });
     emit viewChanged();
 }
 
@@ -188,7 +259,7 @@ void Canvas::drawForeground(QPainter *painter, const QRectF &) {
         painter->save();
         painter->resetTransform();
         painter->setRenderHint(QPainter::Antialiasing);
-        const QTransform view = viewportTransform();
+        const QTransform view = viewWithoutCamera();
         const QRectF output = view.mapRect(m_studioOutput);
         const QRectF content = view.mapRect(contentRect());
         const qreal radius = m_studioRadius * view.m11();
@@ -207,10 +278,12 @@ void Canvas::drawForeground(QPainter *painter, const QRectF &) {
         painter->restore();
         return;
     }
-    if (!cropping && contentRect() == scene()->sceneRect()) return;
+    // Zoomed or cropped, the picture ends at the content's edge, as in the export.
+    if (!cropping && contentRect() == scene()->sceneRect() && m_camera.isIdentity()) return;
     painter->save();
     painter->resetTransform();
-    const QRectF frame = viewportTransform().mapRect(cropping ? m_crop->rect() : contentRect());
+    const QRectF frame = cropping ? viewportTransform().mapRect(m_crop->rect())
+                                  : viewWithoutCamera().mapRect(contentRect());
     QPainterPath outside;
     outside.addRect(viewport()->rect());
     outside.addRect(frame);
@@ -382,6 +455,18 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
             m_duplicateDragging = m_tools->beginDuplicateMove();
         }
     }
+    if (e->button() == Qt::LeftButton && m_cameraDrag && m_tools->tool() == ToolType::Move
+        && e->modifiers() == Qt::NoModifier) {
+        const QGraphicsItem *item = itemAt(e->pos());
+        if (!item || item->zValue() <= -1000) {
+            scene()->clearSelection();
+            m_cameraDragging = true;
+            m_cameraDragLast = e->position();
+            viewport()->setCursor(Qt::ClosedHandCursor);
+            e->accept();
+            return;
+        }
+    }
     QGraphicsView::mousePressEvent(e); // Move/Text: native selection/edit
     if (e->button() == Qt::LeftButton && m_tools->tool() == ToolType::Move && !m_duplicateDragging)
         m_tools->beginMove();
@@ -389,11 +474,20 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     if (m_eyedropper) { updateLoupe(e->pos()); e->accept(); return; }
+    if (m_cameraDragging) {
+        const QPointF delta = (e->position() - m_cameraDragLast) / transform().m11();
+        m_cameraDragLast = e->position();
+        emit cameraDragged(delta);
+        e->accept();
+        return;
+    }
     if (m_dragging) {                                   // middle-drag pan
         const QPoint d = e->pos() - m_panLast;
         m_panLast = e->pos();
-        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
-        verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
+        withoutCamera([&] {
+            horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
+            verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
+        });
         emit viewChanged();                             // overlays (mode-bar) re-anchor
         e->accept(); return;
     }
@@ -411,6 +505,13 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
     if (e->button() == m_swallowRelease) {
         m_swallowRelease = Qt::NoButton;
+        e->accept();
+        return;
+    }
+    if (m_cameraDragging && e->button() == Qt::LeftButton) {
+        m_cameraDragging = false;
+        updateCursor();
+        emit cameraDragFinished(false);
         e->accept();
         return;
     }
@@ -440,7 +541,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
 void Canvas::resizeEvent(QResizeEvent *e) {
     if (m_eyedropper) cancelEyedropper();        // snapshot + loupe placement go stale on resize
     QGraphicsView::resizeEvent(e);
-    if (m_fitted) fitMedia(); else updateNavigationBounds();
+    withoutCamera([&] { if (m_fitted) fitMedia(); else updateNavigationBounds(); });
     emit viewChanged();
 }
 

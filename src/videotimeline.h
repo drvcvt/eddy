@@ -3,11 +3,14 @@
 #include <QImage>
 #include <QTimer>
 #include <QVector>
+#include <functional>
+#include "studiodocument.h"
 
 namespace eddy {
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
+    enum class Drag { None, In, Out, Seek, ZoomMove, ZoomStart, ZoomEnd };
 public:
     explicit VideoTimeline(QWidget *parent = nullptr);
 
@@ -35,6 +38,20 @@ public:
     bool hasContactSheet() const { return !m_contactSheet.isNull(); }
     int contactSheetFrameCount() const { return m_contactSheetFrames; }
 
+    // Zoom lane (studio plan 6.1, Q1 = C): a 28 px row under the film strip on
+    // the same time axis, shown while Studio is on or zooms exist.
+    void setZoomLaneVisible(bool visible);
+    bool zoomLaneVisible() const { return m_laneVisible; }
+    // `level` is the camera's zoom at a source time, 1 when it shows everything.
+    void setZooms(const QVector<ZoomSegment> &zooms, std::function<double(qint64)> level = {});
+    QVector<ZoomSegment> zooms() const { return m_zooms; }
+    void setSelectedZoom(quint32 id);   // 0: none
+    quint32 selectedZoom() const { return m_selectedZoom; }
+    QRectF zoomLaneRect() const;
+    bool zoomDragging() const {
+        return m_drag == Drag::ZoomMove || m_drag == Drag::ZoomStart || m_drag == Drag::ZoomEnd;
+    }
+
 signals:
     void seekRequested(qint64 positionMs);
     void trimPreviewed(qint64 inMs, qint64 outMs);
@@ -44,6 +61,11 @@ signals:
     void viewRangeChanged();
     void hoverRequested(qint64 timeMs, QPoint position);
     void hoverLeft();
+    void zoomAddRequested(qint64 timeMs);
+    void zoomSelected(quint32 id);
+    void zoomsPreviewed(const QVector<ZoomSegment> &zooms);
+    void zoomsEdited(const QVector<ZoomSegment> &before, const QVector<ZoomSegment> &after);
+    void zoomMenuRequested(quint32 id, QPoint globalPos);
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -57,8 +79,9 @@ protected:
     void focusOutEvent(QFocusEvent *event) override;
 
 private:
-    enum class Drag { None, In, Out, Seek };
     QRectF trackRect() const;
+    quint32 zoomAt(QPointF pos, Drag *part) const;
+    void moveZoomDrag(qreal x);
     qreal xForTime(qint64 timeMs) const;
     qint64 timeForX(qreal x) const;
     void setViewRange(qint64 startMs, qint64 endMs);
@@ -81,6 +104,12 @@ private:
     Drag m_hover = Drag::None;
     QImage m_contactSheet;
     int m_contactSheetFrames = 0;
+    bool m_laneVisible = false;
+    QVector<ZoomSegment> m_zooms, m_zoomsBefore;
+    std::function<double(qint64)> m_zoomLevel;
+    quint32 m_selectedZoom = 0, m_dragZoom = 0;
+    qint64 m_grabOffset = 0;
+    bool m_zoomMoved = false;
 };
 
 }

@@ -130,6 +130,16 @@ private slots:
             QVERIFY(near(inCut.rectAt(t), kContent, 0));
     }
 
+    void targetRectIsWhereTheZoomSettles() {
+        const ZoomSegment z = zoom(1000, 9000, 2.0, QPointF(1800, 100));
+        const CameraPath p = path({z});
+        // Clamped into the top-right quarter, like the camera itself.
+        QVERIFY(near(p.targetRect(z), QRectF(960, 0, 960, 540), 1e-9));
+        QVERIFY(near(p.rectAt(8000), p.targetRect(z), 0.5));
+        QCOMPARE(p.zoomAt(0), 1.0);
+        QVERIFY(qAbs(p.zoomAt(8000) - 2.0) < 1e-3);
+    }
+
     void narrowOutputsShowTheLargestFittingWindow() {
         const TimeMap time(10000, 0, 10000, {});
         const CameraPath left({}, time, CameraFrame{QRectF(0, 0, 1600, 900), 9.0 / 16, QPointF(100, 450)});
