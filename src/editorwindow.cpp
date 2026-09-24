@@ -2721,7 +2721,18 @@ void EditorWindow::openProjectDialog() {
 
 EditorWindow *openProjectWindow(const QString &manifestPath, const Config &cfg, const CliOptions &cli,
                                 QString *error) {
-    const OpenedProject opened = openProject(manifestPath);
+    OpenedProject opened = openProject(manifestPath);
+    // A missing or changed original can be found again, checked byte for byte.
+    if (!opened.ok && (opened.error.contains(QLatin1String("missing")) || opened.error.contains(QLatin1String("changed")))
+        && qobject_cast<QApplication *>(QCoreApplication::instance())
+        && QGuiApplication::platformName() != QLatin1String("offscreen")) {
+        const QString candidate = QFileDialog::getOpenFileName(nullptr,
+            QCoreApplication::translate("eddy", "Locate the original of %1").arg(QFileInfo(manifestPath).fileName()));
+        if (!candidate.isEmpty()) {
+            const DeliverResult relinked = relinkProjectSource(manifestPath, candidate);
+            opened = relinked.ok ? openProject(manifestPath) : OpenedProject{false, relinked.error, {}, {}};
+        }
+    }
     if (!opened.ok) {
         if (error) *error = opened.error;
         return nullptr;

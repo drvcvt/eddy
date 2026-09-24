@@ -55,6 +55,21 @@ private slots:
         QFile::remove(opened.sourcePath);
         QVERIFY(openProject(manifest).error.contains("missing"));
     }
+    void locatingTheOriginalChecksItsBytes() {
+        QTemporaryDir dir;
+        const QString manifest = dir.filePath("demo.eddy");
+        const QString original = write(dir.filePath("shot.png"), "the-original");
+        const AssetResult a = storeAsset(original, projectAssetsDir(manifest));
+        ProjectSnapshot p;
+        p.asset = a.name; p.sha256 = a.sha256; p.assetSize = a.size; p.size = QSize(4, 4);
+        QVERIFY(writeProject(manifest, p).ok);
+        QVERIFY(QFile::remove(QDir(projectAssetsDir(manifest)).filePath(a.name)));
+        QVERIFY(!openProject(manifest).ok);
+        const DeliverResult wrong = relinkProjectSource(manifest, write(dir.filePath("other.png"), "look-alike"));
+        QVERIFY(!wrong.ok && wrong.error.contains("not this project's original"));
+        QVERIFY(relinkProjectSource(manifest, original).ok);
+        QVERIFY(openProject(manifest).ok);
+    }
     void aFailedSaveLeavesTheOldProject() {
         QTemporaryDir dir;
         const QString manifest = dir.filePath("demo.eddy");
