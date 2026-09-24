@@ -326,6 +326,23 @@ QMenu#ZoomScaleMenu::item:checked, QMenu#ZoomMotionMenu::item:checked { backgrou
 QMenu#ZoomScaleMenu::item:selected, QMenu#ZoomMotionMenu::item:selected { background: @raise3; color: @fg; }
 QMenu#ZoomScaleMenu::indicator, QMenu#ZoomMotionMenu::indicator { image: none; width: 0; height: 0; }
 QWidget#MiniMap { background: @raise1; border: none; border-radius: 10px; }
+/* Export popover at Save: segmented rows (Q7 B2), the choice a step brighter. */
+QMenu#ExportMenu { background: transparent; border: none; padding: 0; }
+QWidget#ExportPanel { background-color: @raise1; border: none; border-radius: 14px; }
+QWidget#ExportPanel QLabel#ExportSection { color: @faint; font-size: @fs-micro; font-weight: 600; }
+QWidget#ExportPanel QLabel#ExportLabel { color: @sub; font-size: @fs-small; }
+QWidget#ExportPanel QLabel#ExportSummary { color: @sub; font-family: @font-mono; font-size: @fs-micro; }
+QWidget#ExportPanel QWidget#ExportSegments { background-color: @raise2; border-radius: 8px; }
+QWidget#ExportPanel QToolButton#ExportSegment {
+    color: @sub; background: transparent; border: none; border-radius: 6px;
+    padding: 0 8px; font-size: @fs-small; font-weight: 500;
+}
+QWidget#ExportPanel QToolButton#ExportSegment:hover { color: @fg; }
+QWidget#ExportPanel QToolButton#ExportSegment:checked { background-color: @segment-on; color: @fg; }
+QWidget#ExportPanel QToolButton#ExportSave {
+    background: @fg; color: @bg; border: none; border-radius: 8px;
+    padding: 0 12px; font-size: @fs-small; font-weight: 600;
+}
 /* The one labelled chrome action: its text steps up to sit with the 18px icon. */
 QWidget#Toolbar QToolButton#SendToShelf, QWidget#Toolbar QToolButton#Studio { font-size: @fs-body; }
 /* Rates are technical values like the timecodes beside them. */

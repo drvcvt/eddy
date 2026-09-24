@@ -9,6 +9,7 @@
 #include "studiodocument.h"
 #include "camerapath.h"
 #include "timemap.h"
+#include "exportsettings.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
@@ -32,6 +33,7 @@ class VideoPreviewProvider;
 class CropController;
 class CropBar;
 class ZoomBar;
+class ExportPanel;
 class MiniMap;
 enum class RedactMode;
 
@@ -146,6 +148,10 @@ private:
     void addZoomAt(qint64 sourceMs);
     void moveCameraTarget(QPointF delta);
     void finishCameraGesture(bool cancelled);
+    void openExportPanel();
+    bool shelfTakes() const;
+    ExportSettings m_exportSettings;  // video only; remembered in the config
+    ExportPanel *m_exportPanel = nullptr;
     StudioDocument m_studio;          // this document; off by default
     quint32 m_selectedZoom = 0;
     QPointF m_lastZoomPoint;          // where a new zoom points first

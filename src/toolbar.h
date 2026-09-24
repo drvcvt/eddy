@@ -3,6 +3,7 @@
 #include <QHash>
 #include "toolcontroller.h"
 class QToolButton;
+class QMenu;
 namespace eddy {
 class Toolbar : public QWidget {
     Q_OBJECT
@@ -10,6 +11,8 @@ public:
     explicit Toolbar(QWidget *parent=nullptr);
     QWidget *toolRail() const { return m_toolRail; }
     void enableVideoFrameCopy();
+    // Holding Save (or Alt+Down on it) opens `panel` as its popover.
+    QMenu *enableExportMenu(QWidget *panel);
 public slots:
     void syncTool(ToolType t);            // reflect external (keyboard) tool change
     void setUndoEnabled(bool on);
