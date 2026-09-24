@@ -183,6 +183,15 @@ private slots:
         QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(206, 14));
         QCOMPARE(cuts.count(), 1);
         QCOMPARE(cuts.first().first().toInt(), 1);
+        // Ruler ticks count edited time at even spacing, up to its 6 s.
+        timeline.resize(612, 52);                           // 1 s steps, some past the cut
+        const auto ticks = timeline.rulerTicks();
+        QCOMPARE(ticks.size(), 5);
+        for (int i = 0; i < ticks.size(); ++i) {
+            QCOMPARE(ticks[i].second, (i + 1) * 1000);
+            QVERIFY(qAbs(ticks[i].first - (6 + 600.0 * (i + 1) / 6)) < 0.01);
+        }
+        timeline.resize(312, 52);
         // Without fragments the axis is the source again.
         timeline.setFragments({});
         seeks.clear();
