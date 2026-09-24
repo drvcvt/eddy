@@ -449,6 +449,13 @@ auflöst). Der Filmstreifen zeigt mit Fragmenten nur Thumbnails, das Kontaktblat
 ganze Quelle ab. Beim Abspielen zeigt eine Fuge höchstens zwei Frames aus dem Schnitt
 (gemessen im Test), der Export ist exakt.
 
+Welle 4 an der echten Aufnahme vom 2026-09-24 (77 s, 4299 Samples, keine Klicks): 14
+Vorschläge, etwa alle 5 s einer. Ein Cursor-Zoom 2,5× über 10 s hält den eingebrannten
+Pfeil in allen angesehenen Frames im Ausschnitt; Spur und Video passen zeitlich (Risiko aus
+dem Gesamtplan 10 damit erledigt). Abweichung: ein gewählter Cursor-Zoom zeigt pausiert das
+Fenster um den Zeiger am Playhead (bzw. am Zoom-Anfang), eine folgende Basis beginnt schon
+beim ersten Frame auf dem Zeiger. D2 und D3 liegen in einem Commit.
+
 Review W1 bis W3 (`/code-review high` über `d2d4bf3..e5adc67`): zehn Funde, alle behoben in
 einem Commit (Join ins Leere, Wiedergabe über einen Schnitt am Ende, Trim ganz im Schnitt,
 Format bei `-o`, Restore ohne Verschmelzen, springende Ansicht, Asset-Kopie bei jedem
@@ -463,10 +470,10 @@ Speichern, zweites ffprobe, Textvergleich statt Zustand, doppelte Uhr). `ctest` 
 | W3 | B1 | Fragmente: Modell und Timeline | `cf7218e`, `e5adc67` |
 | W3 | B2 | Fragmente im Export | `c2c885c` |
 | W3 | B3 | Fragmente in der Vorschau | `cf7218e` |
-| W4 | D1 | Spur-Interpolation bei Stillstand | |
-| W4 | D2 | Follow Cursor | |
-| W4 | D3 | Zoom-Vorschläge | |
-| W4 | D4 | keep zoomed in mit Cursor | |
+| W4 | D1 | Spur-Interpolation bei Stillstand | `a1c03e6` |
+| W4 | D2 | Follow Cursor | `5b68b73` |
+| W4 | D3 | Zoom-Vorschläge | `5b68b73` |
+| W4 | D4 | keep zoomed in mit Cursor | `5b68b73` |
 | W5 | A3 | Autosave, Recovery, Resume | |
 | W6 | E1 | Zeitfenster: Modell und Export | |
 | W6 | E2 | Masken-Spur und Leisten | |

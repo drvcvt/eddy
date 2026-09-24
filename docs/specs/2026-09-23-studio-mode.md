@@ -5,6 +5,11 @@ für Bilder und Videos implementiert (Schritte 1 und 2 unten), Kompositionsmodel
 Render-Exportpfad implementiert (Schritt 3), Zoom-Segmente in der App mit Spur, Kontextleiste,
 Mini-Karte, Camera-Seite und "keep zoomed in" (Phase S2). Cursor-Rendering in Eddy gestrichen.** Vollständiger Umsetzungsplan: `docs/plans/2026-09-24-studio-features.md`. Hintergrund und Funktionskatalog: `docs/plans/2026-09-23-screen-studio-research.md`.
 
+Nachtrag 2026-09-24 zum Vertrag v1: Boltsnap schreibt nur Bewegungen (auf 120 Hz ausgedünnt).
+Eine Lücke über 50 ms zwischen zwei Samples heißt deshalb Stillstand; Eddy hält die Position
+und interpoliert nur über die letzte Sample-Periode vor der nächsten Bewegung. An der ersten
+echten Spur geprüft: der Cursor-Zoom folgt dem eingebrannten Pfeil.
+
 ## 1. Grundsatz: Studio ist ein Extra, kein Muss
 
 Eddy bleibt zuerst der schnelle Annotations-Editor. Studio ist ein optionaler Teil
