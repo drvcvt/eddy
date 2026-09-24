@@ -6,6 +6,7 @@
 #include <QString>
 
 class QToolButton;
+class QWidget;
 
 namespace eddy {
 
@@ -52,6 +53,8 @@ QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &activ
 // Menu buttons carry our rounded, filled arrow after the label, at the label's size,
 // instead of the platform's sharp indicator hanging off the baseline.
 void setMenuArrow(QToolButton *button);
+// An icon button of the floating context bars: raised on hover, no focus.
+QToolButton *floatButton(QWidget *parent, const QString &name, const QString &tip);
 // Qt pads every tool button label by two spaces; beside an icon that slack
 // lands between label and chevron, so menu buttons are sized without it.
 void setMenuLabel(QToolButton *button, const QString &text);

@@ -18,19 +18,6 @@ const Choice kAligns[] = {
 };
 const char *kDistributeIcons[] = {"distribute-h", "distribute-v"};
 const char *kDistributeTips[] = {"Space evenly across", "Space evenly down"};
-
-QToolButton *barButton(QWidget *parent, const QString &name, const QString &tip) {
-    auto *button = new QToolButton(parent);
-    button->setObjectName(name);
-    button->setAutoRaise(true);
-    button->setFocusPolicy(Qt::NoFocus);
-    button->setCursor(Qt::PointingHandCursor);
-    button->setFixedSize(theme::kFloatButton);
-    button->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
-    button->setToolTip(tip);
-    button->setAccessibleName(tip);
-    return button;
-}
 }
 
 SelectionBar::SelectionBar(QWidget *parent) : QWidget(parent) {
@@ -40,14 +27,14 @@ SelectionBar::SelectionBar(QWidget *parent) : QWidget(parent) {
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(2);
     for (int i = 0; i < 6; ++i) {
-        m_align[i] = barButton(this, QStringLiteral("AlignObjects"), tr(kAligns[i].tip));
+        m_align[i] = theme::floatButton(this, QStringLiteral("AlignObjects"), tr(kAligns[i].tip));
         connect(m_align[i], &QToolButton::clicked, this, [this, a = kAligns[i].align] { emit alignChosen(a); });
         layout->addWidget(m_align[i]);
         if (i == 2) layout->addSpacing(6);
     }
     layout->addSpacing(6);
     for (int i = 0; i < 2; ++i) {
-        m_distribute[i] = barButton(this, QStringLiteral("DistributeObjects"), tr(kDistributeTips[i]));
+        m_distribute[i] = theme::floatButton(this, QStringLiteral("DistributeObjects"), tr(kDistributeTips[i]));
         connect(m_distribute[i], &QToolButton::clicked, this, [this, i] {
             emit distributeChosen(i == 0 ? Qt::Horizontal : Qt::Vertical);
         });

@@ -382,7 +382,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_stepBar->hide();
     connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshStepBar);
     connect(m_undo, &QUndoStack::indexChanged, this, &EditorWindow::refreshStepBar);
-    connect(m_scene, &QGraphicsScene::changed, this, &EditorWindow::refreshStepBar);
+    // Scene changes come with every video frame: they only move a bar that shows.
+    connect(m_scene, &QGraphicsScene::changed, this, &EditorWindow::positionContextBars);
+    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionContextBars);
     connect(m_stepBar, &StepBar::numberChosen, this, [this](int number) {
         if (StepItem *step = selectedStep())
             m_undo->push(new SetStepCommand(step, step->number(), step->size(), number, step->size()));
@@ -396,8 +398,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_selectionBar = new SelectionBar(m_canvas->viewport());
     m_selectionBar->hide();
     connect(m_scene, &QGraphicsScene::selectionChanged, this, &EditorWindow::refreshSelectionBar);
-    connect(m_scene, &QGraphicsScene::changed, this, &EditorWindow::refreshSelectionBar);
-    connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::refreshSelectionBar);
+    connect(m_undo, &QUndoStack::indexChanged, this, &EditorWindow::refreshSelectionBar);
     connect(m_selectionBar, &SelectionBar::alignChosen, this, [this](Align align) {
         QVector<QRectF> boxes;
         for (QGraphicsItem *item : alignableSelection()) boxes.append(alignmentBounds(item));
@@ -1523,18 +1524,13 @@ void EditorWindow::refreshSelectionBar() {
     const QList<QGraphicsItem *> items = alignableSelection();
     if (items.size() < 2 || m_tools->editingText()) { m_selectionBar->hide(); return; }
     QVector<QRectF> boxes;
-    QRectF all;
-    for (QGraphicsItem *item : items) {
-        boxes.append(alignmentBounds(item));
-        all |= boxes.last();
-    }
+    for (QGraphicsItem *item : items) boxes.append(alignmentBounds(item));
     m_selectionBar->setSelection(items.size(), !distributeDeltas(boxes, Qt::Horizontal).isEmpty(),
                                  !distributeDeltas(boxes, Qt::Vertical).isEmpty());
     m_selectionBar->adjustSize();
-    const QRect area(m_canvas->mapFromScene(all.topLeft()), m_canvas->mapFromScene(all.bottomRight()));
-    m_selectionBar->move(contextBarPosition(area.normalized(), m_selectionBar->size(), m_canvas->viewport()->size()));
     m_selectionBar->show();
     m_selectionBar->raise();
+    positionContextBars();
 }
 
 // Positions only, as one undo step; moves within a hundredth of a pixel are none.
@@ -1565,18 +1561,32 @@ void EditorWindow::refreshStepBar() {
     if (!step) { m_stepBar->hide(); return; }
     m_stepBar->setStep(step->number(), step->size());
     m_stepBar->adjustSize();
-    const QRectF bounds = step->sceneBoundingRect();
-    const QRect item(m_canvas->mapFromScene(bounds.topLeft()), m_canvas->mapFromScene(bounds.bottomRight()));
-    m_stepBar->move(contextBarPosition(item.normalized(), m_stepBar->size(), m_canvas->viewport()->size()));
     m_stepBar->show();
     m_stepBar->raise();
+    positionContextBars();
 }
 
-// 1, 2, 3 in the order the steps were made (their stacking order), as one undo step.
+// The step and selection bars follow their items through drags, zoom and pan.
+void EditorWindow::positionContextBars() {
+    auto place = [this](QWidget *bar, const QRectF &bounds) {
+        const QRect area(m_canvas->mapFromScene(bounds.topLeft()), m_canvas->mapFromScene(bounds.bottomRight()));
+        bar->move(contextBarPosition(area.normalized(), bar->size(), m_canvas->viewport()->size()));
+    };
+    if (m_stepBar->isVisible())
+        if (StepItem *step = selectedStep()) place(m_stepBar, step->sceneBoundingRect());
+    if (m_selectionBar && m_selectionBar->isVisible()) {
+        QRectF all;
+        for (QGraphicsItem *item : alignableSelection()) all |= alignmentBounds(item);
+        place(m_selectionBar, all);
+    }
+}
+
+// 1, 2, 3 in the order the steps were made, as one undo step.
 void EditorWindow::renumberSteps() {
     QList<StepItem *> steps;
-    for (QGraphicsItem *item : m_scene->items(Qt::AscendingOrder))
+    for (QGraphicsItem *item : m_scene->items())
         if (auto *step = dynamic_cast<StepItem *>(item)) steps.append(step);
+    std::sort(steps.begin(), steps.end(), [](const StepItem *a, const StepItem *b) { return a->serial() < b->serial(); });
     auto *all = new QUndoCommand(tr("Renumber steps"));
     for (int i = 0; i < steps.size(); ++i)
         if (steps[i]->number() != i + 1)

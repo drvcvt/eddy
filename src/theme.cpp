@@ -139,6 +139,19 @@ QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &activ
     return QIcon(new TintedIconEngine(svgPath, rest, active));
 }
 
+QToolButton *floatButton(QWidget *parent, const QString &name, const QString &tip) {
+    auto *button = new QToolButton(parent);
+    button->setObjectName(name);
+    button->setAutoRaise(true);
+    button->setFocusPolicy(Qt::NoFocus);
+    button->setCursor(Qt::PointingHandCursor);
+    button->setFixedSize(kFloatButton);
+    button->setIconSize(QSize(kFloatIcon, kFloatIcon));
+    button->setToolTip(tip);
+    button->setAccessibleName(tip);
+    return button;
+}
+
 void setMenuArrow(QToolButton *button) {
     button->ensurePolished();
     const int size = QFontInfo(button->font()).pixelSize();

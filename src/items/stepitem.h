@@ -18,7 +18,7 @@ public:
     void setNumber(int number);
     Size size() const { return m_size; }
     void setSize(Size size);
-    qreal diameter() const;
+    qreal diameter() const { return m_diameter; }
 
     StepItem *clone() const override;
     QRectF boundingRect() const override;
@@ -27,11 +27,17 @@ public:
 
     // One more than the highest step in `scene`, 1 when there is none.
     static int nextNumber(const QGraphicsScene *scene);
+    // Rises with every step made, copies and loaded ones included: the order
+    // "Renumber by creation order" follows, whatever undo did to the stacking.
+    quint64 serial() const { return m_serial; }
 
 private:
     QFont font() const;
+    void measure();
     int m_number;
     Size m_size;
+    qreal m_diameter = 0;   // measured once per number and size, not per paint
+    quint64 m_serial;
 };
 
 }

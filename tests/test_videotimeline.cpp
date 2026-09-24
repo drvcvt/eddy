@@ -341,6 +341,16 @@ private slots:
         const int y = int(lane.center().y()) - 4;
         QVERIFY2(shot.pixelColor(xAt(1005), y) != shot.pixelColor(xAt(2000), y),
                  qPrintable(shot.pixelColor(xAt(1005), y).name() + " " + shot.pixelColor(xAt(2000), y).name()));
+        // With the click's stretch cut out, the column at the cut shows none of it.
+        timeline.setFragments({{0, 1.0, false}, {800, 1.0, true}, {1200, 1.0, false}});
+        timeline.fitClip();
+        const QImage cut = timeline.grab().toImage();
+        const int seam = int(lane.left() + lane.width() * 800 / 2600.0);
+        const QColor quiet = cut.pixelColor(int(lane.left() + lane.width() * 400 / 2600.0), y);
+        for (int x = seam - 2; x <= seam + 2; ++x)
+            QVERIFY2(cut.pixelColor(x, y) == quiet, qPrintable(QStringLiteral("%1: %2").arg(x).arg(cut.pixelColor(x, y).name())));
+        timeline.setFragments({});
+        timeline.fitClip();
         // A click on the waveform scrubs like the film strip.
         QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
         QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(xAt(2000), int(lane.center().y())));

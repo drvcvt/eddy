@@ -111,6 +111,7 @@ private:
     bool m_eyeTrackPrev = false;    // viewport mouse-tracking state to restore on cancel
     Loupe *m_loupe = nullptr;
     bool m_snapping = true;
+    bool m_skipContextMenu = false;
     Snapper m_snapper;
     QVector<QLineF> m_guides;
 };

@@ -576,6 +576,19 @@ Dateien ohne `followCursor` mit gesetzter Mitte folgen nicht. Preset-Dateinamen 
 bei verlustigem Säubern einen Hash, der Bildtyp kommt aus den Bytes. Dazu `padding: 0 12px`
 im Resume-Dialog (Raster-Test aus W5). `ctest` 49/49.
 
+Review W7 und W8 (`/code-review high` über `52d48e7..09f1b12`): zehn Funde, alle behoben in
+einem Commit. Kein `destroyed`-Handler mehr am Wellenform-Provider (lief im Abbau der Timeline);
+eine Spalte an einem Schnitt liest nur ihr eigenes Stück, nie den herausgeschnittenen Ton.
+Step- und Auswahl-Leiste rechnen nur bei Auswahl- und Undo-Änderungen neu und werden bei
+Szenen- und View-Änderungen bloß verschoben (die Szene ändert sich mit jedem Video-Frame),
+die Step-Leiste folgt jetzt auch Zoom und Pan. "Renumber by creation order" folgt einer
+Seriennummer pro Step statt der Stapelreihenfolge, die Löschen und Undo verschieben. Der
+Durchmesser wird einmal pro Nummer und Größe gemessen. Das Canvas-Kontextmenü "Snap to objects"
+erscheint nur mit Move/Text, nicht über editiertem Text, nicht in Crop und Pipette; der
+Rechtsklick, der die Pipette abbricht, öffnet nichts mehr. Hilfslinien verschwinden bei jedem
+Loslassen. Ein gemeinsamer `theme::floatButton`, der Exporter-Kommentar wieder richtig.
+`ctest` 52/52.
+
 | Welle | ID | Punkt | Commit |
 | --- | --- | --- | --- |
 | W1 | C1 | Export-Popover und Presets | `3b40865` |

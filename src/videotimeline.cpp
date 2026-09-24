@@ -85,7 +85,13 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
         const QColor envelope = ink(0.32), core = ink(0.5), pending = ink(0.2);
         const int left = int(std::floor(lane.left())), right = int(std::ceil(lane.right()));
         for (int x = left; x < right; ++x) {
-            const auto s = m_waveform->summary(timeForX(x), timeForX(x + 1));
+            // A column at a cut reads its own piece only, never the sound that was cut.
+            const qint64 from = timeForX(x);
+            qint64 to = timeForX(x + 1);
+            if (!m_fragments.isEmpty())
+                for (const TimePiece &piece : m_axis.pieces())
+                    if (from >= piece.srcStart && from < piece.srcEnd) to = std::min<qint64>(to, qint64(piece.srcEnd));
+            const auto s = m_waveform->summary(from, to);
             if (!s.known) {
                 if (x % 4 == 0) painter.fillRect(QRectF(x, middle - 0.5, 2, 1), pending);
                 continue;
@@ -261,10 +267,8 @@ void VideoTimeline::setWaveform(AudioWaveformProvider *waveform) {
     if (m_waveform == waveform) return;
     if (m_waveform) m_waveform->disconnect(this);
     m_waveform = waveform;
-    if (waveform) {
-        connect(waveform, &AudioWaveformProvider::changed, this, qOverload<>(&QWidget::update));
-        connect(waveform, &QObject::destroyed, this, [this] { updateHeight(); update(); });
-    }
+    // The provider is the timeline's child and goes with it; the QPointer is all it needs.
+    if (waveform) connect(waveform, &AudioWaveformProvider::changed, this, qOverload<>(&QWidget::update));
     updateHeight();
     update();
 }

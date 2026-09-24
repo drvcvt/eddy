@@ -109,6 +109,7 @@ private:
     void renumberSteps();
     QList<QGraphicsItem *> alignableSelection() const;
     void refreshSelectionBar();
+    void positionContextBars();
     void moveSelection(const QVector<QPointF> &deltas, const QString &name);
     void updateSelectedText(const std::function<void(TextItem *)> &change);
     SpotlightItem *selectedSpotlight() const;

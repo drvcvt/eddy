@@ -164,6 +164,8 @@ private slots:
         // Overlapping across, there is no room to share.
         step->setPos(40, 100);
         arrow->setPos(30, 250);
+        arrow->setSelected(false);   // the bar measures when the selection or the history changes
+        arrow->setSelected(true);
         QTRY_VERIFY(!button(QStringLiteral("Space evenly across"))->isEnabled());
     }
 };
