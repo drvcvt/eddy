@@ -5,7 +5,11 @@
 #include <QUndoStack>
 #include "editorwindow.h"
 #include "projectstore.h"
+#include "recoverystore.h"
+#include "toast.h"
+#include "undocommands.h"
 #include "videotimeline.h"
+#include "toolcontroller.h"
 #include "items/rectitem.h"
 #include "items/redactitem.h"
 #include "items/textitem.h"
@@ -143,6 +147,63 @@ private slots:
         QFile f(opened.sourcePath);
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(f.readAll(), bytes);
+    }
+    // Kept edits: on for these tests only, in a folder of their own.
+    void keptEditsFollowFinishedChangesOnly() {
+        QTemporaryDir dir, recovery;
+        qputenv("EDDY_RECOVERY_DIR", recovery.path().toLocal8Bit());
+        EditorWindow::setRecoveryEnabledByDefault(true);
+        const auto off = qScopeGuard([] { EditorWindow::setRecoveryEnabledByDefault(false); qunsetenv("EDDY_RECOVERY_DIR"); });
+        const QString source = dir.filePath("shot.png");
+        QVERIFY(pattern().save(source));
+        Config cfg; cfg.animations = false;
+        auto w = std::make_unique<EditorWindow>(loadMediaInput({InputSpec::File, source}).document, cfg, CliOptions{});
+        w->setRecoveryDelays(50, 400);
+        auto *scene = w->findChild<QGraphicsScene *>();
+        auto *undo = w->findChild<QUndoStack *>();
+        QSignalSpy written(w.get(), &EditorWindow::recoveryWritten);
+        // Nothing is kept while a text is being typed.
+        w->findChild<ToolController *>()->placeText(QPointF(10, 10));
+        auto *rect = new RectItem(QRectF(20, 20, 60, 40));
+        undo->push(new AddItemCommand(scene, rect));
+        QVERIFY(!written.wait(300));
+        w->findChild<ToolController *>()->cancelTextEdit();
+        QVERIFY(written.wait(3000));
+        const QString manifest = w->recoveryManifest();
+        OpenedProject kept = openProject(manifest);
+        QVERIFY2(kept.ok, qPrintable(kept.error));
+        QCOMPARE(kept.snapshot.items.size(), 1);
+        const auto entries = RecoveryStore().entries();
+        QCOMPARE(entries.size(), 1);
+        QCOMPARE(entries[0].source, source);
+        QVERIFY(entries[0].inUse);                         // this window holds it
+        // Closing keeps the very last change at once.
+        w->setRecoveryDelays(60000, 60000);
+        undo->push(new AddItemCommand(scene, new RectItem(QRectF(100, 100, 30, 30))));
+        w->close();
+        w.reset();
+        kept = openProject(manifest);
+        QCOMPARE(kept.snapshot.items.size(), 2);
+        QVERIFY(!RecoveryStore().entries()[0].inUse);
+        // Reopening the same file offers the kept edit.
+        EditorWindow again(loadMediaInput({InputSpec::File, source}).document, cfg, CliOptions{});
+        again.show();
+        QTRY_VERIFY(again.findChild<Toast *>()->text().contains(QStringLiteral("kept edit")));
+        // Resuming continues the same entry as an unnamed edit.
+        QString error;
+        std::unique_ptr<EditorWindow> resumed(openProjectWindow(manifest, cfg, {}, &error));
+        QVERIFY2(resumed, qPrintable(error));
+        resumed->adoptRecovery(entries[0].id);
+        QVERIFY(resumed->projectPath().isEmpty());
+        QCOMPARE(resumed->recoveryManifest(), manifest);
+        resumed->setRecoveryDelays(50, 400);
+        QSignalSpy resumedWritten(resumed.get(), &EditorWindow::recoveryWritten);
+        resumed->findChild<QUndoStack *>()->push(new AddItemCommand(resumed->findChild<QGraphicsScene *>(),
+                                                                    new RectItem(QRectF(5, 5, 10, 10))));
+        QVERIFY(resumedWritten.wait(3000));
+        QCOMPARE(resumedWritten.first().first().toString(), manifest);
+        QCOMPARE(RecoveryStore().entries().size(), 1);
+        QCOMPARE(openProject(manifest).snapshot.items.size(), 3);
     }
 };
 

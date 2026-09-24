@@ -25,6 +25,7 @@ signals:
     void saveRequested();
     void projectSaveRequested();
     void projectOpenRequested();
+    void resumeRequested();
 private:
     QButtonGroup *addRow(const QString &label, const QStringList &choices);
     void sync();

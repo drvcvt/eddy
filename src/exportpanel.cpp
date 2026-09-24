@@ -90,6 +90,8 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
             &QToolButton::clicked, this, &ExportPanel::projectSaveRequested);
     connect(projectButton(tr("Open project…"), QStringLiteral("ProjectOpen"), tr("Open an Eddy project\tCtrl+O")),
             &QToolButton::clicked, this, &ExportPanel::projectOpenRequested);
+    connect(projectButton(tr("Resume…"), QStringLiteral("ProjectResume"), tr("Edits kept since they were last open")),
+            &QToolButton::clicked, this, &ExportPanel::resumeRequested);
     projects->addStretch(1);
     grid->addLayout(projects, m_row++, 0, 1, 2);
     sync();

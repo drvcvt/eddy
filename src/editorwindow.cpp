@@ -30,6 +30,8 @@
 #include "zoomsuggest.h"
 #include "exportpanel.h"
 #include "projectstore.h"
+#include "recoverystore.h"
+#include "resumedialog.h"
 #include <QThread>
 #include "minimap.h"
 #include "motionicon.h"
@@ -92,6 +94,10 @@
 #endif
 
 namespace eddy {
+
+static bool g_recoveryByDefault = false;
+
+void EditorWindow::setRecoveryEnabledByDefault(bool on) { g_recoveryByDefault = on; }
 
 SaveRoute saveRoute(const CliOptions &cli, const Config &cfg) {
     if (cli.output.toFile || cli.output.toStdout || !cli.output.saveDir.isEmpty())
@@ -510,6 +516,16 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     // (the controller's default) would emit nothing at all. Keep this call.
     m_toolbar->syncTool(toolFromName(cfg.defaultTool));
     setupCrop();
+    m_recoveryEnabled = g_recoveryByDefault;
+    m_recoveryIdle = new QTimer(this);
+    m_recoveryIdle->setSingleShot(true);
+    m_recoveryIdle->setInterval(2000);
+    connect(m_recoveryIdle, &QTimer::timeout, this, &EditorWindow::writeRecovery);
+    m_recoveryMax = new QTimer(this);
+    m_recoveryMax->setSingleShot(true);
+    m_recoveryMax->setInterval(10000);
+    connect(m_recoveryMax, &QTimer::timeout, this, &EditorWindow::writeRecovery);
+    connect(m_undo, &QUndoStack::indexChanged, this, [this] { if (m_recoveryEnabled) noteRecoveryChange(); });
     // Holding Save opens the export popover; its footer holds the project actions.
     m_exportPanel = new ExportPanel;
     m_exportPanel->setVideo(isVideo());
@@ -526,6 +542,10 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_exportPanel, &ExportPanel::projectOpenRequested, this, [this, exportMenu] {
         exportMenu->close();
         openProjectDialog();
+    });
+    connect(m_exportPanel, &ExportPanel::resumeRequested, this, [this, exportMenu] {
+        exportMenu->close();
+        openResumeDialog();
     });
     if (isVideo()) {
         m_exportSettings = loadExportSettings(configPath());
@@ -621,6 +641,7 @@ void EditorWindow::showEvent(QShowEvent *e) {
     if (native.width() > viewport.width() || native.height() > viewport.height())
         m_canvas->fitMedia();
     if (isVideo()) { scheduleVideoLoad(); scheduleContactSheetLoad(); }
+    QTimer::singleShot(0, this, &EditorWindow::offerKeptEdit);
     if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
     auto *a = new QPropertyAnimation(this, "windowOpacity", this);
     a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
@@ -653,6 +674,7 @@ void EditorWindow::closeEvent(QCloseEvent *e) {
         e->ignore();
         return;
     }
+    flushRecovery();
     QWidget::closeEvent(e);
 }
 
@@ -2747,6 +2769,8 @@ bool EditorWindow::applyProject(const ProjectSnapshot &project, const QString &m
         if (error) *error = itemError;
         return false;
     }
+    m_restoring = true;
+    const auto restored = qScopeGuard([this] { m_restoring = false; });
     setCropRect(project.crop);
     if (isVideo()) {
         m_exportSettings = project.exportSettings;
@@ -2781,22 +2805,40 @@ void EditorWindow::saveProject(bool saveAs, const QString &path) {
     } else if (target.isEmpty()) {
         target = m_projectPath;
     }
-    const ProjectSnapshot snapshot = projectSnapshot();
-    const QString assets = projectAssetsDir(target);
-    // A reopened project already holds its original; anything else is copied once.
-    const QString source = m_media.path;
-    const QImage image = m_media.path.isEmpty() ? m_media.image : QImage();
-    // Saving the same project again reuses its original instead of copying it.
-    const bool reuse = target == m_projectPath && !m_projectAssetInfo.name.isEmpty()
-        && QFileInfo(QDir(assets).filePath(m_projectAssetInfo.name)).size() == m_projectAssetInfo.size;
-    const AssetResult kept = m_projectAssetInfo;
+    const bool reuse = target == m_projectPath;
     m_projectSaving = true;
     m_toast->showMessage(tr("Saving project…"));
+    writeSnapshot(target, reuse ? m_projectAssetInfo : AssetResult(), true,
+                  [this, target](const AssetResult &asset, const QString &error) {
+        m_projectSaving = false;
+        if (!error.isEmpty()) {
+            std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
+            m_toast->showMessage(tr("Project not saved"));
+            return;
+        }
+        m_projectPath = target;
+        m_projectAssetInfo = asset;
+        m_toast->showMessage(tr("Project saved with the original"));
+        emit projectSaved(target);
+    });
+}
+
+// Writes the document as a project at `target` in the background. `known` is
+// the original already in target's assets folder, reused when it is still
+// there; otherwise the source is copied once. `done` runs on this window.
+void EditorWindow::writeSnapshot(const QString &target, const AssetResult &known, bool progress,
+                                 std::function<void(const AssetResult &, const QString &)> done) {
+    const ProjectSnapshot snapshot = projectSnapshot();
+    const QString assets = projectAssetsDir(target);
+    const QString source = m_media.path;
+    const QImage image = m_media.path.isEmpty() ? m_media.image : QImage();
+    const bool reuse = !known.name.isEmpty()
+        && QFileInfo(QDir(assets).filePath(known.name)).size() == known.size;
     QPointer<EditorWindow> receiver(this);
-    auto *thread = QThread::create([receiver, target, snapshot, assets, source, image, reuse, kept] {
-        AssetResult asset = reuse ? kept : image.isNull()
-            ? storeAsset(source, assets, [receiver](int percent) {
-                  if (percent % 20) return;
+    auto *thread = QThread::create([receiver, target, snapshot, assets, source, image, reuse, known, progress, done] {
+        AssetResult asset = reuse ? known : image.isNull()
+            ? storeAsset(source, assets, [receiver, progress](int percent) {
+                  if (!progress || percent % 20) return;
                   QMetaObject::invokeMethod(qApp, [receiver, percent] {
                       if (receiver && receiver->m_projectSaving)
                           receiver->m_toast->showMessage(tr("Saving project %1%").arg(percent));
@@ -2811,23 +2853,164 @@ void EditorWindow::saveProject(bool saveAs, const QString &path) {
             project.assetSize = asset.size;
             written = writeProject(target, project);
         }
-        QMetaObject::invokeMethod(qApp, [receiver, target, asset, written] {
-            if (!receiver) return;
-            receiver->m_projectSaving = false;
-            const QString error = !asset.ok ? asset.error : written.error;
-            if (!error.isEmpty()) {
-                std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
-                receiver->m_toast->showMessage(tr("Project not saved"));
-                return;
-            }
-            receiver->m_projectPath = target;
-            receiver->m_projectAssetInfo = asset;
-            receiver->m_toast->showMessage(tr("Project saved with the original"));
-            emit receiver->projectSaved(target);
+        const QString error = !asset.ok ? asset.error : written.ok ? QString() : written.error;
+        QMetaObject::invokeMethod(qApp, [receiver, asset, error, done] {
+            if (receiver) done(asset, error);
         }, Qt::QueuedConnection);
     });
     connect(thread, &QThread::finished, thread, &QObject::deleteLater);
     thread->start();
+}
+
+// Kept edits (21.09. plan 5): a snapshot 2 s after the last finished change,
+// at the latest 10 s after the first one, never in the middle of a gesture.
+void EditorWindow::noteRecoveryChange() {
+    if (m_recoveryPaused || m_restoring) return;
+    m_recoveryPending = true;
+    m_recoveryIdle->start();
+    if (!m_recoveryMax->isActive()) m_recoveryMax->start();
+}
+
+bool EditorWindow::gestureRunning() const {
+    return m_timelineActive || (m_timeline && m_timeline->zoomDragging()) || m_cameraGesture
+        || m_canvas->cameraDragging() || m_tools->editingText() || (m_crop && m_crop->active());
+}
+
+void EditorWindow::writeRecovery() {
+    if (!m_recoveryPending || m_recoveryPaused) return;
+    if (gestureRunning() || m_recoveryWriting) {
+        m_recoveryIdle->start(1000);
+        return;
+    }
+    m_recoveryIdle->stop();
+    m_recoveryMax->stop();
+    const RecoveryStore store;
+    if (m_recoveryId.isEmpty()) {
+        // The first snapshot copies the original; keep within the budget.
+        const qint64 size = m_media.path.isEmpty() ? qint64(m_media.image.sizeInBytes()) : QFileInfo(m_media.path).size();
+        if (store.usedBytes() + size > RecoveryStore::kBudgetBytes) {
+            m_recoveryPaused = true;
+            m_toast->showMessage(tr("Kept edits are full (2 GB), this one is not kept"), 4000);
+            return;
+        }
+        m_recoveryId = store.create();
+        if (m_recoveryId.isEmpty()) {
+            m_recoveryPaused = true;
+            return;
+        }
+        m_recoveryLock = std::make_unique<QLockFile>(store.lockFileFor(m_recoveryId));
+        m_recoveryLock->setStaleLockTime(0);
+        m_recoveryLock->tryLock(0);
+    }
+    m_recoveryPending = false;
+    m_recoveryWriting = true;
+    const QString manifest = store.manifestFor(m_recoveryId);
+    const QString id = m_recoveryId;
+    const QString source = m_projectSource.isEmpty() ? m_media.path : m_projectSource;
+    writeSnapshot(manifest, m_recoveryAsset, false, [this, id, source](const AssetResult &asset, const QString &error) {
+        m_recoveryWriting = false;
+        if (!error.isEmpty()) {
+            std::fprintf(stderr, "eddy: cannot keep this edit: %s\n", qPrintable(error));
+            m_toast->showMessage(tr("This edit could not be kept"));
+            return;
+        }
+        m_recoveryAsset = asset;
+        RecoveryStore().touch(id, source, QFileInfo(source.isEmpty() ? QStringLiteral("image.png") : source).fileName());
+        emit recoveryWritten(RecoveryStore().manifestFor(id));
+        if (m_recoveryPending) m_recoveryIdle->start();
+    });
+}
+
+void EditorWindow::adoptRecovery(const QString &id) {
+    const RecoveryStore store;
+    m_recoveryId = id;
+    m_recoveryLock = std::make_unique<QLockFile>(store.lockFileFor(id));
+    m_recoveryLock->setStaleLockTime(0);
+    m_recoveryLock->tryLock(0);
+    // It continues as the same unnamed edit, not as a named project.
+    m_recoveryAsset = m_projectAssetInfo;
+    m_projectPath.clear();
+    m_projectAssetInfo = {};
+    for (const auto &entry : store.entries())
+        if (entry.id == id) m_projectSource = entry.source;
+}
+
+// On close the last change is kept right away, within reason: the manifest
+// always, a first copy of the original only when it is small.
+void EditorWindow::flushRecovery() {
+    if (!m_recoveryEnabled || !m_recoveryPending || m_recoveryPaused || m_recoveryWriting) return;
+    m_recoveryIdle->stop();
+    m_recoveryMax->stop();
+    const RecoveryStore store;
+    const QString source = m_projectSource.isEmpty() ? m_media.path : m_projectSource;
+    AssetResult asset = m_recoveryAsset;
+    if (m_recoveryId.isEmpty()) {
+        constexpr qint64 kQuickCopy = 100ll * 1024 * 1024;
+        if (!m_media.path.isEmpty() && QFileInfo(m_media.path).size() > kQuickCopy) return;
+        if (store.usedBytes() > RecoveryStore::kBudgetBytes) return;
+        m_recoveryId = store.create();
+        if (m_recoveryId.isEmpty()) return;
+        const QString assets = projectAssetsDir(store.manifestFor(m_recoveryId));
+        asset = m_media.path.isEmpty() ? storeImageAsset(m_media.image, assets) : storeAsset(m_media.path, assets);
+        if (!asset.ok) return;
+    }
+    ProjectSnapshot project = projectSnapshot();
+    project.asset = asset.name;
+    project.sha256 = asset.sha256;
+    project.assetSize = asset.size;
+    if (writeProject(store.manifestFor(m_recoveryId), project).ok) {
+        m_recoveryPending = false;
+        store.touch(m_recoveryId, source, QFileInfo(source.isEmpty() ? QStringLiteral("image.png") : source).fileName());
+    }
+}
+
+// Reopening a file that has a newer kept edit offers it, without replacing
+// the new edit on its own.
+void EditorWindow::offerKeptEdit() {
+    if (!m_recoveryEnabled || m_media.path.isEmpty() || !m_projectPath.isEmpty() || !m_recoveryId.isEmpty()) return;
+    const QDateTime changed = QFileInfo(m_media.path).lastModified();
+    for (const RecoveryStore::Entry &entry : RecoveryStore().entries()) {
+        if (entry.inUse || entry.source != m_media.path || entry.updated < changed) continue;
+        const QString id = entry.id, manifest = entry.manifest;
+        m_toast->showAction(tr("A kept edit of this file is newer"), tr("Resume"), [this, id, manifest] {
+            QString error;
+            EditorWindow *window = openProjectWindow(manifest, m_cfg, m_cli, &error);
+            if (!window) {
+                std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
+                return;
+            }
+            window->adoptRecovery(id);
+            window->setAttribute(Qt::WA_DeleteOnClose);
+            window->show();
+            if (m_undo->count() == 0) close();   // nothing here to lose
+        }, 8000);
+        return;
+    }
+}
+
+void EditorWindow::openResumeDialog() {
+    ResumeDialog dialog(RecoveryStore(), this);
+    if (dialog.exec() != QDialog::Accepted) return;
+    const RecoveryStore::Entry entry = dialog.chosen();
+    QString error;
+    EditorWindow *window = openProjectWindow(entry.manifest, m_cfg, m_cli, &error);
+    if (!window) {
+        m_toast->showMessage(tr("Cannot resume this edit"));
+        std::fprintf(stderr, "eddy: %s\n", qPrintable(error));
+        return;
+    }
+    window->adoptRecovery(entry.id);
+    window->setAttribute(Qt::WA_DeleteOnClose);
+    window->show();
+}
+
+QString EditorWindow::recoveryManifest() const {
+    return m_recoveryId.isEmpty() ? QString() : RecoveryStore().manifestFor(m_recoveryId);
+}
+
+void EditorWindow::setRecoveryDelays(int idleMs, int maxMs) {
+    m_recoveryIdle->setInterval(idleMs);
+    m_recoveryMax->setInterval(maxMs);
 }
 
 void EditorWindow::openProjectDialog() {

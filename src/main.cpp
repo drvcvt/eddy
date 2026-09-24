@@ -3,6 +3,8 @@
 #include "mediaio.h"
 #include "compositor.h"
 #include "editorwindow.h"
+#include "recoverystore.h"
+#include "resumedialog.h"
 #include "theme.h"
 #include <QApplication>
 #ifdef Q_OS_WIN
@@ -76,7 +78,21 @@ int main(int argc, char **argv) {
     app.setPalette(eddy::theme::palette(dark));
     app.setStyleSheet(eddy::theme::styleSheet(dark));
 
-    // A project opens before any media loading (21.09. plan 7).
+    // Kept edits are an app feature; tests and tools leave them off.
+    eddy::EditorWindow::setRecoveryEnabledByDefault(true);
+    // --resume and a project open before any media loading (21.09. plan 7).
+    if (pr.options.resume) {
+        eddy::ResumeDialog dialog{eddy::RecoveryStore()};
+        if (dialog.exec() != QDialog::Accepted) return 0;
+        QString error;
+        eddy::EditorWindow *window = eddy::openProjectWindow(dialog.chosen().manifest, cfg, pr.options, &error);
+        if (!window) { std::fprintf(stderr, "eddy: %s\n", qPrintable(error)); return 1; }
+        window->adoptRecovery(dialog.chosen().id);
+        window->setAttribute(Qt::WA_DeleteOnClose);
+        eddy::pushWindowRules("eddy");
+        window->show();
+        return app.exec();
+    }
     const QString input = pr.options.input.path;
     if (pr.options.input.kind == eddy::InputSpec::File
         && input.endsWith(QLatin1String(".eddy"), Qt::CaseInsensitive)) {
