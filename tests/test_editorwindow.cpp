@@ -864,6 +864,60 @@ private slots:
         QVERIFY(QApplication::clipboard()->image().pixelColor(48, 32).blue() > 200);
         QCOMPARE(window.exportComposite().pixelColor(48, 32).alpha(), 0);
     }
+    void shrunkVideoMatchesAnAreaFilteredFrame() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        // A one-pixel checkerboard turns into moiré unless the shrunk view is area-filtered.
+        QTemporaryDir dir;
+        const QString path = dir.filePath("checker.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "nullsrc=s=320x192:r=25:d=3,format=gray,geq=lum='if(mod(X+Y\\,2)\\,235\\,16)'",
+            "-c:v", "libx264", "-qp", "0", "-threads", "1", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(320, 192), 3000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.resize(900, 640);
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        auto *canvas = window.findChild<Canvas *>();
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        QTRY_COMPARE(video->childItems().size(), 1);
+        QGraphicsItem *still = video->childItems().first();
+        QTRY_VERIFY(still->isVisible());
+        const auto difference = [&] {
+            const QImage shown = canvas->viewport()->grab().toImage().convertToFormat(QImage::Format_RGB32);
+            const QRectF mapped = canvas->viewportTransform().mapRect(QRectF(0, 0, 320, 192));
+            const QRect device(QPoint(qRound(mapped.left()), qRound(mapped.top())),
+                               QPoint(qRound(mapped.right()) - 1, qRound(mapped.bottom()) - 1));
+            const QImage reference = video->videoSink()->videoFrame().toImage()
+                .scaled(device.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                .convertToFormat(QImage::Format_RGB32);
+            double sum = 0; int count = 0;
+            for (int y = 2; y < device.height() - 2; ++y)
+                for (int x = 2; x < device.width() - 2; ++x) {
+                    const QRgb a = shown.pixel(device.topLeft() + QPoint(x, y)), b = reference.pixel(x, y);
+                    sum += qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b)) + qAbs(qBlue(a) - qBlue(b));
+                    count += 3;
+                }
+            return sum / qMax(1, count);
+        };
+        for (double zoom : {0.45, 0.72}) {
+            canvas->restoreView(QTransform::fromScale(zoom, zoom), QPointF(160, 96), false);
+            QVERIFY2(difference() < 2, qPrintable(QStringLiteral("paused %1: %2").arg(zoom).arg(difference())));
+        }
+        player->play();
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
+        QTRY_VERIFY(!still->isVisible());
+        const double playing = difference();
+        player->pause();
+        QVERIFY2(playing < 2, qPrintable(QStringLiteral("playing: %1").arg(playing)));
+        // Actual size stays an exact copy of the frame.
+        canvas->resetZoom();
+        QVERIFY2(difference() == 0, qPrintable(QString::number(difference())));
+    }
     void realVideoScrubCopyLoopAndStop() {
         if (!have("ffmpeg")) QSKIP("ffmpeg not available");
         QTemporaryDir dir;
