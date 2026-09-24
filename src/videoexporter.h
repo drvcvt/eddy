@@ -52,8 +52,8 @@ struct VideoExportRequest {
     QVector<TimedBlur> timedBlurs;
     QVector<TimedOverlay> timedOverlays;
     bool baseFollowsCursor = false;
-    int motionBlur = 0;
-    bool includeAudio = true;   // false: no audio stream at all   // 0 to 100, frame renderer only (studio plan 6.11)
+    int motionBlur = 0;         // 0 to 100, frame renderer only (studio plan 6.11)
+    bool includeAudio = true;   // false: no audio stream at all
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.
     std::function<void(int percent)> progress;

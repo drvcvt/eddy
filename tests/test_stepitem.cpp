@@ -100,12 +100,24 @@ private slots:
         QCOMPARE(undo->count(), steps + 1);
         undo->undo();
         QCOMPARE(numbers(*scene), (QList<int>{5, 2, 9}));
+        // Deleting and restoring the first one puts it on top, yet it was made first.
+        auto *first = dynamic_cast<StepItem *>(scene->itemAt(QPointF(200, 60), QTransform()));
+        QVERIFY(first && first->number() == 5);
+        undo->push(new RemoveItemCommand(scene, first));
+        undo->undo();
+        QCOMPARE(numbers(*scene), (QList<int>{2, 9, 5}));
+        emit w.findChild<StepBar *>()->renumberRequested();
+        QCOMPARE(first->number(), 1);
+        undo->undo();
+        QCOMPARE(numbers(*scene), (QList<int>{2, 9, 5}));
         // Number and size come back from a project.
         QString error;
         const auto made = itemsFromJson(itemsToJson(scene->items(Qt::AscendingOrder)), image, image.size(), &error);
         QVERIFY2(made, qPrintable(error));
         QCOMPARE(made->size(), 3);
-        auto *big = dynamic_cast<StepItem *>(made->at(1));
+        StepItem *big = nullptr;
+        for (QGraphicsItem *item : *made)
+            if (auto *step = dynamic_cast<StepItem *>(item); step && step->number() == 2) big = step;
         QVERIFY(big && big->number() == 2 && big->size() == StepItem::Size::L && big->pos() == QPointF(80, 60));
         qDeleteAll(*made);
     }

@@ -39,31 +39,15 @@ StepBar::StepBar(QWidget *parent) : QWidget(parent) {
     const StepItem::Size values[] = {StepItem::Size::S, StepItem::Size::M, StepItem::Size::L};
     const char *names[] = {"Small", "Medium", "Large"};
     for (int i = 0; i < 3; ++i) {
-        auto *button = new QToolButton(this);
+        auto *button = theme::floatButton(this, QStringLiteral("StepSize"), tr("%1 step").arg(QString::fromLatin1(names[i])));
         button->setCheckable(true);
-        button->setAutoRaise(true);
-        button->setFocusPolicy(Qt::NoFocus);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setFixedSize(theme::kFloatButton);
-        button->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
-        button->setObjectName(QStringLiteral("StepSize"));
-        button->setToolTip(tr("%1 step").arg(QString::fromLatin1(names[i])));
-        button->setAccessibleName(button->toolTip());
         sizes->addButton(button);
         layout->addWidget(button);
         connect(button, &QToolButton::clicked, this, [this, size = values[i]] { emit sizeChosen(size); });
         m_sizes[i] = button;
     }
 
-    m_more = new QToolButton(this);
-    m_more->setObjectName(QStringLiteral("StepMore"));
-    m_more->setAutoRaise(true);
-    m_more->setFocusPolicy(Qt::NoFocus);
-    m_more->setCursor(Qt::PointingHandCursor);
-    m_more->setFixedSize(theme::kFloatButton);
-    m_more->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
-    m_more->setToolTip(tr("More step actions"));
-    m_more->setAccessibleName(m_more->toolTip());
+    m_more = theme::floatButton(this, QStringLiteral("StepMore"), tr("More step actions"));
     m_more->setPopupMode(QToolButton::InstantPopup);
     auto *menu = new QMenu(m_more);
     menu->addAction(tr("Renumber by creation order"), this, &StepBar::renumberRequested);

@@ -1,6 +1,7 @@
 #include "canvas.h"
 #include <QContextMenuEvent>
 #include <QMenu>
+#include <utility>
 #include "loupe.h"
 #include "cropcontroller.h"
 #include <QPainter>
@@ -412,6 +413,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
             emit colorPicked(c);
         } else {
             cancelEyedropper();                     // right/other button cancels
+            m_skipContextMenu = e->button() == Qt::RightButton;   // and that right click is spent
         }
         e->accept(); return;
     }
@@ -552,7 +554,16 @@ void Canvas::clearGuides() {
     viewport()->update();
 }
 
+// The snap setting, where a right click means nothing else: with the Move or
+// Text tool, off any text being edited, outside crop and the eyedropper.
 void Canvas::contextMenuEvent(QContextMenuEvent *e) {
+    if (std::exchange(m_skipContextMenu, false)) { e->accept(); return; }
+    auto *text = dynamic_cast<TextItem *>(itemAt(e->pos()));
+    if (!isPointerTool() || m_eyedropper || (m_crop && m_crop->active())
+        || (text && text->textInteractionFlags().testFlag(Qt::TextEditorInteraction))) {
+        QGraphicsView::contextMenuEvent(e);
+        return;
+    }
     QMenu menu(this);
     QAction *snap = menu.addAction(tr("Snap to objects"));
     snap->setCheckable(true);
@@ -568,6 +579,7 @@ void Canvas::focusOutEvent(QFocusEvent *e) {
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
+    clearGuides();   // whichever way the release goes
     if (e->button() == m_swallowRelease) {
         m_swallowRelease = Qt::NoButton;
         e->accept();
@@ -597,7 +609,6 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
         m_tools->finish(mapToScene(e->pos()), e->modifiers()); e->accept(); return;
     }
     QGraphicsView::mouseReleaseEvent(e);
-    clearGuides();
     if (e->button() == Qt::LeftButton && isPointerTool()) {
         m_tools->finishMove();
         m_duplicateDragging = false;

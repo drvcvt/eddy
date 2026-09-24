@@ -14,17 +14,24 @@ static qreal baseDiameter(StepItem::Size size) {
     }
 }
 
-StepItem::StepItem(int number, Size size) : m_number(std::clamp(number, 1, kMaxNumber)), m_size(size) {}
+static quint64 s_serial = 0;
+
+StepItem::StepItem(int number, Size size)
+    : m_number(std::clamp(number, 1, kMaxNumber)), m_size(size), m_serial(++s_serial) {
+    measure();
+}
 
 void StepItem::setNumber(int number) {
     prepareGeometryChange();
     m_number = std::clamp(number, 1, kMaxNumber);
+    measure();
     update();
 }
 
 void StepItem::setSize(Size size) {
     prepareGeometryChange();
     m_size = size;
+    measure();
     update();
 }
 
@@ -35,10 +42,10 @@ QFont StepItem::font() const {
     return f;
 }
 
-qreal StepItem::diameter() const {
+void StepItem::measure() {
     const qreal base = baseDiameter(m_size);
     const qreal digits = QFontMetricsF(font()).tightBoundingRect(QString::number(m_number)).width();
-    return std::max(base, digits + base * 0.5);
+    m_diameter = std::max(base, digits + base * 0.5);
 }
 
 StepItem *StepItem::clone() const {
