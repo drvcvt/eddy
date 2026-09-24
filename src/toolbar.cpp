@@ -156,7 +156,6 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         {ToolType::Crop,"crop","Crop","C"},
     };
     for (const T &t : tools) {
-        if (t.type == ToolType::Crop) rail->addSpacing(6);
         auto *b = mkBtn(true, true);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(t.id),
                                      iconRest, iconOn));
