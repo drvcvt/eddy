@@ -1,4 +1,6 @@
 #include "canvas.h"
+#include <QContextMenuEvent>
+#include <QMenu>
 #include "loupe.h"
 #include "cropcontroller.h"
 #include <QPainter>
@@ -252,6 +254,19 @@ void Canvas::setCropController(CropController *crop) {
 }
 
 void Canvas::drawForeground(QPainter *painter, const QRectF &) {
+    drawFrame(painter);
+    if (m_guides.isEmpty()) return;
+    // Thin and neutral, over everything; the view draws them, so no export has them.
+    QColor ink = palette().color(QPalette::WindowText);
+    ink.setAlphaF(0.6);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setPen(QPen(ink, 0));
+    for (const QLineF &line : std::as_const(m_guides)) painter->drawLine(line);
+    painter->restore();
+}
+
+void Canvas::drawFrame(QPainter *painter) {
     const bool cropping = m_crop && m_crop->active();
     if (!cropping && !m_studioOutput.isEmpty()) {
         // Same picture as the export: the background around rounded content,
@@ -500,6 +515,56 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         m_tools->update(mapToScene(e->pos()), e->modifiers()); e->accept(); return;
     }
     QGraphicsView::mouseMoveEvent(e);
+    if (e->buttons() & Qt::LeftButton) snapDrag(e->modifiers());
+}
+
+// The native move has just placed the dragged items from where the press
+// started, so the snap offset never adds up over events.
+void Canvas::snapDrag(Qt::KeyboardModifiers modifiers) {
+    QGraphicsItem *grabbed = scene()->mouseGrabberItem();
+    auto *text = dynamic_cast<TextItem *>(grabbed);
+    const QList<QGraphicsItem *> &moving = m_tools->movingItems();
+    if (!m_snapping || modifiers.testFlag(Qt::ControlModifier) || !isPointerTool() || !grabbed
+        || !moving.contains(grabbed) || (text && text->textInteractionFlags().testFlag(Qt::TextEditorInteraction))) {
+        clearGuides();
+        return;
+    }
+    QRectF box;
+    for (const QGraphicsItem *item : moving) box |= alignmentBounds(item);
+    QVector<QRectF> targets = {contentRect()};
+    for (const QGraphicsItem *item : scene()->items(Qt::AscendingOrder)) {
+        if (!item->isVisible() || moving.contains(item) || item->parentItem()) continue;
+        if (!dynamic_cast<const AnnotationItem *>(item) && !dynamic_cast<const TextItem *>(item)) continue;
+        targets.append(alignmentBounds(item));
+    }
+    const qreal pixel = 1.0 / std::max(1e-6, transform().m11());   // logical screen px, whatever the zoom
+    const QPointF offset = m_snapper.snap(box, targets, 5 * pixel, 8 * pixel);
+    if (!offset.isNull())
+        for (QGraphicsItem *item : moving) item->moveBy(offset.x(), offset.y());
+    m_guides = m_snapper.guides();
+    viewport()->update();
+}
+
+void Canvas::clearGuides() {
+    m_snapper.reset();
+    if (m_guides.isEmpty()) return;
+    m_guides.clear();
+    viewport()->update();
+}
+
+void Canvas::contextMenuEvent(QContextMenuEvent *e) {
+    QMenu menu(this);
+    QAction *snap = menu.addAction(tr("Snap to objects"));
+    snap->setCheckable(true);
+    snap->setChecked(m_snapping);
+    connect(snap, &QAction::toggled, this, &Canvas::setSnapping);
+    menu.exec(e->globalPos());
+    e->accept();
+}
+
+void Canvas::focusOutEvent(QFocusEvent *e) {
+    clearGuides();
+    QGraphicsView::focusOutEvent(e);
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
@@ -532,6 +597,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
         m_tools->finish(mapToScene(e->pos()), e->modifiers()); e->accept(); return;
     }
     QGraphicsView::mouseReleaseEvent(e);
+    clearGuides();
     if (e->button() == Qt::LeftButton && isPointerTool()) {
         m_tools->finishMove();
         m_duplicateDragging = false;

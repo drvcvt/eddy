@@ -3,6 +3,7 @@
 #include <QPoint>
 #include <QImage>
 #include "toolcontroller.h"
+#include "snapping.h"
 class QVariantAnimation;
 class QResizeEvent;
 class QKeyEvent;
@@ -44,6 +45,10 @@ public:
     void startEyedropper();
     void cancelEyedropper();
     bool eyedropperActive() const { return m_eyedropper; }
+    // Guides and snapping while moving items (21.09. plan 6); a session setting.
+    void setSnapping(bool on) { m_snapping = on; }
+    bool snapping() const { return m_snapping; }
+    QVector<QLineF> guides() const { return m_guides; }
 signals:
     void viewChanged();   // emitted on zoom / pan / resize so overlays can re-anchor
     void colorPicked(const QColor &c);
@@ -59,7 +64,12 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
     void drawForeground(QPainter *painter, const QRectF &rect) override;
+    void contextMenuEvent(QContextMenuEvent *e) override;
+    void focusOutEvent(QFocusEvent *e) override;
 private:
+    void drawFrame(QPainter *painter);
+    void snapDrag(Qt::KeyboardModifiers modifiers);
+    void clearGuides();
     bool isPointerTool() const {
         return m_tools->tool() == ToolType::Move || m_tools->tool() == ToolType::Text;
     }
@@ -100,5 +110,8 @@ private:
     qreal m_eyeDpr = 1.0;           // snapshot device-pixel ratio
     bool m_eyeTrackPrev = false;    // viewport mouse-tracking state to restore on cancel
     Loupe *m_loupe = nullptr;
+    bool m_snapping = true;
+    Snapper m_snapper;
+    QVector<QLineF> m_guides;
 };
 }

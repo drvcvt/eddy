@@ -43,6 +43,7 @@ public:
     TextItem *editingText() const { return m_editingText; }
     void beginMove();
     void finishMove();
+    const QList<QGraphicsItem *> &movingItems() const { return m_moveItems; }
     bool duplicateSelection(const QPointF &offset = QPointF());
     bool nudgeSelection(const QPointF &delta);
     bool beginDuplicateMove();
