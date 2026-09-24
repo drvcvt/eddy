@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QApplication>
 #include <QGuiApplication>
 #include <QClipboard>
@@ -158,14 +159,15 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setCursor(Qt::OpenHandCursor);
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(6, 3, 8, 3);
+    lay->setContentsMargins(6, 0, 6, 0);
+    setFixedHeight(theme::kBarButton.height());
     lay->setSpacing(6);
     auto *icon = new QLabel(this);
     icon->setObjectName("DragPillIcon");
     icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"),
                                       QApplication::palette().color(QPalette::WindowText),
-                                      QApplication::palette().color(QPalette::WindowText))
-                        .pixmap(QSize(18, 18)));   // Rounded grip, distinct from the Arrow annotation tool.
+                                      QApplication::palette().color(QPalette::WindowText), theme::kFsSmall)
+                        .pixmap(QSize(theme::kFsSmall, theme::kFsSmall)));   // Rounded grip, distinct from the Arrow annotation tool.
     lay->addWidget(icon);
     auto *label = new QLabel(QStringLiteral("Drag out"), this);
     label->setObjectName("DragPillText");
@@ -180,12 +182,39 @@ void DragPill::refreshTheme() {
     auto *icon = findChild<QLabel *>(QStringLiteral("DragPillIcon"));
     if (!icon) return;
     const QColor color = QApplication::palette().color(QPalette::WindowText);
-    icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"), color, color)
-                        .pixmap(QSize(18, 18)));
+    icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"), color, color, theme::kFsSmall)
+                        .pixmap(QSize(theme::kFsSmall, theme::kFsSmall)));
 }
 
 void DragPill::setImageProvider(std::function<QImage()> provider) { m_provider = std::move(provider); }
 void DragPill::setFileProvider(std::function<FileDragPayload()> provider) { m_fileProvider = std::move(provider); }
+
+void DragPill::setPreparationNeeded(bool needed) {
+    m_preparationNeeded = needed;
+    const QString text = needed ? tr("Prepare drag") : tr("Drag out");
+    findChild<QLabel *>(QStringLiteral("DragPillText"))->setText(text);
+    setAccessibleName(text);
+    setToolTip(needed ? tr("Prepare the edited video for dragging") : tr("Drag into another app"));
+    setCursor(needed ? Qt::PointingHandCursor : Qt::OpenHandCursor);
+    setFocusPolicy(needed ? Qt::StrongFocus : Qt::NoFocus);
+    setMinimumWidth(sizeHint().width());
+}
+
+void DragPill::mouseReleaseEvent(QMouseEvent *e) {
+    if (m_preparationNeeded && e->button() == Qt::LeftButton && rect().contains(e->pos())) {
+        emit preparationRequested();
+        e->accept(); return;
+    }
+    QWidget::mouseReleaseEvent(e);
+}
+
+void DragPill::keyPressEvent(QKeyEvent *e) {
+    if (m_preparationNeeded && (e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter || e->key() == Qt::Key_Space)) {
+        if (!e->isAutoRepeat()) emit preparationRequested();
+        e->accept(); return;
+    }
+    QWidget::keyPressEvent(e);
+}
 
 void DragPill::mousePressEvent(QMouseEvent *e) {
     if (e->button() == Qt::LeftButton) { m_pressPos = e->pos(); e->accept(); }
@@ -193,7 +222,7 @@ void DragPill::mousePressEvent(QMouseEvent *e) {
 }
 
 void DragPill::mouseMoveEvent(QMouseEvent *e) {
-    if ((e->buttons() & Qt::LeftButton)
+    if (!m_preparationNeeded && (e->buttons() & Qt::LeftButton)
         && (e->pos() - m_pressPos).manhattanLength() >= QApplication::startDragDistance()) {
         startDrag();
         e->accept();

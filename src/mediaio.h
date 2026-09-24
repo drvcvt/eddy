@@ -3,6 +3,8 @@
 #include <QSize>
 #include <QString>
 #include "cli.h"
+#include "cursortrack.h"
+#include <optional>
 
 namespace eddy {
 
@@ -16,13 +18,22 @@ struct VideoInfo {
     qint64 durationMs = 0;
     double fps = 0.0;
     bool cropSupported = true;
+    bool hasAudio = false;
+    // Where the first audio stream starts on the video's time axis.
+    qint64 audioOffsetMs = 0;
 };
+
+// "m:ss" or "h:mm:ss", and with milliseconds; the playback bar's clocks.
+QString formatTime(qint64 ms);
+QString formatPreciseTime(qint64 ms);
 
 struct MediaDocument {
     MediaKind kind = MediaKind::Image;
     QImage image;
     QString path;
     VideoInfo video;
+    // Optional pointer data recorded next to the video; absent for most files.
+    std::optional<CursorTrack> cursorTrack;
 
     QSize nativeSize() const;
 };
@@ -37,6 +48,7 @@ struct LoadMediaResult {
     bool ok = false;
     MediaDocument document;
     QString error;
+    QString warning;   // non-fatal, e.g. an unusable cursor track
 };
 
 struct ContactSheetResult {

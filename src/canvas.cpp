@@ -1,4 +1,7 @@
 #include "canvas.h"
+#include <QContextMenuEvent>
+#include <QMenu>
+#include <utility>
 #include "loupe.h"
 #include "cropcontroller.h"
 #include <QPainter>
@@ -73,6 +76,67 @@ void Canvas::updateNavigationBounds() {
     centerOn(center);
 }
 
+QPointF Canvas::viewportCentreInScene() const {
+    return viewportTransform().inverted().map(QPointF(viewport()->width() / 2.0, viewport()->height() / 2.0));
+}
+
+// Every zoom, pan and fit works on the user's own view as if there were no
+// camera; the camera goes back on afterwards.
+template <typename Change> void Canvas::withoutCamera(Change change) {
+    if (m_camera.isIdentity()) { change(); return; }
+    const QTransform camera = m_camera;
+    m_camera = QTransform();
+    setTransform(QTransform::fromScale(m_viewZoom, m_viewZoom));
+    updateNavigationBounds();
+    centerOn(m_viewCentre);
+    change();
+    m_viewZoom = transform().m11();
+    m_viewCentre = viewportCentreInScene();
+    m_camera = camera;
+    applyCamera();
+}
+
+void Canvas::applyCamera() {
+    const qreal k = m_camera.m11();
+    setTransform(QTransform::fromScale(m_viewZoom * k, m_viewZoom * k));
+    updateNavigationBounds();
+    centerOn(m_camera.inverted().map(m_viewCentre));
+}
+
+QTransform Canvas::viewWithoutCamera() const {
+    if (m_camera.isIdentity()) return viewportTransform();
+    return QTransform::fromTranslate(-m_viewCentre.x(), -m_viewCentre.y())
+         * QTransform::fromScale(m_viewZoom, m_viewZoom)
+         * QTransform::fromTranslate(viewport()->width() / 2.0, viewport()->height() / 2.0);
+}
+
+void Canvas::setCamera(const QRectF &camera) {
+    const QRectF base = contentRect();
+    QTransform next;
+    if (!camera.isEmpty() && !base.isEmpty() && camera != base) {
+        const qreal k = base.width() / camera.width();
+        next = QTransform::fromTranslate(-camera.left(), -camera.top()) * QTransform::fromScale(k, k)
+             * QTransform::fromTranslate(base.left(), base.top());
+    }
+    m_cameraRect = next.isIdentity() ? QRectF() : camera;
+    if (next == m_camera) return;
+    if (m_camera.isIdentity()) {
+        m_viewZoom = transform().m11();
+        m_viewCentre = viewportCentreInScene();
+    }
+    m_camera = next;
+    applyCamera();
+    viewport()->update();
+    emit viewChanged();
+}
+
+void Canvas::cancelCameraDrag() {
+    if (!m_cameraDragging) return;
+    m_cameraDragging = false;
+    updateCursor();
+    emit cameraDragFinished(true);
+}
+
 void Canvas::zoomBy(double factor) {
     const double next = qBound(0.05, m_targetZoom * factor, 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
@@ -81,8 +145,7 @@ void Canvas::zoomBy(double factor) {
     if (!m_animations) {
         const double inc = m_targetZoom / m_zoom;
         m_zoom = m_targetZoom;
-        scale(inc, inc);
-        updateNavigationBounds();
+        withoutCamera([&] { scale(inc, inc); updateNavigationBounds(); });
         emit viewChanged();
         return;
     }
@@ -94,8 +157,7 @@ void Canvas::zoomBy(double factor) {
             const double target = v.toDouble();
             const double inc = target / m_zoom;
             m_zoom = target;
-            scale(inc, inc);
-            updateNavigationBounds();
+            withoutCamera([&] { scale(inc, inc); updateNavigationBounds(); });
             emit viewChanged();
         });
     }
@@ -108,27 +170,51 @@ void Canvas::zoomBy(double factor) {
 void Canvas::resetZoom() {
     m_fitted = false;
     if (m_zoomAnim) m_zoomAnim->stop();
-    resetTransform();
-    m_zoom = m_targetZoom = 1.0;
-    updateNavigationBounds();
+    withoutCamera([&] {
+        resetTransform();
+        m_zoom = m_targetZoom = 1.0;
+        updateNavigationBounds();
+    });
     emit viewChanged();
 }
 
 void Canvas::fitMedia() {
     if (m_zoomAnim) m_zoomAnim->stop();
-    resetTransform();
-    m_fitted = true;
-    QRectF fittedRect = contentRect();
-    if (m_crop && m_crop->active()) {
-        const qreal scale = qMax(0.001, qMin((viewport()->width() - 4.0) / fittedRect.width(),
-                                            (viewport()->height() - 4.0) / fittedRect.height()));
-        fittedRect.adjust(-10 / scale, -10 / scale, 10 / scale, 10 / scale);
-    }
-    fitInView(fittedRect, Qt::KeepAspectRatio);
-    m_zoom = m_targetZoom = transform().m11();
-    updateNavigationBounds();
-    centerOn(contentRect().center());
+    withoutCamera([&] {
+        resetTransform();
+        m_fitted = true;
+        QRectF fittedRect = (m_crop && m_crop->active()) ? contentRect() : viewRect();
+        if (m_crop && m_crop->active()) {
+            const qreal scale = qMax(0.001, qMin((viewport()->width() - 4.0) / fittedRect.width(),
+                                                (viewport()->height() - 4.0) / fittedRect.height()));
+            fittedRect.adjust(-10 / scale, -10 / scale, 10 / scale, 10 / scale);
+        }
+        fitInView(fittedRect, Qt::KeepAspectRatio);
+        m_zoom = m_targetZoom = transform().m11();
+        updateNavigationBounds();
+        centerOn(fittedRect.center());
+    });
     emit viewChanged();
+}
+
+QRectF Canvas::viewRect() const {
+    return m_studioOutput.isEmpty() ? contentRect() : m_studioOutput;
+}
+
+void Canvas::setStudioFrame(const QPixmap &background, QRectF output, qreal radius) {
+    m_studioBackground = background;
+    m_studioOutput = output;
+    m_studioRadius = radius;
+    if (m_fitted) fitMedia();
+    viewport()->update();
+}
+
+void Canvas::clearStudioFrame() {
+    if (m_studioOutput.isEmpty()) return;
+    m_studioBackground = {};
+    m_studioOutput = {};
+    if (m_fitted) fitMedia();
+    viewport()->update();
 }
 
 QRectF Canvas::contentRect() const {
@@ -138,16 +224,24 @@ QRectF Canvas::contentRect() const {
 void Canvas::setContentRect(QRectF rect) {
     m_contentRect = rect;
     if (m_fitted) fitMedia();
+    if (!m_cameraRect.isEmpty()) {
+        // The camera maps onto the content rect, which just moved.
+        const QRectF camera = m_cameraRect;
+        setCamera({});
+        setCamera(camera);
+    }
     viewport()->update();
 }
 
 void Canvas::restoreView(const QTransform &transform, QPointF center, bool fitted) {
     if (m_zoomAnim) m_zoomAnim->stop();
-    setTransform(transform);
-    m_zoom = m_targetZoom = transform.m11();
-    m_fitted = fitted;
-    updateNavigationBounds();
-    centerOn(center);
+    withoutCamera([&] {
+        setTransform(transform);
+        m_zoom = m_targetZoom = transform.m11();
+        m_fitted = fitted;
+        updateNavigationBounds();
+        centerOn(center);
+    });
     emit viewChanged();
 }
 
@@ -161,11 +255,51 @@ void Canvas::setCropController(CropController *crop) {
 }
 
 void Canvas::drawForeground(QPainter *painter, const QRectF &) {
+    drawFrame(painter);
+    if (m_guides.isEmpty()) return;
+    // Thin and neutral, over everything; the view draws them, so no export has them.
+    QColor ink = palette().color(QPalette::WindowText);
+    ink.setAlphaF(0.6);
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setPen(QPen(ink, 0));
+    for (const QLineF &line : std::as_const(m_guides)) painter->drawLine(line);
+    painter->restore();
+}
+
+void Canvas::drawFrame(QPainter *painter) {
     const bool cropping = m_crop && m_crop->active();
-    if (!cropping && contentRect() == scene()->sceneRect()) return;
+    if (!cropping && !m_studioOutput.isEmpty()) {
+        // Same picture as the export: the background around rounded content,
+        // covering anything drawn past the content's edge or corners.
+        painter->save();
+        painter->resetTransform();
+        painter->setRenderHint(QPainter::Antialiasing);
+        const QTransform view = viewWithoutCamera();
+        const QRectF output = view.mapRect(m_studioOutput);
+        const QRectF content = view.mapRect(contentRect());
+        const qreal radius = m_studioRadius * view.m11();
+        QPainterPath outside;
+        outside.addRect(viewport()->rect());
+        outside.addRect(output);
+        painter->fillPath(outside, palette().color(QPalette::Window));
+        QPainterPath ring;
+        ring.addRect(output);
+        ring.addRoundedRect(content, radius, radius);
+        QBrush brush(m_studioBackground);
+        brush.setTransform(QTransform::fromScale(output.width() / m_studioBackground.width(),
+                                                 output.height() / m_studioBackground.height())
+                           * QTransform::fromTranslate(output.x(), output.y()));
+        painter->fillPath(ring, brush);
+        painter->restore();
+        return;
+    }
+    // Zoomed or cropped, the picture ends at the content's edge, as in the export.
+    if (!cropping && contentRect() == scene()->sceneRect() && m_camera.isIdentity()) return;
     painter->save();
     painter->resetTransform();
-    const QRectF frame = viewportTransform().mapRect(cropping ? m_crop->rect() : contentRect());
+    const QRectF frame = cropping ? viewportTransform().mapRect(m_crop->rect())
+                                  : viewWithoutCamera().mapRect(contentRect());
     QPainterPath outside;
     outside.addRect(viewport()->rect());
     outside.addRect(frame);
@@ -279,6 +413,7 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
             emit colorPicked(c);
         } else {
             cancelEyedropper();                     // right/other button cancels
+            m_skipContextMenu = e->button() == Qt::RightButton;   // and that right click is spent
         }
         e->accept(); return;
     }
@@ -337,6 +472,18 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
             m_duplicateDragging = m_tools->beginDuplicateMove();
         }
     }
+    if (e->button() == Qt::LeftButton && m_cameraDrag && m_tools->tool() == ToolType::Move
+        && e->modifiers() == Qt::NoModifier) {
+        const QGraphicsItem *item = itemAt(e->pos());
+        if (!item || item->zValue() <= -1000) {
+            scene()->clearSelection();
+            m_cameraDragging = true;
+            m_cameraDragLast = e->position();
+            viewport()->setCursor(Qt::ClosedHandCursor);
+            e->accept();
+            return;
+        }
+    }
     QGraphicsView::mousePressEvent(e); // Move/Text: native selection/edit
     if (e->button() == Qt::LeftButton && m_tools->tool() == ToolType::Move && !m_duplicateDragging)
         m_tools->beginMove();
@@ -344,11 +491,20 @@ void Canvas::mousePressEvent(QMouseEvent *e) {
 
 void Canvas::mouseMoveEvent(QMouseEvent *e) {
     if (m_eyedropper) { updateLoupe(e->pos()); e->accept(); return; }
+    if (m_cameraDragging) {
+        const QPointF delta = (e->position() - m_cameraDragLast) / transform().m11();
+        m_cameraDragLast = e->position();
+        emit cameraDragged(delta);
+        e->accept();
+        return;
+    }
     if (m_dragging) {                                   // middle-drag pan
         const QPoint d = e->pos() - m_panLast;
         m_panLast = e->pos();
-        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
-        verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
+        withoutCamera([&] {
+            horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
+            verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
+        });
         emit viewChanged();                             // overlays (mode-bar) re-anchor
         e->accept(); return;
     }
@@ -361,11 +517,78 @@ void Canvas::mouseMoveEvent(QMouseEvent *e) {
         m_tools->update(mapToScene(e->pos()), e->modifiers()); e->accept(); return;
     }
     QGraphicsView::mouseMoveEvent(e);
+    if (e->buttons() & Qt::LeftButton) snapDrag(e->modifiers());
+}
+
+// The native move has just placed the dragged items from where the press
+// started, so the snap offset never adds up over events.
+void Canvas::snapDrag(Qt::KeyboardModifiers modifiers) {
+    QGraphicsItem *grabbed = scene()->mouseGrabberItem();
+    auto *text = dynamic_cast<TextItem *>(grabbed);
+    const QList<QGraphicsItem *> &moving = m_tools->movingItems();
+    if (!m_snapping || modifiers.testFlag(Qt::ControlModifier) || !isPointerTool() || !grabbed
+        || !moving.contains(grabbed) || (text && text->textInteractionFlags().testFlag(Qt::TextEditorInteraction))) {
+        clearGuides();
+        return;
+    }
+    QRectF box;
+    for (const QGraphicsItem *item : moving) box |= alignmentBounds(item);
+    QVector<QRectF> targets = {contentRect()};
+    for (const QGraphicsItem *item : scene()->items(Qt::AscendingOrder)) {
+        if (!item->isVisible() || moving.contains(item) || item->parentItem()) continue;
+        if (!dynamic_cast<const AnnotationItem *>(item) && !dynamic_cast<const TextItem *>(item)) continue;
+        targets.append(alignmentBounds(item));
+    }
+    const qreal pixel = 1.0 / std::max(1e-6, transform().m11());   // logical screen px, whatever the zoom
+    const QPointF offset = m_snapper.snap(box, targets, 5 * pixel, 8 * pixel);
+    if (!offset.isNull())
+        for (QGraphicsItem *item : moving) item->moveBy(offset.x(), offset.y());
+    m_guides = m_snapper.guides();
+    viewport()->update();
+}
+
+void Canvas::clearGuides() {
+    m_snapper.reset();
+    if (m_guides.isEmpty()) return;
+    m_guides.clear();
+    viewport()->update();
+}
+
+// The snap setting, where a right click means nothing else: with the Move or
+// Text tool, off any text being edited, outside crop and the eyedropper.
+void Canvas::contextMenuEvent(QContextMenuEvent *e) {
+    if (std::exchange(m_skipContextMenu, false)) { e->accept(); return; }
+    auto *text = dynamic_cast<TextItem *>(itemAt(e->pos()));
+    if (!isPointerTool() || m_eyedropper || (m_crop && m_crop->active())
+        || (text && text->textInteractionFlags().testFlag(Qt::TextEditorInteraction))) {
+        QGraphicsView::contextMenuEvent(e);
+        return;
+    }
+    QMenu menu(this);
+    QAction *snap = menu.addAction(tr("Snap to objects"));
+    snap->setCheckable(true);
+    snap->setChecked(m_snapping);
+    connect(snap, &QAction::toggled, this, &Canvas::setSnapping);
+    menu.exec(e->globalPos());
+    e->accept();
+}
+
+void Canvas::focusOutEvent(QFocusEvent *e) {
+    clearGuides();
+    QGraphicsView::focusOutEvent(e);
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent *e) {
+    clearGuides();   // whichever way the release goes
     if (e->button() == m_swallowRelease) {
         m_swallowRelease = Qt::NoButton;
+        e->accept();
+        return;
+    }
+    if (m_cameraDragging && e->button() == Qt::LeftButton) {
+        m_cameraDragging = false;
+        updateCursor();
+        emit cameraDragFinished(false);
         e->accept();
         return;
     }
@@ -395,7 +618,7 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
 void Canvas::resizeEvent(QResizeEvent *e) {
     if (m_eyedropper) cancelEyedropper();        // snapshot + loupe placement go stale on resize
     QGraphicsView::resizeEvent(e);
-    if (m_fitted) fitMedia(); else updateNavigationBounds();
+    withoutCamera([&] { if (m_fitted) fitMedia(); else updateNavigationBounds(); });
     emit viewChanged();
 }
 

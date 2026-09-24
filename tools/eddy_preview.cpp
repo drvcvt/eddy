@@ -1,5 +1,5 @@
 // Dev tool: render the editor chrome to a PNG for visual verification (offscreen).
-// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file] [MEDIA]
+// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera] [MEDIA]
 #include "editorwindow.h"
 #include "theme.h"
 #include "config.h"
@@ -11,6 +11,16 @@
 #include "videotimeline.h"
 #include "cropcontroller.h"
 #include "toolcontroller.h"
+#include "studiodocument.h"
+#include "studiostyle.h"
+#include "recoverystore.h"
+#include "resumedialog.h"
+#include "items/redactitem.h"
+#include "items/spotlightitem.h"
+#include <QUndoStack>
+#include <QUndoCommand>
+#include <QLockFile>
+#include <QTemporaryDir>
 #include <QApplication>
 #include <QGraphicsScene>
 #include <QImage>
@@ -28,6 +38,9 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <memory>
+#include <QPainter>
+#include "items/stepitem.h"
+#include "items/rectitem.h"
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
@@ -46,6 +59,26 @@ int main(int argc, char **argv) {
         picker.show();
         app.processEvents();
         return picker.grab().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
+    }
+    if (mode == QStringLiteral("resume")) {
+        // Two kept edits in a scratch folder, one of them open elsewhere.
+        QTemporaryDir scratch;
+        eddy::RecoveryStore store(scratch.path());
+        const QString a = store.create(), b = store.create();
+        for (const QString &id : {a, b}) {
+            QFile manifest(store.manifestFor(id));
+            manifest.open(QIODevice::WriteOnly);
+            manifest.write("{}");
+        }
+        store.touch(a, QStringLiteral("/home/you/Bilder/boltsnap-2026-09-24_16-30-37.mp4"),
+                    QStringLiteral("boltsnap-2026-09-24_16-30-37.mp4"));
+        store.touch(b, QStringLiteral("/home/you/Bilder/screenshot.png"), QStringLiteral("screenshot.png"));
+        QLockFile held(store.lockFileFor(a));
+        held.tryLock(0);
+        eddy::ResumeDialog dialog(store);
+        dialog.show();
+        app.processEvents();
+        return dialog.grab().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
     }
     if (mode.startsWith(QStringLiteral("video"))) {
         eddy::MediaDocument media;
@@ -141,6 +174,35 @@ int main(int argc, char **argv) {
         text->setSelected(true);
         app.processEvents();
     }
+    if (mode == QStringLiteral("steps")) {
+        auto *scene = window->findChild<QGraphicsScene *>();
+        const QColor colors[] = {QColor("#ff3b30"), QColor("#ffd60a"), QColor("#0a84ff"), QColor("#ececec")};
+        const int numbers[] = {1, 8, 10, 99, 100};
+        eddy::StepItem *last = nullptr;
+        for (int i = 0; i < 5; ++i)
+            for (int size = 0; size < 3; ++size) {
+                auto *step = new eddy::StepItem(numbers[i], eddy::StepItem::Size(size));
+                step->setStrokeColor(colors[(i + size) % 4]);
+                step->setPos(140 + 150 * i, 120 + 110 * size);
+                step->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+                scene->addItem(step);
+                last = step;
+            }
+        last->setSelected(true);
+        app.processEvents();
+    }
+    if (mode == QStringLiteral("align")) {
+        auto *scene = window->findChild<QGraphicsScene *>();
+        const QRectF rects[] = {QRectF(160, 150, 140, 90), QRectF(380, 230, 120, 120), QRectF(600, 170, 160, 70)};
+        for (const QRectF &r : rects) {
+            auto *item = new eddy::RectItem(r);
+            item->setStrokeColor(QColor("#ff3b30"));
+            item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+            scene->addItem(item);
+            item->setSelected(true);
+        }
+        app.processEvents();
+    }
     if (mode == QStringLiteral("tooltip")) {
         auto *fit = window->findChild<QToolButton *>(QStringLiteral("ZoomFit"));
         QHelpEvent event(QEvent::ToolTip, fit->rect().center(),
@@ -158,9 +220,113 @@ int main(int argc, char **argv) {
         crop->press(crop->rect().topLeft(), 1, {});
         crop->move(crop->rect().topLeft() + QPointF(120, 80), {});
         crop->release();
+        if (mode.contains(QStringLiteral("applied"))) crop->accept();
         app.processEvents();
     }
     QPixmap pm = window->grab();
+    if (mode.contains(QStringLiteral("studio"))) {
+        // Studio on with its default style; "studio-open" also paints the
+        // popover where it opens (a separate popup, so grab() misses it).
+        window->openStudio();
+        app.processEvents();
+        pm = window->grab();
+        auto *popover = window->findChild<QWidget *>(QStringLiteral("StudioPopover"));
+        if (mode.contains(QStringLiteral("open")) && popover) {
+            QPainter painter(&pm);
+            painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
+        } else if (popover) {
+            popover->close();
+        }
+    }
+    if (mode.contains(QStringLiteral("zoom")) || mode.contains(QStringLiteral("camera"))) {
+        // Studio on, two zooms, the first selected (context bar and mini map);
+        // "camera" also paints the popover on its Camera page.
+        eddy::StudioDocument doc = window->studioDocument();
+        for (const auto &preset : eddy::studioBackgroundPresets())
+            if (preset.kind == eddy::StudioStyle::Background::Gradient) {
+                doc.style.background = preset.kind;
+                doc.style.color = preset.color;
+                doc.style.color2 = preset.color2;
+                break;
+            }
+        const QRect base = window->cameraBase();
+        doc.zooms = {{1, 1000, 3000, 2.0, eddy::ZoomSegment::Target::Point,
+                      QPointF(base.width() * 0.7, base.height() * 0.35), eddy::ZoomSegment::Motion::Focused},
+                     {2, 5000, 6500, 1.5, eddy::ZoomSegment::Target::Point,
+                      QRectF(base).center(), eddy::ZoomSegment::Motion::Smooth}};
+        window->setStudioDocument(doc);
+        window->selectZoom(1);
+        // The playback bar grows by the lane; let the layout settle first.
+        QEventLoop settle;
+        QTimer::singleShot(200, &settle, &QEventLoop::quit);
+        settle.exec();
+        pm = window->grab();
+        if (mode.contains(QStringLiteral("camera"))) {
+            window->openStudio();
+            app.processEvents();
+            auto *popover = window->findChild<QWidget *>(QStringLiteral("StudioPopover"));
+            for (auto *tab : popover->findChildren<QToolButton *>(QStringLiteral("StudioPage")))
+                if (tab->text() == QStringLiteral("Camera")) tab->click();
+            app.processEvents();
+            pm = window->grab();
+            QPainter painter(&pm);
+            painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
+        }
+    }
+    if (mode.contains(QStringLiteral("fragments"))) {
+        // A cut and a 2x fragment; the cut is selected, so its bar says Restore.
+        eddy::StudioDocument doc = window->studioDocument();
+        auto *timeline = window->findChild<eddy::VideoTimeline *>();
+        const qint64 d = timeline->duration();
+        doc.fragments = {{0, 1.0, false}, {d * 3 / 10, 1.0, true}, {d / 2, 2.0, false}, {d * 8 / 10, 1.0, false}};
+        window->setStudioDocument(doc);
+        emit timeline->cutClicked(1);
+        QEventLoop settle;
+        QTimer::singleShot(200, &settle, &QEventLoop::quit);
+        settle.exec();
+        pm = window->grab();
+    }
+    if (mode.contains(QStringLiteral("masks"))) {
+        // A blur from the playhead and a timed spotlight, the blur selected.
+        auto *scene = window->findChild<QGraphicsScene *>();
+        auto *timeline = window->findChild<eddy::VideoTimeline *>();
+        const qint64 d = timeline->duration();
+        auto *spot = new eddy::SpotlightItem(QRectF(900, 300, 500, 300), QSizeF(window->cameraBase().size()));
+        spot->setTimeWindow(std::pair{d / 10, d * 4 / 10});
+        spot->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene->addItem(spot);
+        auto *blur = new eddy::RedactItem(eddy::RedactMode::Blur, QImage(), QRectF(200, 200, 400, 200));
+        blur->setTimeWindow(std::pair{d / 2, d * 9 / 10});
+        blur->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        scene->addItem(blur);
+        timeline->setPosition(d * 6 / 10);
+        emit timeline->seekRequested(d * 6 / 10);   // the player follows, as a click would
+        QEventLoop seek;
+        QTimer::singleShot(800, &seek, &QEventLoop::quit);
+        seek.exec();
+        window->findChild<QUndoStack *>()->push(new QUndoCommand);   // refreshes the lane
+        emit timeline->maskSelected(quintptr(blur));
+        QEventLoop settle;
+        QTimer::singleShot(250, &settle, &QEventLoop::quit);
+        settle.exec();
+        pm = window->grab();
+    }
+    if (mode.contains(QStringLiteral("export"))) {
+        QTimer::singleShot(300, [&] {
+            auto *menu = window->findChild<QMenu *>(QStringLiteral("ExportMenu"));
+            pm = window->grab();
+            if (menu) {
+                QPainter painter(&pm);
+                painter.drawPixmap(window->mapFromGlobal(menu->pos()), menu->grab());
+                menu->close();
+            }
+        });
+        // The export popover at Save, painted where it opens.
+        auto *save = window->findChild<QToolButton *>(QStringLiteral("Save"));
+        if (save && save->menu()) {
+            save->showMenu();   // blocks: the menu is closed from a timer after the grab
+        }
+    }
     const QString out = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("/tmp/eddy-preview.png");
     pm.save(out);
     return 0;

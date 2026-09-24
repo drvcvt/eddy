@@ -1,5 +1,10 @@
 #include <QtTest>
+#include <QSignalSpy>
 #include "videotimeline.h"
+#include "audiowaveform.h"
+#include <QProcess>
+#include <QStandardPaths>
+#include <QTemporaryDir>
 
 using namespace eddy;
 
@@ -51,6 +56,193 @@ private slots:
         QCOMPARE(timeline.position(), target);
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(226, 22));
         QCOMPARE(timeline.trimIn(), 3000);
+    }
+    void zoomLaneGrowsTheTimelineUnderTheFilmStrip() {
+        VideoTimeline timeline;
+        QCOMPARE(timeline.height(), 52);
+        QVERIFY(timeline.zoomLaneRect().isEmpty());
+        timeline.setZoomLaneVisible(true);
+        QCOMPARE(timeline.height(), 84);
+        QCOMPARE(timeline.zoomLaneRect().top(), 52.0);
+        QCOMPARE(timeline.zoomLaneRect().height(), 28.0);
+        timeline.setZoomLaneVisible(false);
+        QCOMPARE(timeline.height(), 52);
+    }
+    void clickingTheEmptyLaneAsksForAZoomThere() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        timeline.show();
+        QSignalSpy add(&timeline, &VideoTimeline::zoomAddRequested);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(add.count(), 1);
+        QCOMPARE(add.first().first().toLongLong(), 5000);
+    }
+    void draggingAZoomMovesItAsOneEdit() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 1; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        timeline.show();
+        QSignalSpy selected(&timeline, &VideoTimeline::zoomSelected);
+        QSignalSpy edited(&timeline, &VideoTimeline::zoomsEdited);
+        // A plain click selects without moving, even next to an anchor.
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QCOMPARE(selected.count(), 1);
+        QCOMPARE(timeline.selectedZoom(), 1u);
+        QCOMPARE(edited.count(), 0);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QTest::mouseMove(&timeline, QPoint(126, 66));
+        QTest::mouseMove(&timeline, QPoint(156, 66));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(edited.count(), 1);
+        const auto after = edited.first().at(1).value<QVector<ZoomSegment>>();
+        QCOMPARE(after.first().startMs, 4000);
+        QCOMPARE(after.first().endMs, 6000);
+        QCOMPARE(timeline.zooms().first().startMs, 4000);
+    }
+    void holdingAZoomWithoutMovingNeverMovesIt() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 1; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        timeline.show();
+        QSignalSpy edited(&timeline, &VideoTimeline::zoomsEdited);
+        // The edge-pan timer must not drag with a stale pointer while the button is held.
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QTest::qWait(120);
+        QCOMPARE(timeline.zooms().first().startMs, 2000);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(96, 66));
+        QCOMPARE(edited.count(), 0);
+    }
+    void edgesSnapToThePlayheadAndEscapeRestores() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setPosition(7000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 3; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        timeline.show();
+        QSignalSpy edited(&timeline, &VideoTimeline::zoomsEdited);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(126, 66));   // end edge
+        QTest::mouseMove(&timeline, QPoint(170, 66));
+        QTest::mouseMove(&timeline, QPoint(218, 66));   // 7066 ms, 6 px snap reach = 200 ms
+        QCOMPARE(timeline.zooms().first().endMs, 7000);
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QCOMPARE(timeline.zooms().first().endMs, 4000);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(218, 66));
+        QCOMPARE(edited.count(), 0);
+    }
+    void rightClickOnAZoomAsksForItsMenu() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 5; z.startMs = 2000; z.endMs = 4000;
+        timeline.setZooms({z});
+        QSignalSpy menu(&timeline, &VideoTimeline::zoomMenuRequested);
+        emit timeline.customContextMenuRequested(QPoint(96, 66));
+        QCOMPARE(menu.count(), 1);
+        QCOMPARE(menu.first().first().toUInt(), 5u);
+        QCOMPARE(timeline.selectedZoom(), 5u);
+    }
+    void laneShowsTheCameraCurve() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        ZoomSegment z;
+        z.id = 1; z.startMs = 2000; z.endMs = 8000; z.scale = 2;
+        timeline.setZooms({z}, [](qint64 t) { return t >= 3000 && t < 8000 ? 2.0 : 1.0; });
+        const QImage shot = timeline.grab().toImage();
+        // Zoomed in, the curve fills the block near its top; before the ramp it does not.
+        QVERIFY(qGray(shot.pixel(156, 58)) != qGray(shot.pixel(72, 58)));
+    }
+    void fragmentsShapeTheTimeAxis() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        // Keep 0-4 s, cut 4-6 s, 6-10 s at 2x: 4 + 2 = 6 s wide.
+        timeline.setFragments({{0, 1.0, false}, {4000, 1.0, true}, {6000, 2.0, false}});
+        timeline.show();
+        QCOMPARE(timeline.visibleStart(), 0);
+        QCOMPARE(timeline.visibleEnd(), 10000);
+        QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
+        // Five sixths across is edited 5 s, which is source 8 s in the 2x fragment.
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(256, 36));
+        QVERIFY(!seeks.isEmpty());
+        QCOMPARE(seeks.last().first().toLongLong(), 8000);
+        // The cut's notch sits over the seam at edited 4 s.
+        QSignalSpy cuts(&timeline, &VideoTimeline::cutClicked);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(206, 14));
+        QCOMPARE(cuts.count(), 1);
+        QCOMPARE(cuts.first().first().toInt(), 1);
+        // Ruler ticks count edited time at even spacing, up to its 6 s.
+        timeline.resize(612, 52);                           // 1 s steps, some past the cut
+        const auto ticks = timeline.rulerTicks();
+        QCOMPARE(ticks.size(), 5);
+        for (int i = 0; i < ticks.size(); ++i) {
+            QCOMPARE(ticks[i].second, (i + 1) * 1000);
+            QVERIFY(qAbs(ticks[i].first - (6 + 600.0 * (i + 1) / 6)) < 0.01);
+        }
+        timeline.resize(312, 52);
+        // Without fragments the axis is the source again.
+        timeline.setFragments({});
+        seeks.clear();
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 36));
+        QCOMPARE(seeks.last().first().toLongLong(), 5000);
+    }
+    void cuttingBeforeTheViewKeepsItOnTheSameSource() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.zoomAt(5, 6000);
+        const qint64 start = timeline.visibleStart(), end = timeline.visibleEnd();
+        QVERIFY(end - start < 3000);
+        timeline.setFragments({{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}});
+        QVERIFY(qAbs(timeline.visibleStart() - start) <= 2);
+        QVERIFY(qAbs(timeline.visibleEnd() - end) <= 2);
+    }
+    void maskLaneSelectsAndResizesWindows() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        QVERIFY(timeline.maskLaneRect().isEmpty());
+        timeline.setMasks({{7, 2000, 4000, QStringLiteral("Blur"), false}});
+        QCOMPARE(timeline.height(), 76);
+        QCOMPARE(timeline.maskLaneRect().top(), 52.0);
+        timeline.show();
+        QSignalSpy selected(&timeline, &VideoTimeline::maskSelected);
+        QSignalSpy edited(&timeline, &VideoTimeline::maskWindowEdited);
+        const int y = int(timeline.maskLaneRect().center().y());
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(126, y));   // end edge at 4 s
+        QCOMPARE(selected.count(), 1);
+        QCOMPARE(selected.first().first().value<quintptr>(), quintptr(7));
+        QTest::mouseMove(&timeline, QPoint(160, y));
+        QTest::mouseMove(&timeline, QPoint(186, y));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(186, y));
+        QCOMPARE(edited.count(), 1);
+        QCOMPARE(edited.first().at(2).toLongLong(), 6000);   // (key, from, to, before from, before to)
+        QCOMPARE(edited.first().at(4).toLongLong(), 4000);
+        // Esc during a drag puts it back.
+        timeline.setMasks({{7, 2000, 6000, QStringLiteral("Blur"), true}});
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(126, y));   // the body
+        QTest::mouseMove(&timeline, QPoint(160, y));
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(160, y));
+        QCOMPARE(edited.count(), 1);
+        timeline.setMasks({});
+        QCOMPARE(timeline.height(), 52);
     }
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;
@@ -120,6 +312,55 @@ private slots:
         QCOMPARE(timeline.position(), 0);
     }
 
+    void waveformLaneSitsUnderTheFilmStripAndScrubs() {
+        if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("clicks.mkv"));
+        QProcess make;
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x48:d=3:r=25",
+            "-f", "lavfi", "-i", "aevalsrc=exprs=if(between(t\\,1\\,1.02)\\,0.9\\,0):s=48000:d=3",
+            "-c:a", "pcm_s16le", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        VideoTimeline timeline;
+        timeline.resize(612, 52);
+        timeline.setDuration(3000);
+        timeline.setZoomLaneVisible(true);
+        timeline.show();
+        const qreal zoomTop = timeline.zoomLaneRect().top();
+        QVERIFY(timeline.waveformRect().isEmpty());
+        AudioWaveformProvider waveform(file, 3000, 0);
+        timeline.setWaveform(&waveform);
+        QCOMPARE(timeline.height(), 52 + 32 + 32);
+        const QRectF lane = timeline.waveformRect();
+        QCOMPARE(lane.height(), 28.0);
+        QCOMPARE(lane.top(), 52.0);                          // right under the film strip
+        QCOMPARE(timeline.zoomLaneRect().top(), lane.bottom() + 4);
+        QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
+        auto xAt = [&](qint64 ms) { return int(lane.left() + lane.width() * ms / 3000.0); };
+        const QImage shot = timeline.grab().toImage();
+        const int y = int(lane.center().y()) - 4;
+        QVERIFY2(shot.pixelColor(xAt(1005), y) != shot.pixelColor(xAt(2000), y),
+                 qPrintable(shot.pixelColor(xAt(1005), y).name() + " " + shot.pixelColor(xAt(2000), y).name()));
+        // With the click's stretch cut out, the column at the cut shows none of it.
+        timeline.setFragments({{0, 1.0, false}, {800, 1.0, true}, {1200, 1.0, false}});
+        timeline.fitClip();
+        const QImage cut = timeline.grab().toImage();
+        const int seam = int(lane.left() + lane.width() * 800 / 2600.0);
+        const QColor quiet = cut.pixelColor(int(lane.left() + lane.width() * 400 / 2600.0), y);
+        for (int x = seam - 2; x <= seam + 2; ++x)
+            QVERIFY2(cut.pixelColor(x, y) == quiet, qPrintable(QStringLiteral("%1: %2").arg(x).arg(cut.pixelColor(x, y).name())));
+        timeline.setFragments({});
+        timeline.fitClip();
+        // A click on the waveform scrubs like the film strip.
+        QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(xAt(2000), int(lane.center().y())));
+        QVERIFY(!seeks.isEmpty());
+        QVERIFY(qAbs(seeks.last().first().toLongLong() - 2000) <= 10);
+        // Hidden, the lanes below move back up.
+        timeline.setWaveformVisible(false);
+        QCOMPARE(timeline.zoomLaneRect().top(), zoomTop);
+        QCOMPARE(timeline.height(), 52 + 32);
+    }
     void storesContactSheetWithoutDiskState() {
         VideoTimeline timeline;
         QImage sheet(320, 45, QImage::Format_RGB32);

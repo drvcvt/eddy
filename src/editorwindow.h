@@ -5,12 +5,25 @@
 #include "cli.h"
 #include "mediaio.h"
 #include "exporter.h"
+#include "studiostyle.h"
+#include "studiodocument.h"
+#include "camerapath.h"
+#include "timemap.h"
+#include "exportsettings.h"
+#include "projectcodec.h"
+#include "projectstore.h"
+#include "items/annotationitem.h"
+#include "studiorenderer.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
+#include <QVideoFrame>
+#include <atomic>
 #include <functional>
+#include <memory>
+#include <QLockFile>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
-class QGraphicsItem; class QGraphicsVideoItem; class QMediaPlayer; class QAudioOutput;
+class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class QMediaPlayer; class QAudioOutput;
 class QToolButton; class QSlider; class QLabel; class QLineEdit;
 class QTimer;
 class QPropertyAnimation;
@@ -24,18 +37,55 @@ class VideoTimeline;
 class VideoPreviewProvider;
 class CropController;
 class CropBar;
+class ZoomBar;
+class FragmentBar;
+class ExportPanel;
+class MiniMap;
 enum class RedactMode;
 
 enum class SaveRoute { ExplicitOutput, BoltsnapCard, ConfigDirectory, Shelf };
 SaveRoute saveRoute(const CliOptions &cli, const Config &cfg);
+class EditorWindow;
+// Opens `manifestPath` in a new editor window, or explains why not.
+EditorWindow *openProjectWindow(const QString &manifestPath, const Config &cfg, const CliOptions &cli,
+                                QString *error);
 
 class EditorWindow : public QWidget {
     Q_OBJECT
+    // Start of the last shown video frame in source ms, for preview tests.
+    Q_PROPERTY(qint64 presentedStart MEMBER m_presentedStart)
 public:
     EditorWindow(const QImage &image, const Config &cfg, const CliOptions &cli, QWidget *parent=nullptr);
     EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent=nullptr);
     ~EditorWindow() override;
     QImage exportComposite();   // for tests + save/copy
+    StudioStyle studioStyle() const { return m_studio.style; }
+    void setStudioStyle(const StudioStyle &style);   // not an undo step on its own
+    StudioDocument studioDocument() const { return m_studio; }
+    void setStudioDocument(const StudioDocument &doc);   // not an undo step on its own
+    quint32 selectedZoom() const { return m_selectedZoom; }
+    void selectZoom(quint32 id);
+    // The unzoomed view: the crop, narrowed by "keep zoomed in".
+    QRect cameraBase() const;
+    void openStudio();
+    // Projects (21.09. plan 5): the whole editable document with its original.
+    ProjectSnapshot projectSnapshot() const;
+    bool applyProject(const ProjectSnapshot &project, const QString &manifestPath, QString *error);
+    QString projectPath() const { return m_projectPath; }
+    // `path` skips the dialog; saving runs in the background.
+    void saveProject(bool saveAs = false, const QString &path = {});
+    // Kept edits for Resume. Off unless the app turns it on, so tests and
+    // tools never write into the user's recovery folder.
+    static void setRecoveryEnabledByDefault(bool on);
+    void setRecoveryDelays(int idleMs, int maxMs);
+    QString recoveryManifest() const;
+    // Continues a kept edit in this window: same entry, unnamed.
+    void adoptRecovery(const QString &id);
+    void openResumeDialog();
+signals:
+    void projectSaved(const QString &path);
+    void recoveryWritten(const QString &manifest);
+public:
 public slots:
     void save();   // to file/save-dir per cli/config
     void copy();   // to clipboard
@@ -54,6 +104,13 @@ private:
     void refreshTextBar();
     void positionTextBar();
     TextItem *selectedText() const;
+    class StepItem *selectedStep() const;
+    void refreshStepBar();
+    void renumberSteps();
+    QList<QGraphicsItem *> alignableSelection() const;
+    void refreshSelectionBar();
+    void positionContextBars();
+    void moveSelection(const QVector<QPointF> &deltas, const QString &name);
     void updateSelectedText(const std::function<void(TextItem *)> &change);
     SpotlightItem *selectedSpotlight() const;
     void refreshSpotlightBar();
@@ -76,9 +133,10 @@ private:
     void scheduleVideoExportCache(int delayMs = 350);
     void startVideoExportCache();
     void finishVideoExportCache(int revision, const QString &path, const DeliverResult &result);
+    void cancelVideoExport();
     QString createVideoTempPath() const;
     void completePendingVideoActions(const QString &path, bool takeOwnership);
-    void failPendingVideoActions();
+    void failPendingVideoActions(const QString &reason = {});
     void runVideoIpc(const std::function<DeliverResult()> &operation,
                      const std::function<void(const DeliverResult &)> &completion,
                      const QString &pinnedPath = {});
@@ -92,6 +150,8 @@ private:
                           bool fallbackOnFailure = false);
     void saveVideo();
     void ensureVideoPlayer();
+    bool updateVideoBackground();
+    void showVideoStill();
     void togglePlayback();
     void handlePlaybackEnd();
     void scheduleVideoLoad();
@@ -101,12 +161,93 @@ private:
     void setVideoPreviewImage(const QImage &image);
     RedactItem *selectedRedact() const;   // the sole selected RedactItem, or nullptr
     void doUndo();
+    void cancelGestures();
     void doRedo();
     void toggleTheme();
     void setupCrop();
     void finishCrop();
     void setCropRect(QRect rect);
     void positionCropBar();
+    void updateStudioPreview();
+    QString configPath() const;
+    void editStudio(const std::function<void(StudioDocument &)> &change, int mergeKey = 0);
+    void editZoom(quint32 id, const std::function<void(ZoomSegment &)> &change, int mergeKey = 0);
+    void removeZoom(quint32 id);
+    void applyContentRect();
+    QRect cameraContent() const;
+    QRectF currentCamera() const;
+    double cameraTime() const;
+    void rebuildCamera();
+    void updateCamera();
+    void refreshZoomUi();
+    void positionZoomUi();
+    void addZoomAt(qint64 sourceMs);
+    void selectFragment(int index);
+    void refreshMasks();
+    void applyTimeWindows(qint64 sourceMs);
+    void setTimeScope(AnnotationItem *item, bool fromPlayhead);
+    QVector<TimedOverlay> renderTimedOverlays();
+    void splitAtPlayhead();
+    void followPlaybackPieces(qint64 sourceMs);
+    FragmentBar *m_fragmentBar = nullptr;
+    int m_selectedFragment = -1;
+    bool m_timelineTrimming = false;   // what the running timeline gesture is
+    qreal m_previewRate = 1.0;       // the speed menu's rate; fragments multiply it
+    void moveCameraTarget(QPointF delta);
+    void finishCameraGesture(bool cancelled);
+    void openExportPanel();
+    void openProjectDialog();
+    void writeSnapshot(const QString &target, const AssetResult &known, bool progress,
+                       std::function<void(const AssetResult &, const QString &)> done);
+    void noteRecoveryChange();
+    bool gestureRunning() const;
+    void writeRecovery();
+    void flushRecovery();
+    bool claimRecovery();   // a fresh entry, locked by this window
+    void dropRecovery();    // removes an entry that never got a snapshot
+    void offerKeptEdit();
+    QTimer *m_recoveryIdle = nullptr;
+    QTimer *m_recoveryMax = nullptr;
+    QString m_recoveryId;
+    std::unique_ptr<QLockFile> m_recoveryLock;
+    AssetResult m_recoveryAsset;
+    QString m_projectSource;          // where a reopened edit's original came from
+    bool m_recoveryEnabled = false;
+    bool m_recoveryPending = false;
+    bool m_recoveryWriting = false;
+    bool m_closeAfterRecovery = false;   // closing waits for the running snapshot
+    bool m_recoveryPaused = false;
+    bool m_restoring = false;
+    QString m_projectPath;
+    AssetResult m_projectAssetInfo;   // the original as it sits in m_projectPath's assets
+    QString m_projectSourceName;
+    bool m_projectSaving = false;
+    bool shelfTakes() const;
+    QString outputSuffix() const;
+    ExportSettings m_exportSettings;  // video only; remembered in the config
+    ExportPanel *m_exportPanel = nullptr;
+    StudioDocument m_studio;          // this document; off by default
+    quint32 m_selectedZoom = 0;
+    QPointF m_lastZoomPoint;          // where a new zoom points first
+    struct CameraInputs {
+        QVector<ZoomSegment> zooms;
+        QVector<Fragment> fragments;
+        QRect content, base;
+        qint64 trimIn = -1, trimOut = -1, duration = -1;
+        bool follows = false;
+        bool operator==(const CameraInputs &) const = default;
+    };
+    CameraInputs m_cameraInputs;      // what m_cameraPath was built from
+    std::shared_ptr<const CursorTrack> m_cursorTrack;   // Boltsnap's pointer, when it came along
+    TimeMap m_timeMap;
+    CameraPath m_cameraPath;
+    QTimer *m_cameraRebuild = nullptr;   // coalesces rebuilds while a lane drag previews
+    ZoomBar *m_zoomBar = nullptr;
+    MiniMap *m_miniMap = nullptr;
+    bool m_cameraGesture = false;
+    bool m_showBaseView = false;      // while "keep zoomed in" is dragged
+    StudioDocument m_cameraGestureBefore;
+    QPointer<QWidget> m_studioPopover;
     CropController *m_crop = nullptr;
     CropBar *m_cropBar = nullptr;
     QRect m_cropRect;
@@ -122,8 +263,11 @@ private:
     QMediaPlayer *m_player = nullptr;
     QAudioOutput *m_audioOutput = nullptr;
     QGraphicsVideoItem *m_videoItem = nullptr;
+    QGraphicsPixmapItem *m_videoStill = nullptr;
     QToolButton *m_playButton = nullptr;
     QToolButton *m_muteButton = nullptr;
+    QAction *m_outputAudio = nullptr;
+    QLabel *m_noAudio = nullptr;
     QToolButton *m_loopButton = nullptr;
     QToolButton *m_speedButton = nullptr;
     bool m_loopSeeking = false;
@@ -141,6 +285,7 @@ private:
     QSlider *m_volumeSlider = nullptr;
     QLabel *m_timeLabel = nullptr;
     QLabel *m_exportStatus = nullptr;
+    QToolButton *m_exportCancel = nullptr;
     QLineEdit *m_trimInLabel = nullptr;
     QLineEdit *m_trimOutLabel = nullptr;
     QLabel *m_trimDurationLabel = nullptr;
@@ -153,6 +298,8 @@ private:
     bool m_seekSettling = false;
     bool m_resumeAfterSeek = false;
     bool m_hasVideoFrame = false;
+    QVideoFrame m_lastVideoFrame;
+    bool m_videoBackgroundCurrent = false;
     bool m_hasSentVideoSeek = false;
     bool m_copyFramePending = false;
     QLabel *m_tooltip = nullptr;
@@ -171,6 +318,7 @@ private:
     int m_cachedVideoRevision = -1;
     bool m_videoExportInProgress = false;
     bool m_videoExportPending = false;
+    std::shared_ptr<std::atomic_bool> m_videoExportCancel;
     bool m_videoStatusRequested = false;
     bool m_copyVideoPending = false;
     bool m_sendVideoToShelfPending = false;
@@ -194,6 +342,8 @@ private:
     RedactOcrController *m_ocr = nullptr;
     RedactBar *m_redactBar = nullptr;
     TextBar *m_textBar = nullptr;
+    class StepBar *m_stepBar = nullptr;
+    class SelectionBar *m_selectionBar = nullptr;
     SpotlightBar *m_spotlightBar = nullptr;
     Toast *m_toast = nullptr;
     DragPill *m_dragPill = nullptr;

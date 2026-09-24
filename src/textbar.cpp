@@ -21,7 +21,7 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("TextBar"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4,3,4,3);
+    layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(2);
 
     auto *sizes = new QButtonGroup(this); sizes->setExclusive(true);

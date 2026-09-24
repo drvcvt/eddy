@@ -12,6 +12,109 @@ using namespace eddy;
 class TestCanvas : public QObject {
     Q_OBJECT
 private slots:
+    void cameraShowsItsWindowWhereTheContentSits() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(440, 240);
+        canvas.show();
+        canvas.resetZoom();
+        const QPoint topLeft = canvas.mapFromScene(QPointF(0, 0));
+        const QPoint bottomRight = canvas.mapFromScene(QPointF(400, 200));
+        auto near = [](QPoint a, QPoint b) { return (a - b).manhattanLength() <= 2; };
+        // 2x on the top-right quarter: it fills the place of the whole content.
+        canvas.setCamera(QRectF(200, 0, 200, 100));
+        QCOMPARE(canvas.camera(), QRectF(200, 0, 200, 100));
+        QVERIFY(near(canvas.mapFromScene(QPointF(200, 0)), topLeft));
+        QVERIFY(near(canvas.mapFromScene(QPointF(400, 100)), bottomRight));
+        // Without the camera the view is back where it was.
+        canvas.setCamera({});
+        QVERIFY(canvas.camera().isEmpty());
+        QVERIFY(near(canvas.mapFromScene(QPointF(0, 0)), topLeft));
+        // The user's own zoom stays theirs.
+        canvas.setCamera(QRectF(200, 0, 200, 100));
+        canvas.zoomBy(2);
+        QCOMPARE(canvas.zoom(), 2.0);
+        QCOMPARE(canvas.transform().m11(), 4.0);
+        canvas.setCamera({});
+        QCOMPARE(canvas.transform().m11(), 2.0);
+        // A camera equal to the content is no camera.
+        canvas.setCamera(QRectF(0, 0, 400, 200));
+        QVERIFY(canvas.camera().isEmpty());
+    }
+    void cameraStaysInsideTheContentWithoutStudio() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        scene.addRect(QRectF(0, 0, 400, 200), Qt::NoPen, Qt::red);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(520, 320);
+        canvas.show();
+        canvas.resetZoom();
+        QSignalSpy views(&canvas, &Canvas::viewChanged);
+        const QPoint outside = canvas.mapFromScene(QPointF(-20, 100));
+        canvas.setCamera(QRectF(100, 50, 200, 100));
+        QVERIFY(views.count() >= 1);   // overlays re-anchor to the zoomed items
+        // The zoomed picture ends at the content's edge, as in the export.
+        QVERIFY(canvas.viewport()->grab().toImage().pixelColor(outside) != QColor(Qt::red));
+    }
+    void studioFrameStaysPutUnderTheCamera() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(520, 320);
+        canvas.show();
+        QPixmap red(10, 10);
+        red.fill(Qt::red);
+        canvas.setStudioFrame(red, QRectF(-40, -40, 480, 280), 0);
+        canvas.resetZoom();
+        const QPoint frame = canvas.mapFromScene(QPointF(-20, 100));
+        QCOMPARE(canvas.viewport()->grab().toImage().pixelColor(frame), QColor(Qt::red));
+        canvas.setCamera(QRectF(100, 50, 200, 100));
+        QCOMPARE(canvas.viewport()->grab().toImage().pixelColor(frame), QColor(Qt::red));
+    }
+    void cameraDragReportsDocumentDistances() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        auto *item = new RectItem(QRectF(0, 0, 40, 40));
+        item->setFlags(QGraphicsItem::ItemIsMovable | QGraphicsItem::ItemIsSelectable);
+        item->setPos(20, 20);
+        scene.addItem(item);
+        tools.setTool(ToolType::Move);
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(440, 240);
+        canvas.show();
+        canvas.resetZoom();
+        canvas.setCamera(QRectF(0, 0, 200, 100));   // 2x
+        canvas.setCameraDragEnabled(true);
+        QSignalSpy dragged(&canvas, &Canvas::cameraDragged);
+        QSignalSpy finished(&canvas, &Canvas::cameraDragFinished);
+        const QPoint empty = canvas.mapFromScene(QPointF(150, 70));
+        QTest::mousePress(canvas.viewport(), Qt::LeftButton, Qt::NoModifier, empty);
+        QTest::mouseMove(canvas.viewport(), empty + QPoint(40, 0));
+        QTest::mouseRelease(canvas.viewport(), Qt::LeftButton, Qt::NoModifier, empty + QPoint(40, 0));
+        QPointF total;
+        for (const auto &args : dragged) total += args.first().toPointF();
+        QVERIFY2(qAbs(total.x() - 20) < 0.5 && qAbs(total.y()) < 0.5,
+                 qPrintable(QStringLiteral("%1,%2 in %3 moves").arg(total.x()).arg(total.y()).arg(dragged.count())));
+        QCOMPARE(finished.count(), 1);
+        QCOMPARE(finished.first().first().toBool(), false);
+        // On an annotation the drag moves the annotation, as always.
+        dragged.clear();
+        const QPoint onItem = canvas.mapFromScene(QPointF(30, 30));
+        QTest::mousePress(canvas.viewport(), Qt::LeftButton, Qt::NoModifier, onItem);
+        QTest::mouseMove(canvas.viewport(), onItem + QPoint(20, 0));
+        QTest::mouseRelease(canvas.viewport(), Qt::LeftButton, Qt::NoModifier, onItem + QPoint(20, 0));
+        QCOMPARE(dragged.count(), 0);
+        QVERIFY(item->pos().x() > 20);
+    }
     void constructsAndShows() {
         QGraphicsScene scene(0,0,50,50);
         QUndoStack undo;
@@ -240,6 +343,7 @@ private slots:
         ToolController tools(&scene, &undo, QImage(240,140,QImage::Format_ARGB32_Premultiplied));
         tools.setTool(ToolType::Text);
         Canvas canvas(&scene, &tools);
+        canvas.setSnapping(false);   // the exact pointer offset is the point here
         canvas.resize(260,160);
         canvas.show();
         auto *text = new TextItem(QStringLiteral("Move me"), Qt::red, 18);

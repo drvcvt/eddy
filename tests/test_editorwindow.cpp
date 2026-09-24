@@ -14,11 +14,16 @@
 #include "videotimeline.h"
 #include "items/spotlightitem.h"
 #include "undocommands.h"
+#include "studiopopover.h"
+#include <QUndoStack>
+#include <QSlider>
 #include <QMediaPlayer>
 #include <QAudioOutput>
 #include <QSlider>
 #include <QToolButton>
 #include <QLabel>
+#include <QLayout>
+#include <QFontInfo>
 #include <QClipboard>
 #include <QDataStream>
 #include <QElapsedTimer>
@@ -114,12 +119,109 @@ private slots:
         QApplication::sendEvent(fit, &help);
         auto *hint = window.findChild<QLabel *>("CompactTooltip");
         QVERIFY(hint && hint->isVisible());
-        QCOMPARE(hint->text(), fit->toolTip());
+        // The shortcut is a quieter column, not glued on with a separator glyph.
+        QCOMPARE(fit->toolTip(), QStringLiteral("Fit to window\t0"));
+        QCOMPARE(hint->text(), theme::tooltipHtml(fit->toolTip()));
+        QVERIFY(hint->text().contains(QStringLiteral(">Fit to window<")));
+        QVERIFY(hint->text().contains(QStringLiteral(">0<")));
         QVERIFY(window.rect().contains(hint->geometry()));
         QVERIFY(hint->testAttribute(Qt::WA_TransparentForMouseEvents));
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(fit, &leave);
         QVERIFY(!hint->isVisible());
+    }
+    void noTextUsesADotSeparator() {
+        // Separators are layout (columns, lines, gaps), never a middle dot.
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("dots.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=2:r=25", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(64, 48), 2000, 25.0};
+        Config cfg; cfg.animations = false;
+        CliOptions cli; cli.configPath = dir.filePath("config");
+        EditorWindow window(doc, cfg, cli);
+        window.show();
+        QTest::keyClick(&window, Qt::Key_Z);   // zoom bar and mini map exist and show
+        window.openStudio();
+        const QChar dot(0x00B7);
+        QStringList found;
+        if (window.windowTitle().contains(dot)) found << window.windowTitle();
+        for (QWidget *w : window.findChildren<QWidget *>()) {
+            for (const QString &text : {w->toolTip(), w->accessibleName(), w->statusTip()})
+                if (text.contains(dot)) found << w->objectName() + ": " + text;
+            if (auto *b = qobject_cast<QAbstractButton *>(w); b && b->text().contains(dot))
+                found << w->objectName() + ": " + b->text();
+            if (auto *l = qobject_cast<QLabel *>(w); l && l->text().contains(dot))
+                found << w->objectName() + ": " + l->text();
+            for (QAction *a : w->actions())
+                if (a->text().contains(dot) || a->toolTip().contains(dot)) found << a->text();
+        }
+        QVERIFY2(found.isEmpty(), qPrintable(found.join('\n')));
+    }
+    void chromeFollowsTheDensityRules() {
+        // mt-ui-style, measured on the real widgets rather than eyeballed: spacing
+        // from one scale, equal surface padding, one height per row, and no icon
+        // larger than the label beside it.
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("density.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=4:r=25", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(64, 48), 4000, 25.0};
+        Config cfg; cfg.animations = false;
+        qApp->setStyleSheet(theme::styleSheet(true));
+        const auto restoreSheet = qScopeGuard([] { qApp->setStyleSheet({}); });
+        EditorWindow window(doc, cfg, {});
+        window.resize(1000, 640);
+        window.show();
+        QTest::qWait(50);
+        static const QSet<int> scale{0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 72};
+        QStringList bad;
+        auto name = [](const QObject *o) {
+            for (; o; o = o->parent()) if (!o->objectName().isEmpty()) return o->objectName();
+            return QStringLiteral("?");
+        };
+        for (auto *layout : window.findChildren<QLayout *>()) {
+            const QMargins m = layout->contentsMargins();
+            for (int v : {m.left(), m.top(), m.right(), m.bottom(), layout->spacing()})
+                if (v >= 0 && !scale.contains(v))
+                    bad << QStringLiteral("%1: layout value %2 is off the scale").arg(name(layout)).arg(v);
+            // Bars and cards are surfaces: the same gap to all four edges.
+            auto *surface = layout->parentWidget();
+            if (surface && layout == surface->layout() && surface->autoFillBackground() == false
+                && QStringList{"RedactBar", "TextBar", "SpotlightBar", "CropBar", "Toast",
+                               "ColorPopover", "VideoPreview", "ZoomBar"}.contains(surface->objectName())
+                && !(m.left() == m.top() && m.top() == m.right() && m.right() == m.bottom()))
+                bad << QStringLiteral("%1: unequal padding %2/%3/%4/%5").arg(surface->objectName())
+                           .arg(m.left()).arg(m.top()).arg(m.right()).arg(m.bottom());
+            QSet<int> heights;
+            if (qobject_cast<QHBoxLayout *>(layout))
+                for (int i = 0; i < layout->count(); ++i)
+                    if (auto *b = qobject_cast<QAbstractButton *>(layout->itemAt(i)->widget()))
+                        heights << b->height();
+            if (heights.size() > 1)
+                bad << QStringLiteral("%1: mixed control heights in one row").arg(name(layout));
+        }
+        for (auto *b : window.findChildren<QToolButton *>()) {
+            const int px = QFontInfo(b->font()).pixelSize();
+            if (px != theme::kFsMicro && px != theme::kFsSmall && px != theme::kFsBody)
+                bad << QStringLiteral("%1: %2px text").arg(name(b)).arg(px);
+            const bool labelled = !b->text().isEmpty() && !b->icon().isNull()
+                && b->toolButtonStyle() != Qt::ToolButtonIconOnly;
+            if (labelled && theme::iconInk(b->iconSize().height()) > px)
+                bad << QStringLiteral("%1: %2px icon beside %3px text")
+                           .arg(name(b)).arg(b->iconSize().height()).arg(px);
+        }
+        for (auto *l : window.findChildren<QLabel *>()) {
+            const int px = QFontInfo(l->font()).pixelSize();
+            if (!l->text().isEmpty() && px != theme::kFsMicro && px != theme::kFsSmall)
+                bad << QStringLiteral("%1: %2px text").arg(name(l)).arg(px);
+        }
+        bad.removeDuplicates();
+        QVERIFY2(bad.isEmpty(), qPrintable(bad.join(QStringLiteral("\n   "))));
     }
     void spaceTogglesVideoButNeverAfterPanningOrTyping() {
         if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
@@ -209,7 +311,7 @@ private slots:
         for (const char *name : {"Undo", "Redo", "move", "arrow", "pen", "rect",
                                  "ellipse", "highlight", "text", "redact", "spotlight",
                                  "WidthS", "WidthM", "WidthL", "Swatch", "Save", "Copy",
-                                 "SendToShelf", "Theme"}) {
+                                 "SendToShelf", "Studio", "Theme"}) {
             auto *button = window.findChild<QToolButton *>(QString::fromLatin1(name));
             QVERIFY2(button, name);
             QVERIFY2(button->isVisible(), name);
@@ -750,6 +852,106 @@ private slots:
         QCOMPARE(window.findChild<QUndoStack *>()->count(), undoCount);
         QVERIFY(videoItem->isVisible());
     }
+    void pausedVideoStaysVisibleBeforePlayback() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("still-with-audio.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=red:s=96x64:r=25:d=1", "-f", "lavfi", "-i",
+            "color=blue:s=96x64:r=25:d=1", "-f", "lavfi", "-i",
+            "anullsrc=r=48000:cl=stereo", "-filter_complex_threads", "1",
+            "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+            "-map", "[v]", "-map", "2:a", "-t", "2", "-c:v", "libx264",
+            "-threads", "1", "-g", "25", "-pix_fmt", "yuv420p", "-c:a", "aac", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(96, 64), 2000, 25};
+        EditorWindow window(doc, Config{}, {});
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        auto *canvas = window.findChild<Canvas *>();
+        QSignalSpy states(player, &QMediaPlayer::playbackStateChanged);
+        const auto visibleColor = [&] {
+            const QImage image = canvas->viewport()->grab().toImage();
+            const QPoint point = canvas->mapFromScene(QPointF(48, 32)) * image.devicePixelRatio();
+            return image.pixelColor(point);
+        };
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        QTRY_VERIFY(visibleColor().red() > 200 && visibleColor().blue() < 40);
+        QCOMPARE(player->position(), 0);
+        for (const auto &change : states)
+            QVERIFY(change.first().value<QMediaPlayer::PlaybackState>() != QMediaPlayer::PlayingState);
+
+        // A cleared backend surface must not erase a paused, already decoded still.
+        video->videoSink()->setVideoFrame(QVideoFrame());
+        QVERIFY(visibleColor().red() > 200 && visibleColor().blue() < 40);
+        QTest::keyClick(&window, Qt::Key_Space);
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
+        QTRY_VERIFY(visibleColor().blue() > 200 && visibleColor().red() < 40);
+        QTest::keyClick(&window, Qt::Key_Space);
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PausedState);
+        video->videoSink()->setVideoFrame(QVideoFrame());
+        QVERIFY(visibleColor().blue() > 200 && visibleColor().red() < 40);
+        window.copyVideoFrame();
+        QVERIFY(QApplication::clipboard()->image().pixelColor(48, 32).blue() > 200);
+        QCOMPARE(window.exportComposite().pixelColor(48, 32).alpha(), 0);
+    }
+    void shrunkVideoMatchesAnAreaFilteredFrame() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        // A one-pixel checkerboard turns into moiré unless the shrunk view is area-filtered.
+        QTemporaryDir dir;
+        const QString path = dir.filePath("checker.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "nullsrc=s=320x192:r=25:d=3,format=gray,geq=lum='if(mod(X+Y\\,2)\\,235\\,16)'",
+            "-c:v", "libx264", "-qp", "0", "-threads", "1", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(320, 192), 3000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.resize(900, 640);
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        auto *canvas = window.findChild<Canvas *>();
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        QTRY_COMPARE(video->childItems().size(), 1);
+        QGraphicsItem *still = video->childItems().first();
+        QTRY_VERIFY(still->isVisible());
+        const auto difference = [&] {
+            const QImage shown = canvas->viewport()->grab().toImage().convertToFormat(QImage::Format_RGB32);
+            const QRectF mapped = canvas->viewportTransform().mapRect(QRectF(0, 0, 320, 192));
+            const QRect device(QPoint(qRound(mapped.left()), qRound(mapped.top())),
+                               QPoint(qRound(mapped.right()) - 1, qRound(mapped.bottom()) - 1));
+            const QImage reference = video->videoSink()->videoFrame().toImage()
+                .scaled(device.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+                .convertToFormat(QImage::Format_RGB32);
+            double sum = 0; int count = 0;
+            for (int y = 2; y < device.height() - 2; ++y)
+                for (int x = 2; x < device.width() - 2; ++x) {
+                    const QRgb a = shown.pixel(device.topLeft() + QPoint(x, y)), b = reference.pixel(x, y);
+                    sum += qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b)) + qAbs(qBlue(a) - qBlue(b));
+                    count += 3;
+                }
+            return sum / qMax(1, count);
+        };
+        for (double zoom : {0.45, 0.72}) {
+            canvas->restoreView(QTransform::fromScale(zoom, zoom), QPointF(160, 96), false);
+            QVERIFY2(difference() < 2, qPrintable(QStringLiteral("paused %1: %2").arg(zoom).arg(difference())));
+        }
+        player->play();
+        QTRY_COMPARE(player->playbackState(), QMediaPlayer::PlayingState);
+        QTRY_VERIFY(!still->isVisible());
+        const double playing = difference();
+        player->pause();
+        QVERIFY2(playing < 2, qPrintable(QStringLiteral("playing: %1").arg(playing)));
+        // Actual size stays an exact copy of the frame.
+        canvas->resetZoom();
+        QVERIFY2(difference() == 0, qPrintable(QString::number(difference())));
+    }
     void realVideoScrubCopyLoopAndStop() {
         if (!have("ffmpeg")) QSKIP("ffmpeg not available");
         QTemporaryDir dir;
@@ -1075,10 +1277,124 @@ private slots:
 
         w.sendToShelf();
         QVERIFY(toast->text().contains(QStringLiteral("Preparing")));
-        QTRY_COMPARE_WITH_TIMEOUT(toast->text(), QStringLiteral("Video export failed"), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(toast->text().startsWith(QStringLiteral("Video export failed: ")), 5000);
+        QVERIFY2(toast->text().contains(QStringLiteral("No such file")), qPrintable(toast->text()));
+        const auto *status = w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"));
+        QVERIFY(status);
+        QCOMPARE(status->text(), QStringLiteral("Export failed"));
+        QVERIFY(status->toolTip().contains(QStringLiteral("eddy-missing-video-export-test")));
         const auto *exportTimer = w.findChild<QTimer *>(QStringLiteral("VideoExportTimer"));
         QVERIFY(exportTimer);
         QVERIFY(!exportTimer->isActive());
+    }
+    void runningVideoExportCanBeCancelled() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        // Fail the hardware probes quickly, then hang like a stuck encoder.
+        script.write("#!/bin/sh\ncase \"$*\" in *lavfi*) exit 1;; esac\nwhile :; do sleep 0.05; done\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/eddy-cancel-video-export-test.mp4");
+        doc.video.size = QSize(64, 48);
+        doc.video.durationMs = 1000;
+        doc.video.fps = 25.0;
+        Config cfg; cfg.animations = false;
+        CliOptions cli;
+        EditorWindow w(doc, cfg, cli);
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *toast = w.findChild<Toast *>();
+        auto *cancel = w.findChild<QToolButton *>(QStringLiteral("VideoExportCancel"));
+        auto *status = w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"));
+        QVERIFY(timeline && toast && cancel && status);
+        QVERIFY(cancel->isHidden());
+        timeline->setPosition(200);
+        QTest::keyClick(&w, Qt::Key_I);
+
+        w.sendToShelf();
+        QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
+        QTest::mouseClick(cancel, Qt::LeftButton);
+        QCOMPARE(toast->text(), QStringLiteral("Video export cancelled"));
+        QVERIFY(cancel->isHidden());
+        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QStringLiteral("Edited"), 2000);
+        qputenv("PATH", oldPath);
+        QCOMPARE(toast->text(), QStringLiteral("Video export cancelled"));
+        QVERIFY2(w.close(), "window stayed blocked after cancelling the export");
+#endif
+    }
+    void studioIsOffByDefault() {
+        QImage img(200, 100, QImage::Format_ARGB32); img.fill(Qt::red);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(img, cfg, {});
+        QVERIFY(!w.studioStyle().active());
+        auto *button = w.findChild<QToolButton *>(QStringLiteral("Studio"));
+        QVERIFY(button && !button->isChecked());
+        QCOMPARE(w.exportComposite().size(), QSize(200, 100));
+    }
+    void studioFramesTheImageExport() {
+        QImage img(200, 100, QImage::Format_ARGB32); img.fill(Qt::red);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(img, cfg, {});
+        StudioStyle style;
+        style.background = StudioStyle::Background::Color;
+        style.color = QColor(0, 0, 255);
+        style.padding = 10; style.radius = 0; style.shadow = 0;
+        w.setStudioStyle(style);
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("Studio"))->isChecked());
+        QImage out = w.exportComposite();
+        QCOMPARE(out.size(), QSize(220, 120));
+        QCOMPARE(out.pixelColor(2, 2), QColor(0, 0, 255));
+        QCOMPARE(out.pixelColor(110, 60), QColor(255, 0, 0));
+    }
+    void studioSessionIsOneUndoStepAndRemembersTheStyle() {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        CliOptions cli; cli.configPath = dir.filePath(QStringLiteral("config"));
+        QImage img(200, 100, QImage::Format_ARGB32); img.fill(Qt::red);
+        Config cfg; cfg.animations = false;
+        StudioStyle chosen;
+        {
+            EditorWindow w(img, cfg, cli);
+            auto *undo = w.findChild<QUndoStack *>();
+            QVERIFY(undo);
+            w.openStudio();
+            QVERIFY2(w.studioStyle().active(), "opening Studio switches it on with the last style");
+            auto *popover = w.findChild<StudioPopover *>();
+            QVERIFY(popover);
+            // The output size follows the style: 200x100 grows by the padding.
+            const auto *size = popover->findChild<QLabel *>(QStringLiteral("StudioSize"));
+            QVERIFY(size);
+            const QSize out = studioLayout(QSize(200, 100), w.studioStyle()).output;
+            QCOMPARE(size->text(), QStringLiteral("%1 × %2").arg(out.width()).arg(out.height()));
+            // Several slider moves inside one popover session.
+            for (auto *slider : popover->findChildren<QSlider *>()) slider->setValue(30);
+            chosen = w.studioStyle();
+            const QSize grown = studioLayout(QSize(200, 100), chosen).output;
+            QCOMPARE(size->text(), QStringLiteral("%1 × %2").arg(grown.width()).arg(grown.height()));
+            popover->close();
+            QTRY_VERIFY(!w.findChild<StudioPopover *>());
+            QCOMPARE(undo->count(), 1);
+            undo->undo();
+            QVERIFY(!w.studioStyle().active());
+            undo->redo();
+            QCOMPARE(w.studioStyle(), chosen);
+        }
+        // A new document starts off, but switching on restores the last style.
+        EditorWindow next(img, cfg, cli);
+        QVERIFY(!next.studioStyle().active());
+        next.openStudio();
+        QCOMPARE(next.studioStyle().padding, chosen.padding);
+        QCOMPARE(next.studioStyle().shadow, chosen.shadow);
+        QCOMPARE(next.studioStyle().color, chosen.color);
     }
     void videoDocumentDefersPlayerCreationUntilShow() {
         MediaDocument doc;
@@ -1214,6 +1530,9 @@ private slots:
             QVERIFY(copied != doc.path);
             timeline->setPosition(800);
             QTest::keyClick(&w, Qt::Key_I);
+            QTest::mouseClick(w.findChild<DragPill *>(), Qt::LeftButton);
+            QTRY_COMPARE_WITH_TIMEOUT(w.findChild<QLabel *>("DragPillText")->text(),
+                                      QStringLiteral("Drag out"), 5000);
             QTRY_VERIFY_WITH_TIMEOUT(w.findChild<DragPill *>()->isEnabled(), 5000);
             QVERIFY2(QFileInfo::exists(copied),
                      "cache refresh removed the video still referenced by the clipboard");
@@ -1444,7 +1763,7 @@ private slots:
         QVERIFY2(QFileInfo::exists(video), "handoff removed the original video");
     }
 #endif
-    void failedVideoSaveToShelfUsesOnlyTheWindowsClipboardFallback() {
+    void failedVideoSaveToShelfFallsBackToTheClipboard() {
         QTemporaryDir dir;
         QVERIFY(dir.isValid());
         const QString video = dir.filePath(QStringLiteral("input.mp4"));
@@ -1472,21 +1791,17 @@ private slots:
         window.save();
         QTRY_COMPARE_WITH_TIMEOUT(toast->text(),
                                   QStringLiteral("Boltsnap shelf unavailable"), 3000);
-#ifdef Q_OS_WIN
         QVERIFY(QGuiApplication::clipboard()->mimeData()->hasUrls());
         QCOMPARE(QFileInfo(QGuiApplication::clipboard()->mimeData()->urls().first().toLocalFile())
                      .canonicalFilePath(),
                  QFileInfo(video).canonicalFilePath());
-#else
-        QCOMPARE(QGuiApplication::clipboard()->text(), QStringLiteral("sentinel"));
-#endif
 
         if (oldSocket.isNull())
             qunsetenv("EDDY_BOLTSNAP_SOCKET");
         else
             qputenv("EDDY_BOLTSNAP_SOCKET", oldSocket);
     }
-    void videoDragWaitsForCurrentExport() {
+    void videoEditsOnlyExportWhenRequested() {
         if (!have(QStringLiteral("ffmpeg")))
             QSKIP("ffmpeg not available");
         QTemporaryDir dir;
@@ -1512,8 +1827,27 @@ private slots:
         QVERIFY(pill && scene && undo);
 
         undo->push(new AddItemCommand(scene, new RectItem(QRectF(4, 4, 12, 12))));
-        QVERIFY(!pill->isEnabled());
+        auto *timer = w.findChild<QTimer *>("VideoExportTimer");
+        auto *label = pill->findChild<QLabel *>("DragPillText");
+        QVERIFY(timer && label);
+        QVERIFY(!timer->isActive());
+        QVERIFY(pill->isEnabled());
+        QCOMPARE(label->text(), QStringLiteral("Prepare drag"));
+        QTest::qWait(450); // Editing alone must not start the old debounced export.
+        QCOMPARE(label->text(), QStringLiteral("Prepare drag"));
+        QVERIFY(!timer->isActive());
+
+        QTest::mouseClick(pill, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(label->text(), QStringLiteral("Drag out"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(pill->isEnabled(), 5000);
+        undo->undo();
+        QCOMPARE(label->text(), QStringLiteral("Drag out"));
+        QVERIFY(!timer->isActive());
+        undo->redo();
+        QCOMPARE(label->text(), QStringLiteral("Prepare drag"));
+        QVERIFY(!timer->isActive());
+        QTest::keyClick(pill, Qt::Key_Return);
+        QTRY_COMPARE_WITH_TIMEOUT(label->text(), QStringLiteral("Drag out"), 5000);
     }
 };
 QTEST_MAIN(TestEditorWindow)

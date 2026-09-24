@@ -2,6 +2,9 @@
 #include <QGraphicsItem>
 #include <QColor>
 #include <QRectF>
+#include <algorithm>
+#include <optional>
+#include <utility>
 
 namespace eddy {
 
@@ -20,9 +23,21 @@ public:
     virtual void setRect(const QRectF &) {}              // no-op for arrow/pen
     virtual AnnotationItem *clone() const = 0;
 
+    // Redactions and spotlights may show for a stretch of a video only (studio
+    // plan 6.7): [from, to) in source ms; empty is the whole clip.
+    using TimeWindow = std::optional<std::pair<qint64, qint64>>;
+    static constexpr qint64 kMinWindowMs = 100;
+    // The latest start that still leaves a window before `durationMs`.
+    static qint64 windowStart(qint64 ms, qint64 durationMs) {
+        return std::clamp<qint64>(ms, 0, std::max<qint64>(0, durationMs - kMinWindowMs));
+    }
+    TimeWindow timeWindow() const { return m_window; }
+    void setTimeWindow(TimeWindow window) { m_window = window; }
+
 protected:
     QColor m_stroke = QColor("#ff3b30");
     double m_width = 4.0;
+    TimeWindow m_window;
 };
 
 }

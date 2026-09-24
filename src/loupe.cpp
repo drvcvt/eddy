@@ -1,4 +1,5 @@
 #include "loupe.h"
+#include "theme.h"
 #include <QPainter>
 #include <QPainterPath>
 #include <QFont>
@@ -116,7 +117,7 @@ void Loupe::paintEvent(QPaintEvent *) {
     p.drawRoundedRect(chip, 3, 3);
     p.setPen(QColor("#ECECEC"));
     QFont f = p.font();
-    f.setPointSizeF(9.5);
+    f.setPixelSize(theme::kFsSmall);
     f.setBold(true);
     p.setFont(f);
     p.drawText(label.adjusted(20, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft,

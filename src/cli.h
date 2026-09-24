@@ -33,6 +33,7 @@ struct CliOptions {
     bool noAnim = false;
     bool useGpuViewport = false;
     quint64 boltsnapCardId = 0;
+    bool resume = false;           // --resume: pick a kept edit, no input needed
 };
 
 // Result of parsing. ok==false means print `error` to stderr and exit 2.

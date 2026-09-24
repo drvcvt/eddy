@@ -11,7 +11,7 @@ CropBar::CropBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("CropBar"));
     setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QGridLayout(this);
-    layout->setContentsMargins(4, 3, 4, 3);
+    layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(2);
     auto button = [&](const QString &text, const QString &name, const QString &tip) {
         auto *b = new QToolButton(this);
@@ -41,11 +41,12 @@ CropBar::CropBar(QWidget *parent) : QWidget(parent) {
         action->setChecked(i == 0);
         group->addAction(action);
         connect(action, &QAction::triggered, this, [this, action, ratio = ratios[i]] {
-            m_ratio->setText(action->text());
+            theme::setMenuLabel(m_ratio, action->text());
             emit ratioChosen(ratio < 0 ? qreal(m_sourceSize.width()) / qMax(1, m_sourceSize.height()) : ratio);
         });
     }
     m_ratio->setMenu(menu);
+    theme::setMenuArrow(m_ratio);
     m_size = new QLabel(this);
     m_size->setObjectName(QStringLiteral("CropSize"));
     m_size->setToolTip(tr("Cropped output size in pixels"));
@@ -53,9 +54,9 @@ CropBar::CropBar(QWidget *parent) : QWidget(parent) {
     m_controls.append(m_size);
     connect(button(tr("Reset"), QStringLiteral("CropReset"), tr("Restore the full image")),
             &QToolButton::clicked, this, &CropBar::resetRequested);
-    connect(button(tr("Cancel"), QStringLiteral("CropCancel"), tr("Cancel crop · Esc")),
+    connect(button(tr("Cancel"), QStringLiteral("CropCancel"), tr("Cancel crop\tEsc")),
             &QToolButton::clicked, this, &CropBar::cancelRequested);
-    connect(button(tr("Apply"), QStringLiteral("CropApply"), tr("Apply crop · Enter")),
+    connect(button(tr("Apply"), QStringLiteral("CropApply"), tr("Apply crop\tEnter")),
             &QToolButton::clicked, this, &CropBar::applyRequested);
 }
 void CropBar::setOutputSize(QSize size) {
@@ -82,6 +83,6 @@ void CropBar::setAvailableWidth(int width) {
 }
 void CropBar::resetRatio() {
     m_ratio->menu()->actions().first()->setChecked(true);
-    m_ratio->setText(tr("Free"));
+    theme::setMenuLabel(m_ratio, tr("Free"));
 }
 }

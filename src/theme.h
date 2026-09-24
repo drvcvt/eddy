@@ -5,6 +5,9 @@
 #include <QSize>
 #include <QString>
 
+class QToolButton;
+class QWidget;
+
 namespace eddy {
 
 enum class ThemeMode { System, Dark, Light };
@@ -30,16 +33,36 @@ QString styleSheet(bool dark);
 // playback row) and the floating bars that sit over the canvas.
 inline constexpr QSize kBarButton{22, 22};
 inline constexpr QSize kFloatButton{24, 24};
+// The type scale: meta/labels and everything else. Painted text uses these too.
+inline constexpr int kFsMicro = 11;
+inline constexpr int kFsSmall = 13;
+inline constexpr int kFsBody = 15;    // a label beside a full-size chrome icon
 inline constexpr int kIconSize = 18;
+// tintedIcon insets the glyph by size/11 per side; this is the ink that remains.
+constexpr int iconInk(int size) { return size * 9 / 11; }
 // The floating bars sit right on the canvas with nothing else competing, so
 // their glyphs run larger and nearly fill the button.
 inline constexpr int kFloatIcon = 20;
 
-// Render an SVG (resource path) to a monochrome QIcon: `rest` colour for the
-// Off/Normal state, `active` for the On state. Rendered at 2x `size`, so pass
-// the size the button actually shows or the pixmap gets resampled.
+// An SVG (resource path) as a monochrome QIcon: `rest` colour for the Off/Normal
+// state, `active` for the On state. It rasterises per paint at the real device
+// pixel size, so `size` only documents what the caller displays.
 QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active,
                  int size = kIconSize);
+
+// Menu buttons carry our rounded, filled arrow after the label, at the label's size,
+// instead of the platform's sharp indicator hanging off the baseline.
+void setMenuArrow(QToolButton *button);
+// An icon button of the floating context bars: raised on hover, no focus.
+QToolButton *floatButton(QWidget *parent, const QString &name, const QString &tip);
+// Qt pads every tool button label by two spaces; beside an icon that slack
+// lands between label and chevron, so menu buttons are sized without it.
+void setMenuLabel(QToolButton *button, const QString &text);
+
+// Tooltips put a shortcut after a tab ("Save\tEnter") and further hints on
+// their own lines. The compact tooltip shows the shortcut as a quieter
+// right-hand column instead of a separator glyph.
+QString tooltipHtml(const QString &tip);
 
 } // namespace theme
 } // namespace eddy

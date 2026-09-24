@@ -29,8 +29,19 @@ endif()
 
 add_library(eddy_core STATIC
     src/canvas.cpp
+    src/previewitems.cpp
     src/cropcontroller.cpp
     src/cropbar.cpp
+    src/motionicon.cpp
+    src/zoombar.cpp
+    src/fragmentbar.cpp
+    src/exportsettings.cpp
+    src/exportpanel.cpp
+    src/projectcodec.cpp
+    src/projectstore.cpp
+    src/recoverystore.cpp
+    src/resumedialog.cpp
+    src/minimap.cpp
     src/loupe.cpp
     src/colorpopover.cpp
     src/redactbar.cpp
@@ -50,6 +61,22 @@ add_library(eddy_core STATIC
     src/exporter.cpp
     src/imageio.cpp
     src/mediaio.cpp
+    src/cursortrack.cpp
+    src/studiostyle.cpp
+    src/studiopresets.cpp
+    src/studiodocument.cpp
+    src/timemap.cpp
+    src/camerapath.cpp
+    src/zoomlane.cpp
+    src/fragments.cpp
+    src/zoomsuggest.cpp
+    src/stepbar.cpp
+    src/snapping.cpp
+    src/selectionbar.cpp
+    src/audiowaveform.cpp
+    src/studiorenderer.cpp
+    src/renderexport.cpp
+    src/studiopopover.cpp
     src/videoexporter.cpp
     src/waylanddrag.cpp
     src/ocr.cpp
@@ -65,6 +92,7 @@ add_library(eddy_core STATIC
     src/items/penpathitem.cpp
     src/items/rasteritem.cpp
     src/items/textitem.cpp
+    src/items/stepitem.cpp
     src/items/spotlightitem.cpp
     resources/eddy.qrc
 )
@@ -118,17 +146,40 @@ function(eddy_test name)
 endfunction()
 
 eddy_test(test_canvas)
+eddy_test(test_previewitems)
 eddy_test(test_loupe)
 eddy_test(test_colorpopover)
 eddy_test(test_redactbar)
+eddy_test(test_zoombar)
+eddy_test(test_minimap)
 eddy_test(test_toast)
 eddy_test(test_dragpill)
 eddy_test(test_cli)
 eddy_test(test_config)
 eddy_test(test_mediaio)
+eddy_test(test_cursortrack)
+eddy_test(test_studiostyle)
+eddy_test(test_studiopopover)
+eddy_test(test_studiopresets)
+eddy_test(test_studiodocument)
+eddy_test(test_timemap)
+eddy_test(test_camerapath)
+eddy_test(test_zoomlane)
+eddy_test(test_fragments)
+eddy_test(test_zoomsuggest)
+eddy_test(test_audiowaveform)
+eddy_test(test_stepitem)
+eddy_test(test_snapping)
+eddy_test(test_studiorenderer)
+eddy_test(test_renderexport)
 eddy_test(test_exporter)
 eddy_test(test_boltsnapipc)
 eddy_test(test_videoexporter)
+eddy_test(test_exportsettings)
+eddy_test(test_exportpanel)
+eddy_test(test_projectcodec)
+eddy_test(test_projectstore)
+eddy_test(test_recoverystore)
 eddy_test(test_imageio)
 eddy_test(test_items)
 eddy_test(test_ocr)
@@ -138,6 +189,9 @@ eddy_test(test_toolcontroller)
 eddy_test(test_compositor)
 eddy_test(test_toolbar)
 eddy_test(test_editorwindow)
+eddy_test(test_studiozooms)
+eddy_test(test_projects)
+eddy_test(test_fragmentsedit)
 eddy_test(test_theme)
 eddy_test(test_selectionhandles)
 eddy_test(test_videotimeline)

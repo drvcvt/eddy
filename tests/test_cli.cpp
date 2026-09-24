@@ -6,6 +6,12 @@ using namespace eddy;
 class TestCli : public QObject {
     Q_OBJECT
 private slots:
+    void resumeNeedsNoInput() {
+        const auto r = parseArgs({QStringLiteral("--resume")});
+        QVERIFY(r.ok);
+        QVERIFY(r.options.resume);
+        QVERIFY(helpText().contains(QStringLiteral("--resume")));
+    }
     void reportsCurrentVersion() {
         QCOMPARE(versionString(), QStringLiteral("eddy 1.0.3"));
     }

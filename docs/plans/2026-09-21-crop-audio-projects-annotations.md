@@ -26,6 +26,10 @@ sind konkrete Vorschläge, keine bereits abgenommenen oder implementierten Fakte
 
 Die nicht ausgewählten Vorschläge bleiben außerhalb dieses Vorhabens:
 Export-Qualitätsdialog/Dateigrößenprofile und zeitlich begrenzte Annotationen.
+(Nachtrag 2026-09-24: Ausnahme für Redact und Spotlight, die ein optionales Zeitfenster
+bekommen, sowie ein Export-Popover mit festen Presets; siehe
+`docs/plans/2026-09-24-studio-features.md`, 6.7, 6.9 und N1. Alle anderen Annotationen
+bleiben statisch.)
 Ebenso keine Mehrspur-Schnittsoftware, Sprachtranskription, bewegte Crop-Keyframes,
 Audioeffekte, zusätzlichen UI-Frameworks oder pauschalen Architekturumbauten.
 

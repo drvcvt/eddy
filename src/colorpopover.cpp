@@ -13,14 +13,14 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     setObjectName("ColorPopover");
     setAttribute(Qt::WA_StyledBackground, true);
     auto *grid = new QGridLayout(this);
-    grid->setContentsMargins(10, 10, 10, 10);
+    grid->setContentsMargins(12, 12, 12, 12);
     grid->setHorizontalSpacing(4);
     grid->setVerticalSpacing(6);
 
     auto *hex = new QLineEdit(current.name().toUpper(), this);
     hex->setObjectName("ColorHex");
     hex->setAccessibleName("Hex colour");
-    hex->setToolTip("Hex colour · Enter to apply");
+    hex->setToolTip("Hex colour, Enter applies");
     hex->setValidator(new QRegularExpressionValidator(QRegularExpression("#[0-9a-fA-F]{6}"), hex));
     hex->setMaxLength(7);
     hex->setFixedHeight(theme::kFloatButton.height());
@@ -85,8 +85,8 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     pipette->setIcon(theme::tintedIcon(QStringLiteral(":/icons/eyedropper.svg"),
                                        QApplication::palette().color(QPalette::WindowText),
                                        QApplication::palette().color(QPalette::WindowText),
-                                       theme::kFloatIcon));
-    pipette->setIconSize(QSize(theme::kIconSize, theme::kFloatIcon));
+                                       theme::kFsSmall));
+    pipette->setIconSize(QSize(theme::kFsSmall, theme::kFsSmall));
     pipette->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     pipette->setFixedHeight(theme::kFloatButton.height());
     pipette->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);

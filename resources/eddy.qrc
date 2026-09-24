@@ -1,16 +1,20 @@
 <RCC>
   <qresource prefix="/">
     <file>eddy.qss</file>
+    <file>fonts/Outfit.ttf</file>
     <file>icons/undo.svg</file>
     <file>icons/redo.svg</file>
     <file>icons/move.svg</file>
     <file>icons/crop.svg</file>
+    <file>icons/studio.svg</file>
+    <file>icons/menu-arrow.svg</file>
     <file>icons/arrow.svg</file>
     <file>icons/pen.svg</file>
     <file>icons/rect.svg</file>
     <file>icons/ellipse.svg</file>
     <file>icons/highlight.svg</file>
     <file>icons/text.svg</file>
+    <file>icons/step.svg</file>
     <file>icons/letter-s.svg</file>
     <file>icons/letter-m.svg</file>
     <file>icons/letter-l.svg</file>
@@ -28,6 +32,14 @@
     <file>icons/reset.svg</file>
     <file>icons/loop.svg</file>
     <file>icons/align-left.svg</file>
+    <file>icons/objects-left.svg</file>
+    <file>icons/objects-hcenter.svg</file>
+    <file>icons/objects-right.svg</file>
+    <file>icons/objects-top.svg</file>
+    <file>icons/objects-vcenter.svg</file>
+    <file>icons/objects-bottom.svg</file>
+    <file>icons/distribute-h.svg</file>
+    <file>icons/distribute-v.svg</file>
     <file>icons/align-center.svg</file>
     <file>icons/align-right.svg</file>
     <file>icons/spotlight.svg</file>

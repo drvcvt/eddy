@@ -68,6 +68,30 @@ QString mediaMimeTypeForPath(const QString &path) {
     return QStringLiteral("application/octet-stream");
 }
 
+QString formatTime(qint64 ms) {
+    const qint64 total = qMax<qint64>(0, ms / 1000);
+    const qint64 h = total / 3600;
+    const qint64 m = (total % 3600) / 60;
+    const qint64 s = total % 60;
+    if (h > 0)
+        return QStringLiteral("%1:%2:%3").arg(h).arg(m, 2, 10, QLatin1Char('0')).arg(s, 2, 10, QLatin1Char('0'));
+    return QStringLiteral("%1:%2").arg(m).arg(s, 2, 10, QLatin1Char('0'));
+}
+
+QString formatPreciseTime(qint64 ms) {
+    ms = qMax<qint64>(0, ms);
+    const qint64 totalSeconds = ms / 1000;
+    const qint64 h = totalSeconds / 3600;
+    const qint64 m = (totalSeconds % 3600) / 60;
+    const qint64 s = totalSeconds % 60;
+    const qint64 millis = ms % 1000;
+    if (h > 0)
+        return QStringLiteral("%1:%2:%3.%4").arg(h).arg(m, 2, 10, QLatin1Char('0'))
+            .arg(s, 2, 10, QLatin1Char('0')).arg(millis, 3, 10, QLatin1Char('0'));
+    return QStringLiteral("%1:%2.%3").arg(m).arg(s, 2, 10, QLatin1Char('0'))
+        .arg(millis, 3, 10, QLatin1Char('0'));
+}
+
 static double parseRate(const QString &rate) {
     const auto parts = rate.split('/');
     if (parts.size() == 2) {
@@ -98,8 +122,7 @@ ProbeVideoResult probeVideoFile(const QString &path) {
     QProcess p;
     p.start(ffprobe, {
         QStringLiteral("-v"), QStringLiteral("error"),
-        QStringLiteral("-select_streams"), QStringLiteral("v:0"),
-        QStringLiteral("-show_entries"), QStringLiteral("stream=width,height,r_frame_rate,sample_aspect_ratio:stream_side_data=rotation,displaymatrix:format=duration"),
+        QStringLiteral("-show_entries"), QStringLiteral("stream=codec_type,width,height,r_frame_rate,sample_aspect_ratio,start_time:stream_side_data=rotation,displaymatrix:format=duration"),
         QStringLiteral("-of"), QStringLiteral("json"),
         path
     });
@@ -117,7 +140,21 @@ ProbeVideoResult probeVideoFile(const QString &path) {
 
     const auto metadata = QJsonDocument::fromJson(p.readAllStandardOutput()).object();
     const auto streams = metadata.value("streams").toArray();
-    const auto stream = streams.isEmpty() ? QJsonObject() : streams.first().toObject();
+    QJsonObject stream, audio;
+    for (const auto &value : streams) {
+        const QJsonObject candidate = value.toObject();
+        const QString type = candidate.value("codec_type").toString();
+        if (type == QLatin1String("video") && stream.isEmpty()) stream = candidate;
+        if (type == QLatin1String("audio") && audio.isEmpty()) audio = candidate;
+    }
+    r.info.hasAudio = !audio.isEmpty();
+    if (r.info.hasAudio) {
+        bool audioOk = false, videoOk = false;
+        const double a = audio.value("start_time").toString().toDouble(&audioOk);
+        const double v = stream.value("start_time").toString().toDouble(&videoOk);
+        if (audioOk && videoOk && std::isfinite(a - v) && qAbs(a - v) < 3600)
+            r.info.audioOffsetMs = qRound64((a - v) * 1000);
+    }
     int width = stream.value("width").toInt();
     int height = stream.value("height").toInt();
     const double fps = parseRate(stream.value("r_frame_rate").toString());
@@ -185,6 +222,9 @@ LoadMediaResult loadMediaInput(const InputSpec &spec) {
         r.document.kind = MediaKind::Video;
         r.document.path = QFileInfo(spec.path).absoluteFilePath();
         r.document.video = probe.info;
+        auto cursor = loadCursorTrack(r.document.path, probe.info.size);
+        if (cursor.ok) r.document.cursorTrack = std::move(cursor.track);
+        else if (cursor.found) r.warning = QStringLiteral("ignoring cursor track: ") + cursor.error;
         return r;
     }
 

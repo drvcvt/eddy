@@ -1,0 +1,191 @@
+#include <QtTest>
+#include <cmath>
+#include "camerapath.h"
+
+using namespace eddy;
+
+static const QRectF kContent(0, 0, 1920, 1080);
+
+static ZoomSegment zoom(qint64 start, qint64 end, double scale, QPointF point,
+                        ZoomSegment::Motion motion = ZoomSegment::Motion::Focused) {
+    ZoomSegment z;
+    z.id = quint32(start + 1);
+    z.startMs = start;
+    z.endMs = end;
+    z.scale = scale;
+    z.point = point;
+    z.motion = motion;
+    return z;
+}
+
+static CameraPath path(const QVector<ZoomSegment> &zooms, qint64 duration = 10000,
+                       const QVector<Fragment> &fragments = {}) {
+    return CameraPath(zooms, TimeMap(duration, 0, duration, fragments), CameraFrame{kContent, 0, {}});
+}
+
+// How far the camera is zoomed in, on the log scale the springs work in.
+static double logZoom(const CameraPath &p, double outMs) {
+    return std::log(p.baseRect().width() / p.rectAt(outMs).width());
+}
+
+static bool near(const QRectF &a, const QRectF &b, double tolerance = 1e-3) {
+    return qAbs(a.left() - b.left()) <= tolerance && qAbs(a.top() - b.top()) <= tolerance
+        && qAbs(a.width() - b.width()) <= tolerance && qAbs(a.height() - b.height()) <= tolerance;
+}
+
+class TestCameraPath : public QObject {
+    Q_OBJECT
+private slots:
+    void springStepIsExact() {
+        // Two half steps land where one full step does, and both match the closed form.
+        double x1 = 3, v1 = -2, x2 = 3, v2 = -2;
+        springStep(7, 1, 0.1, x1, v1);
+        springStep(7, 1, 0.05, x2, v2);
+        springStep(7, 1, 0.05, x2, v2);
+        QVERIFY(qAbs(x1 - x2) < 1e-12 && qAbs(v1 - v2) < 1e-12);
+        const double closed = 1 + (2 + (-2 + 7 * 2) * 0.1) * std::exp(-0.7);
+        QVERIFY(qAbs(x1 - closed) < 1e-12);
+    }
+
+    void withoutZoomsTheCameraShowsEverything() {
+        const CameraPath p = path({});
+        for (double t : {0.0, 1234.5, 10000.0, 20000.0})
+            QVERIFY(near(p.rectAt(t), kContent, 0));
+    }
+
+    void focusedSettlesInAboutSixTenthsOfASecond() {
+        const CameraPath p = path({zoom(1000, 5000, 2, kContent.center())});
+        const double target = std::log(2.0);
+        QVERIFY(near(p.rectAt(999), kContent, 0));   // nothing moves before the zoom
+        QVERIFY(near(p.rectAt(1000), kContent, 0));
+        QVERIFY(qAbs(logZoom(p, 1500) - target) > 0.02 * target);
+        QVERIFY(qAbs(logZoom(p, 1620) - target) < 0.02 * target);
+    }
+
+    void smoothTakesAboutASecond() {
+        const CameraPath p = path({zoom(1000, 5000, 2, kContent.center(), ZoomSegment::Motion::Smooth)});
+        const double target = std::log(2.0);
+        QVERIFY(qAbs(logZoom(p, 1900) - target) > 0.02 * target);
+        QVERIFY(qAbs(logZoom(p, 2000) - target) < 0.02 * target);
+    }
+
+    void instantJumpsExactlyBothWays() {
+        const QPointF point(1400, 300);
+        const CameraPath p = path({zoom(1000, 3000, 2, point, ZoomSegment::Motion::Instant)});
+        QVERIFY(near(p.rectAt(999.9), kContent, 0));
+        const QRectF zoomed = p.rectAt(1000);
+        QVERIFY(near(zoomed, QRectF(point.x() - 480, point.y() - 270, 960, 540)));
+        QVERIFY(near(p.rectAt(2999), zoomed));
+        QVERIFY(near(p.rectAt(3000), kContent));
+        // A motion blur shutter must not straddle either cut.
+        QVERIFY(p.cutWithin(995, 1005) && p.cutWithin(2995, 3005));
+        QVERIFY(!p.cutWithin(1005, 2995) && !p.cutWithin(990, 999));
+    }
+
+    void neverShowsAnythingOutsideTheContent() {
+        const CameraPath p = path({zoom(500, 2500, 4, QPointF(0, 0)),
+                                   zoom(2600, 4000, 3, QPointF(1920, 1080), ZoomSegment::Motion::Smooth),
+                                   zoom(6000, 7000, 1.1, QPointF(1919, 5))});
+        const QRectF allowed = kContent.adjusted(-1e-3, -1e-3, 1e-3, 1e-3);
+        for (double t = 0; t <= 10000; t += 1)
+            QVERIFY2(allowed.contains(p.rectAt(t)), qPrintable(QString::number(t)));
+    }
+
+    void returnsToTheFullViewAfterTheLastZoom() {
+        const CameraPath p = path({zoom(1000, 2000, 2, QPointF(300, 300))});
+        QVERIFY(near(p.rectAt(4000), kContent, 0.01));
+    }
+
+    void sameInputGivesTheSameCurve() {
+        const QVector<ZoomSegment> zooms{zoom(700, 3100, 2.5, QPointF(400, 900)),
+                                         zoom(3300, 5000, 1.5, QPointF(1500, 200), ZoomSegment::Motion::Smooth)};
+        const CameraPath a = path(zooms), b = path(zooms);
+        for (int i = 0; i < 997; ++i) {
+            const double t = std::fmod(i * 7919.0, 10000.0) + i * 0.001;
+            const QRectF ra = a.rectAt(t), rb = b.rectAt(t);
+            QVERIFY(ra.x() == rb.x() && ra.y() == rb.y() && ra.width() == rb.width() && ra.height() == rb.height());
+        }
+    }
+
+    void closeZoomsHandOverWithoutZoomingOut() {
+        const QPointF c = kContent.center();
+        const CameraPath joined = path({zoom(1000, 2000, 2, c), zoom(2600, 3600, 2, c)});
+        QVERIFY(logZoom(joined, 2300) > 0.95 * std::log(2.0));
+        const CameraPath apart = path({zoom(1000, 2000, 2, c), zoom(5000, 6000, 2, c)});
+        QVERIFY(logZoom(apart, 3500) < 0.05 * std::log(2.0));
+    }
+
+    void zoomsFollowFragments() {
+        Fragment fast;
+        fast.speed = 2;
+        const CameraPath sped = path({zoom(2000, 6000, 2, QPointF(500, 500), ZoomSegment::Motion::Instant)},
+                                     10000, {fast});
+        QVERIFY(near(sped.rectAt(999), kContent, 0));
+        QVERIFY(!near(sped.rectAt(1000), kContent));
+        QVERIFY(!near(sped.rectAt(2999), kContent));
+        QVERIFY(near(sped.rectAt(3000), kContent));
+        Fragment kept, cut, after;
+        cut.startMs = 2000;
+        cut.removed = true;
+        after.startMs = 5000;
+        const CameraPath inCut = path({zoom(2500, 4500, 2, QPointF(500, 500))}, 10000, {kept, cut, after});
+        for (double t = 0; t <= 7000; t += 25)
+            QVERIFY(near(inCut.rectAt(t), kContent, 0));
+    }
+
+    void targetRectIsWhereTheZoomSettles() {
+        const ZoomSegment z = zoom(1000, 9000, 2.0, QPointF(1800, 100));
+        const CameraPath p = path({z});
+        // Clamped into the top-right quarter, like the camera itself.
+        QVERIFY(near(p.targetRect(z), QRectF(960, 0, 960, 540), 1e-9));
+        QVERIFY(near(p.rectAt(8000), p.targetRect(z), 0.5));
+        QCOMPARE(p.zoomAt(0), 1.0);
+        QVERIFY(qAbs(p.zoomAt(8000) - 2.0) < 1e-3);
+    }
+
+    void cursorZoomsFollowThePointerWithADeadZone() {
+        CursorTrack track;
+        track.videoSize = QSize(1920, 1080);
+        auto at = [&](qint64 ms, double x, double y, bool visible = true) {
+            track.samples.append({ms, QPointF(x, y), visible});
+        };
+        at(0, 960, 540);
+        at(2000, 1000, 540);      // inside the middle 40 %: the camera stays
+        at(3000, 1500, 540);      // outside: it follows until the pointer is on the box's edge
+        at(6500, 0, 0, false);    // gone: the camera holds
+        ZoomSegment z = zoom(1000, 9000, 2.0, QPointF(0, 0));
+        z.target = ZoomSegment::Target::Cursor;
+        const TimeMap time(10000, 0, 10000, {});
+        const CameraPath p({z}, time, CameraFrame{kContent, 0, {}, &track, false});
+        QVERIFY(qAbs(p.rectAt(2800).center().x() - 960) < 1);
+        // Window 960 wide, dead zone 40 %: the pointer ends 192 px right of the centre.
+        QVERIFY(qAbs(p.rectAt(6000).center().x() - (1500 - 192)) < 1);
+        QVERIFY(qAbs(p.rectAt(8500).center().x() - (1500 - 192)) < 1);
+        QVERIFY(qAbs(p.rectAt(9800).width() - 1920) < 20);   // back out after the zoom
+    }
+    void aFollowingBaseViewKeepsThePointerInIt() {
+        CursorTrack track;
+        track.videoSize = QSize(1920, 1080);
+        track.samples = {{0, QPointF(960, 540), true}, {2000, QPointF(1700, 540), true}};
+        const TimeMap time(10000, 0, 10000, {});
+        const CameraPath fixed({}, time, CameraFrame{kContent, 9.0 / 16, QPointF(960, 540), &track, false});
+        const CameraPath follows({}, time, CameraFrame{kContent, 9.0 / 16, QPointF(960, 540), &track, true});
+        QVERIFY(qAbs(fixed.rectAt(5000).center().x() - 960) < 1);
+        // Base 607.5 wide: the pointer rests 0.2 of it right of the centre.
+        QVERIFY(qAbs(follows.rectAt(5000).center().x() - (1700 - 121.5)) < 1);
+        QVERIFY(QRectF(kContent).contains(follows.rectAt(5000)));
+        QVERIFY(QLineF(follows.homeAt(5000), follows.rectAt(5000).center()).length() < 0.01);
+    }
+
+    void narrowOutputsShowTheLargestFittingWindow() {
+        const TimeMap time(10000, 0, 10000, {});
+        const CameraPath left({}, time, CameraFrame{QRectF(0, 0, 1600, 900), 9.0 / 16, QPointF(100, 450)});
+        QVERIFY(near(left.baseRect(), QRectF(0, 0, 506.25, 900), 1e-9));
+        const CameraPath middle({}, time, CameraFrame{QRectF(0, 0, 1600, 900), 9.0 / 16, QPointF(800, 450)});
+        QVERIFY(near(middle.baseRect(), QRectF(546.875, 0, 506.25, 900), 1e-9));
+        QVERIFY(near(middle.rectAt(5000), middle.baseRect()));
+    }
+};
+
+QTEST_GUILESS_MAIN(TestCameraPath)
+#include "test_camerapath.moc"

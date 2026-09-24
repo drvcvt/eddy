@@ -7,7 +7,10 @@
 #include <QList>
 #include <functional>
 #include "items/textitem.h"
+#include "items/stepitem.h"
+#include "items/annotationitem.h"
 #include "items/spotlightitem.h"
+#include "studiodocument.h"
 namespace eddy {
 class AddItemCommand : public QUndoCommand {
 public:
@@ -71,6 +74,16 @@ private:
     TextState m_before;
     TextState m_after;
 };
+class SetStepCommand : public QUndoCommand {
+public:
+    SetStepCommand(StepItem *item, int beforeNumber, StepItem::Size beforeSize, int afterNumber, StepItem::Size afterSize,
+                   QUndoCommand *parent = nullptr);
+    void undo() override; void redo() override;
+private:
+    StepItem *m_item;
+    int m_beforeNumber, m_afterNumber;
+    StepItem::Size m_beforeSize, m_afterSize;
+};
 class SetSpotlightStyleCommand : public QUndoCommand {
 public:
     SetSpotlightStyleCommand(SpotlightItem *item, SpotlightShape beforeShape,
@@ -92,6 +105,44 @@ private:
     qint64 m_beforeIn, m_beforeOut, m_afterIn, m_afterOut;
     Apply m_apply;
 };
+// The whole Studio document before and after one gesture. Commands with the
+// same non-zero `mergeKey` in a row fold into one step (mouse-wheel zooming).
+class SetStudioDocumentCommand : public QUndoCommand {
+public:
+    using Apply = std::function<void(const StudioDocument &)>;
+    SetStudioDocumentCommand(StudioDocument before, StudioDocument after, Apply apply, int mergeKey = 0)
+        : QUndoCommand(QStringLiteral("Studio")), m_before(std::move(before)),
+          m_after(std::move(after)), m_apply(std::move(apply)), m_key(mergeKey) {}
+    void undo() override { m_apply(m_before); }
+    void redo() override { m_apply(m_after); }
+    int id() const override { return m_key ? 0x5354 : -1; }
+    bool mergeWith(const QUndoCommand *other) override {
+        const auto *next = static_cast<const SetStudioDocumentCommand *>(other);
+        if (next->m_key != m_key) return false;
+        m_after = next->m_after;
+        return true;
+    }
+private:
+    StudioDocument m_before, m_after;
+    Apply m_apply;
+    int m_key;
+};
+
+// A redaction's or spotlight's time window (studio plan 6.7).
+class SetTimeWindowCommand : public QUndoCommand {
+public:
+    SetTimeWindowCommand(AnnotationItem *item, AnnotationItem::TimeWindow before,
+                         AnnotationItem::TimeWindow after, std::function<void()> changed)
+        : QUndoCommand(QStringLiteral("Time window")), m_item(item), m_before(before), m_after(after),
+          m_changed(std::move(changed)) {}
+    void undo() override { m_item->setTimeWindow(m_before); m_changed(); }
+    void redo() override { m_item->setTimeWindow(m_after); m_changed(); }
+private:
+    AnnotationItem *m_item;
+    AnnotationItem::TimeWindow m_before, m_after;
+    std::function<void()> m_changed;
+};
+
 class SetCropCommand : public QUndoCommand {
 public:
     using Apply = std::function<void(QRect)>;
