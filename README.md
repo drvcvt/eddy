@@ -59,6 +59,20 @@ shelf delivery use the same crop. Video crop coordinates align to even pixels.
 Orthogonal video rotations and non-square pixels use display coordinates;
 unsupported display transforms show an explanation when Crop is selected.
 
+**Studio** (top bar, beside the output actions) is optional framing for images
+and videos: a background (none, six gradient presets or your own image) with
+padding, rounded corners, a soft shadow and an output ratio (Auto, 16:9, 4:3,
+1:1, 9:16; the background grows, the content is never cropped); the popover
+shows the resulting output size. It is off for
+every new document. Switching it on restores the style you used last, stored in
+the config file's `[studio]` group, and one popover session is one undo step.
+The canvas previews exactly what Save, Copy, drag, shelf and frame copy deliver.
+Videos keep their frame rate and audio. Zoom segments (in progress, see
+`docs/plans/2026-09-24-studio-features.md`) export through a frame renderer at
+60 fps; everything else keeps the ffmpeg filter-graph export. When a video has a
+Boltsnap cursor track beside it (`clip.cursor.json`), Eddy loads it for later
+cursor-following zooms; the cursor itself stays the one Boltsnap baked in.
+
 Video has an adaptive filmstrip and a time ruler. Hover for a source-frame preview,
 drag to scrub, or pull the end grips to trim. Hold **Shift** for fine trim; **Esc**
 cancels the drag. The **Start / End** labels and inward-facing brackets identify
@@ -79,7 +93,12 @@ to open **Copy current frame** (`Ctrl+Shift+C`), including annotations and redac
 Normal Copy still delivers the video. A pending seek finishes before its frame is
 copied. In narrow windows the trim fields get their own row; hold the speaker
 button for volume. Keyboard users can open these menus with **Alt+Down**.
-**Drag out** and a quiet export status remain at the bottom. Editing and playback
+The canvas shows images and video at any zoom without moiré: shrunk views are
+area-filtered, views up to 2× are smoothed and from 2× on pixels stay crisp.
+Playback converts each frame once and no more often than the screen refreshes.
+**Drag out** and a quiet export status remain at the bottom; while exporting it
+shows the progress and a Cancel button, and a stalled encoder is stopped with its
+error shown. Editing and playback
 do not start an export. For an edited video, click **Prepare drag** once, then
 drag the ready file out. Save, Copy and Shelf prepare the video when requested;
 they reuse the result until you make another edit.
