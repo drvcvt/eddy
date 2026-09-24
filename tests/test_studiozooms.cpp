@@ -16,6 +16,7 @@
 #include "studiopopover.h"
 #include "videotimeline.h"
 #include "zoombar.h"
+#include "studiopresets.h"
 #include "exportpanel.h"
 #include "exportsettings.h"
 #include <QDir>
@@ -375,6 +376,33 @@ private slots:
         suggest->click();
         QCOMPARE(w.studioDocument().zooms.size(), 1);
         QCOMPARE(w.studioDocument().zooms.first().point, QPointF(200, 100));
+        popover->close();
+        QTRY_VERIFY(!w.findChild<StudioPopover *>());
+        QCOMPARE(undo->count(), steps + 1);
+    }
+    void aSavedPresetAppliesInOneStep() {
+        QTemporaryDir dir;
+        CliOptions cli; cli.configPath = dir.filePath(QStringLiteral("config"));
+        StudioPreset preset;
+        preset.name = QStringLiteral("Warm");
+        preset.style = dusk();
+        preset.style.color = QColor(200, 90, 40);
+        preset.motion = ZoomSegment::Motion::Smooth;
+        QVERIFY(saveStudioPreset(cli.configPath, preset).ok);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath(QStringLiteral("none.mp4"))), cfg, cli);
+        w.show();
+        QTest::keyClick(&w, Qt::Key_Z);   // a Focused zoom
+        auto *undo = w.findChild<QUndoStack *>();
+        const int steps = undo->count();
+        w.openStudio();
+        auto *popover = w.findChild<StudioPopover *>();
+        auto *menu = popover->findChild<QMenu *>(QStringLiteral("StudioPresetMenu"));
+        QVERIFY(menu);
+        QCOMPARE(menu->actions().first()->text(), QStringLiteral("Warm"));
+        menu->actions().first()->trigger();
+        QCOMPARE(w.studioStyle(), preset.style);
+        QCOMPARE(w.studioDocument().zooms.first().motion, ZoomSegment::Motion::Smooth);
         popover->close();
         QTRY_VERIFY(!w.findChild<StudioPopover *>());
         QCOMPARE(undo->count(), steps + 1);

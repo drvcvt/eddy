@@ -10,6 +10,7 @@
 #include <QPainterPath>
 #include <QSlider>
 #include <QStyleOption>
+#include <QMenu>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -161,9 +162,24 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
     ratioRow->addWidget(m_size);
     grid->addLayout(ratioRow, row++, 0, 1, 8);
     outer->addWidget(stylePage);
+    // The header: Style and Camera for videos, Presets on the right always.
+    auto *tabs = new QHBoxLayout;
+    tabs->setSpacing(4);
+    outer->insertLayout(0, tabs);
+    m_presets = new QToolButton(this);
+    m_presets->setObjectName(QStringLiteral("StudioPresets"));
+    m_presets->setText(tr("Presets"));
+    m_presets->setToolTip(tr("Saved styles to apply, save, import or share"));
+    m_presets->setFixedHeight(theme::kFloatButton.height());
+    m_presets->setCursor(Qt::PointingHandCursor);
+    m_presets->setPopupMode(QToolButton::InstantPopup);
+    auto *presetMenu = new QMenu(m_presets);
+    presetMenu->setObjectName(QStringLiteral("StudioPresetMenu"));
+    presetMenu->setWindowFlag(Qt::FramelessWindowHint);
+    presetMenu->setAttribute(Qt::WA_TranslucentBackground);
+    m_presets->setMenu(presetMenu);
+    setPresets({});
     if (camera.available) {
-        auto *tabs = new QHBoxLayout;
-        tabs->setSpacing(4);
         auto *tabGroup = new QButtonGroup(this);
         const QStringList names{tr("Style"), tr("Camera")};
         for (int i = 0; i < names.size(); ++i) {
@@ -178,7 +194,6 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             tabs->addWidget(tab);
         }
         tabs->addStretch(1);
-        outer->insertLayout(0, tabs);
 
         auto *cameraPage = new QWidget(this);
         auto *rows = new QGridLayout(cameraPage);
@@ -248,8 +263,21 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             move(right - width() + 1, y());
         });
     }
+    if (!camera.available) tabs->addStretch(1);
+    tabs->addWidget(m_presets);
     apply();
     setFixedSize(sizeHint());
+}
+
+void StudioPopover::setPresets(const QStringList &names) {
+    QMenu *menu = m_presets->menu();
+    menu->clear();
+    for (int i = 0; i < names.size(); ++i)
+        connect(menu->addAction(names[i]), &QAction::triggered, this, [this, i] { emit presetChosen(i); });
+    if (!names.isEmpty()) menu->addSeparator();
+    connect(menu->addAction(tr("Save current…")), &QAction::triggered, this, &StudioPopover::presetSaveRequested);
+    connect(menu->addAction(tr("Import…")), &QAction::triggered, this, &StudioPopover::presetImportRequested);
+    connect(menu->addAction(tr("Export…")), &QAction::triggered, this, &StudioPopover::presetExportRequested);
 }
 
 void StudioPopover::setKeepZoomedInAvailable(bool available) {

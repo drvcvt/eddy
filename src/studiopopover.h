@@ -29,6 +29,8 @@ public:
                   QWidget *parent = nullptr);
     StudioStyle studioStyle() const { return m_style; }
     void setKeepZoomedInAvailable(bool available);
+    // The saved presets' names, in the Presets menu above its actions.
+    void setPresets(const QStringList &names);
     // The framed media's size, which "keep zoomed in" narrows.
     void setContentSize(QSize content);
 protected:
@@ -39,6 +41,10 @@ signals:
     void motionChosen(ZoomSegment::Motion motion);
     void keepZoomedInChanged(bool on);
     void suggestRequested();
+    void presetChosen(int index);
+    void presetSaveRequested();
+    void presetImportRequested();
+    void presetExportRequested();
 private:
     void apply();
     void showSize();
@@ -51,6 +57,7 @@ private:
     QSlider *m_radius = nullptr;
     QSlider *m_shadow = nullptr;
     QToolButton *m_keep = nullptr;
+    QToolButton *m_presets = nullptr;
 };
 
 }
