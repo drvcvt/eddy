@@ -54,9 +54,9 @@ CropBar::CropBar(QWidget *parent) : QWidget(parent) {
     m_controls.append(m_size);
     connect(button(tr("Reset"), QStringLiteral("CropReset"), tr("Restore the full image")),
             &QToolButton::clicked, this, &CropBar::resetRequested);
-    connect(button(tr("Cancel"), QStringLiteral("CropCancel"), tr("Cancel crop · Esc")),
+    connect(button(tr("Cancel"), QStringLiteral("CropCancel"), tr("Cancel crop\tEsc")),
             &QToolButton::clicked, this, &CropBar::cancelRequested);
-    connect(button(tr("Apply"), QStringLiteral("CropApply"), tr("Apply crop · Enter")),
+    connect(button(tr("Apply"), QStringLiteral("CropApply"), tr("Apply crop\tEnter")),
             &QToolButton::clicked, this, &CropBar::applyRequested);
 }
 void CropBar::setOutputSize(QSize size) {

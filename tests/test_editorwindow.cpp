@@ -119,12 +119,46 @@ private slots:
         QApplication::sendEvent(fit, &help);
         auto *hint = window.findChild<QLabel *>("CompactTooltip");
         QVERIFY(hint && hint->isVisible());
-        QCOMPARE(hint->text(), fit->toolTip());
+        // The shortcut is a quieter column, not glued on with a separator glyph.
+        QCOMPARE(fit->toolTip(), QStringLiteral("Fit to window\t0"));
+        QCOMPARE(hint->text(), theme::tooltipHtml(fit->toolTip()));
+        QVERIFY(hint->text().contains(QStringLiteral(">Fit to window<")));
+        QVERIFY(hint->text().contains(QStringLiteral(">0<")));
         QVERIFY(window.rect().contains(hint->geometry()));
         QVERIFY(hint->testAttribute(Qt::WA_TransparentForMouseEvents));
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(fit, &leave);
         QVERIFY(!hint->isVisible());
+    }
+    void noTextUsesADotSeparator() {
+        // Separators are layout (columns, lines, gaps), never a middle dot.
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("dots.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=2:r=25", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(64, 48), 2000, 25.0};
+        Config cfg; cfg.animations = false;
+        CliOptions cli; cli.configPath = dir.filePath("config");
+        EditorWindow window(doc, cfg, cli);
+        window.show();
+        QTest::keyClick(&window, Qt::Key_Z);   // zoom bar and mini map exist and show
+        window.openStudio();
+        const QChar dot(0x00B7);
+        QStringList found;
+        if (window.windowTitle().contains(dot)) found << window.windowTitle();
+        for (QWidget *w : window.findChildren<QWidget *>()) {
+            for (const QString &text : {w->toolTip(), w->accessibleName(), w->statusTip()})
+                if (text.contains(dot)) found << w->objectName() + ": " + text;
+            if (auto *b = qobject_cast<QAbstractButton *>(w); b && b->text().contains(dot))
+                found << w->objectName() + ": " + b->text();
+            if (auto *l = qobject_cast<QLabel *>(w); l && l->text().contains(dot))
+                found << w->objectName() + ": " + l->text();
+            for (QAction *a : w->actions())
+                if (a->text().contains(dot) || a->toolTip().contains(dot)) found << a->text();
+        }
+        QVERIFY2(found.isEmpty(), qPrintable(found.join('\n')));
     }
     void chromeFollowsTheDensityRules() {
         // mt-ui-style, measured on the real widgets rather than eyeballed: spacing

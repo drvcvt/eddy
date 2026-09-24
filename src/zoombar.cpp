@@ -33,7 +33,7 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
         layout->addWidget(b);
         return b;
     };
-    m_scale = button(QStringLiteral("ZoomScale"), tr("Zoom level · wheel over the map for any level"));
+    m_scale = button(QStringLiteral("ZoomScale"), tr("Zoom level\nScroll over the map for any level"));
     m_scale->setPopupMode(QToolButton::InstantPopup);
     auto *scales = popupMenu(m_scale, QStringLiteral("ZoomScaleMenu"));
     for (double s : {1.25, 1.5, 2.0, 3.0}) {
@@ -54,7 +54,7 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
         connect(action, &QAction::triggered, this, [this, motion] { emit motionChosen(motion); });
     }
     m_motion->setMenu(motions);
-    auto *remove = button(QStringLiteral("ZoomRemove"), tr("Remove this zoom · Delete"));
+    auto *remove = button(QStringLiteral("ZoomRemove"), tr("Remove this zoom\tDelete"));
     remove->setText(tr("Remove"));
     connect(remove, &QToolButton::clicked, this, &ZoomBar::removeRequested);
     refreshTheme();

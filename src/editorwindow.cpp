@@ -364,7 +364,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_undo, &QUndoStack::canRedoChanged, m_toolbar, &Toolbar::setRedoEnabled);
     connect(m_toolbar, &Toolbar::eyedropperRequested, this, [this]{
         m_canvas->startEyedropper();
-        if (m_toast) m_toast->showMessage(QStringLiteral("Click to pick a colour \xC2\xB7 Esc to cancel"));
+        if (m_toast) m_toast->showMessage(QStringLiteral("Click to pick a colour, Esc to cancel"));
     });
     connect(m_toolbar, &Toolbar::themeToggleRequested, this, &EditorWindow::toggleTheme);
     connect(m_toolbar, &Toolbar::studioRequested, this, &EditorWindow::openStudio);
@@ -391,7 +391,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_toast = new Toast(this);
     m_tooltip = new QLabel(this);
     m_tooltip->setObjectName(QStringLiteral("CompactTooltip"));
-    m_tooltip->setTextFormat(Qt::PlainText);
+    m_tooltip->setTextFormat(Qt::RichText);
     m_tooltip->setAttribute(Qt::WA_TransparentForMouseEvents);
     m_tooltip->hide();
     m_tooltipTimer = new QTimer(this);
@@ -465,7 +465,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     }
     const QString name = m_media.path.isEmpty()
         ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
-    setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
+    setWindowTitle(QStringLiteral("%1 (%2 × %3)")
         .arg(name).arg(native.width()).arg(native.height()));
     auto *viewControls = new QWidget(this);
     viewControls->setObjectName(QStringLiteral("ViewControls"));
@@ -478,7 +478,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     auto *fit = new QToolButton(viewControls);
     fit->setObjectName(QStringLiteral("ZoomFit"));
     fit->setText(QStringLiteral("Fit"));
-    fit->setToolTip(QStringLiteral("Fit to window · 0"));
+    fit->setToolTip(QStringLiteral("Fit to window\t0"));
     fit->setAccessibleName(QStringLiteral("Fit to window"));
     fit->setFocusPolicy(Qt::NoFocus);
     fit->setCursor(Qt::PointingHandCursor);
@@ -487,7 +487,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     zoomControls->addWidget(fit);
     auto *zoom = new QToolButton(viewControls);
     zoom->setObjectName(QStringLiteral("ZoomActual"));
-    zoom->setToolTip(QStringLiteral("Actual size · 1"));
+    zoom->setToolTip(QStringLiteral("Actual size\t1"));
     zoom->setAccessibleName(QStringLiteral("Actual size"));
     zoom->setFocusPolicy(Qt::NoFocus);
     zoom->setCursor(Qt::PointingHandCursor);
@@ -650,7 +650,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setCursor(Qt::PointingHandCursor);
     m_playButton->setFixedSize(theme::kBarButton);
     m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_playButton->setToolTip(QStringLiteral("Play / Pause · Space / K"));
+    m_playButton->setToolTip(QStringLiteral("Play / Pause\tSpace / K"));
     m_playButton->setAccessibleName(m_playButton->toolTip());
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
@@ -666,7 +666,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setCursor(Qt::PointingHandCursor);
     m_muteButton->setFixedSize(theme::kBarButton);
     m_muteButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_muteButton->setToolTip(tr("Mute audio · hold for volume"));
+    m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
     m_muteButton->setAccessibleName(m_muteButton->toolTip());
 
     m_volumeSlider = new QSlider(Qt::Horizontal, bar);
@@ -716,8 +716,8 @@ QWidget *EditorWindow::createPlaybackBar() {
         field->setFixedHeight(theme::kBarButton.height());
         field->setAccessibleName(field == m_trimInLabel ? tr("Trim start") : tr("Trim end"));
         field->setToolTip(field == m_trimInLabel
-            ? tr("Start of the exported clip · Enter to apply · Esc to cancel")
-            : tr("End of the exported clip · Enter to apply · Esc to cancel"));
+            ? tr("Start of the exported clip\nApply\tEnter\nCancel\tEsc")
+            : tr("End of the exported clip\nApply\tEnter\nCancel\tEsc"));
         connect(field, &QLineEdit::editingFinished, this, [this, field] { commitTrimTime(field); });
     }
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
@@ -737,11 +737,11 @@ QWidget *EditorWindow::createPlaybackBar() {
     reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
     reset->setFixedWidth(theme::kBarButton.width());
     reset->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    setIn->setToolTip(tr("Set start to playhead · I"));
-    setOut->setToolTip(tr("Set end to playhead · O"));
+    setIn->setToolTip(tr("Set start to playhead\tI"));
+    setOut->setToolTip(tr("Set end to playhead\tO"));
     setIn->setAccessibleName(setIn->toolTip());
     setOut->setAccessibleName(setOut->toolTip());
-    reset->setToolTip(tr("Reset trim · use the complete clip"));
+    reset->setToolTip(tr("Reset trim to the complete clip"));
     reset->setAccessibleName(reset->toolTip());
 
     trim->addWidget(setIn);
@@ -812,6 +812,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_previewImage->setFixedSize(192, 108);
     m_previewImage->setAlignment(Qt::AlignCenter);
     m_previewTime = new QLabel(m_videoPreview);
+    m_previewTime->setTextFormat(Qt::RichText);
     m_previewTime->setAlignment(Qt::AlignCenter);
     previewLayout->addWidget(m_previewImage);
     previewLayout->addWidget(m_previewTime);
@@ -875,7 +876,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_muteButton->setIcon(theme::tintedIcon(
             muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
             palette().color(QPalette::ButtonText), palette().color(QPalette::ButtonText)));
-        m_muteButton->setToolTip(muted ? tr("Unmute audio · hold for volume") : tr("Mute audio · hold for volume"));
+        m_muteButton->setToolTip(muted ? tr("Unmute audio\nHold for volume") : tr("Mute audio\nHold for volume"));
         m_muteButton->setAccessibleName(m_muteButton->toolTip());
     });
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value){
@@ -886,7 +887,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             m_audioOutput->setMuted(false);
             const QColor color = palette().color(QPalette::ButtonText);
             m_muteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/volume.svg"), color, color));
-            m_muteButton->setToolTip(tr("Mute audio · hold for volume"));
+            m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
             m_muteButton->setAccessibleName(m_muteButton->toolTip());
         }
     });
@@ -952,7 +953,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             });
         }
         menu.addSeparator();
-        connect(menu.addAction(tr("Remove zoom · Delete")), &QAction::triggered, this,
+        connect(menu.addAction(tr("Remove zoom\tDelete")), &QAction::triggered, this,
                 [this, id] { removeZoom(id); });
         menu.exec(global);
     });
@@ -1055,7 +1056,7 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     if (event->type() == QEvent::ToolTip && !widget->toolTip().isEmpty()) {
         if (widget == m_timeline) return true; // The timeline has its own image/time hint.
         const auto *help = static_cast<QHelpEvent *>(event);
-        m_tooltip->setText(widget->toolTip());
+        m_tooltip->setText(theme::tooltipHtml(widget->toolTip()));
         m_tooltip->adjustSize();
         QPoint pos = widget->mapTo(this, help->pos()) + QPoint(10, 18);
         if (pos.y() + m_tooltip->height() > height() - 4)
@@ -1105,9 +1106,12 @@ void EditorWindow::hideVideoPreview() {
 void EditorWindow::showVideoPreview() {
     if (m_hoverTime < 0 || !isVisible()) return;
     const bool appearing = m_videoPreview->isHidden();
-    m_previewTime->setText(formatPreciseTime(m_hoverTime)
-        + (m_previewSampleTime >= 0 && m_previewSampleTime != m_hoverTime
-            ? QStringLiteral(" · ~%1").arg(formatPreciseTime(m_previewSampleTime)) : QString()));
+    // The nearest decoded frame, when it differs, follows a step quieter.
+    m_previewTime->setText(m_previewSampleTime >= 0 && m_previewSampleTime != m_hoverTime
+        ? QStringLiteral("%1&nbsp;&nbsp;<span style=\"color:%2\">~%3</span>")
+              .arg(formatPreciseTime(m_hoverTime), palette().color(QPalette::PlaceholderText).name(),
+                   formatPreciseTime(m_previewSampleTime))
+        : formatPreciseTime(m_hoverTime));
     m_videoPreview->adjustSize();
     QPoint pos = m_timeline->mapTo(this, m_hoverPoint);
     pos.setX(qBound(4, pos.x() - m_videoPreview->width() / 2,
@@ -1493,7 +1497,7 @@ void EditorWindow::setCropRect(QRect rect) {
     rebuildCamera();
     const QSize size = rect.isEmpty() ? m_media.nativeSize() : rect.size();
     const QString name = m_media.path.isEmpty() ? QStringLiteral("Image") : QFileInfo(m_media.path).fileName();
-    setWindowTitle(QStringLiteral("%1 · %2 × %3 · eddy")
+    setWindowTitle(QStringLiteral("%1 (%2 × %3)")
         .arg(name).arg(size.width()).arg(size.height()));
 }
 

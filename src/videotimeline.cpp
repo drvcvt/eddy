@@ -21,7 +21,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(QStringLiteral("Video timeline"));
-    setToolTip(QStringLiteral("Drag to seek · ends to trim · Shift for fine trim · Ctrl+wheel to zoom"));
+    setToolTip(QStringLiteral("Drag to seek or pull the ends to trim\nFine trim\tShift\nZoom\tCtrl+wheel"));
     m_edgePan.setInterval(33);
     connect(&m_edgePan, &QTimer::timeout, this, [this] {
         if (!interacting()) return;
@@ -48,9 +48,9 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
             menu.addAction(tr("Add zoom here"), this, [this, time] { emit zoomAddRequested(time); });
             menu.addSeparator();
         }
-        menu.addAction(tr("Zoom in · +"), this, [this] { zoomAt(2, m_position); });
-        menu.addAction(tr("Zoom out · −"), this, [this] { zoomAt(0.5, m_position); });
-        menu.addAction(tr("Fit clip · 0"), this, &VideoTimeline::fitClip);
+        menu.addAction(tr("Zoom in\t+"), this, [this] { zoomAt(2, m_position); });
+        menu.addAction(tr("Zoom out\t−"), this, [this] { zoomAt(0.5, m_position); });
+        menu.addAction(tr("Fit clip\t0"), this, &VideoTimeline::fitClip);
         menu.exec(mapToGlobal(pos));
     });
 }
@@ -330,21 +330,23 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
             if (x1 < lane.left() || x0 > lane.right()) continue;
             const bool selected = z.id == m_selectedZoom;
-            // Numbers in mono, words in the UI face (studio plan 6.1).
+            // The level in mono, the motion a step quieter in the UI face; a gap
+            // separates them, no glyph (studio plan 6.1).
             const QString scale = QString::number(z.scale, 'g', 3) + QStringLiteral("×");
-            const QString motion = QStringLiteral(" · ") + motionName(z.motion);
+            const QString motion = motionName(z.motion);
             const qreal scaleWidth = QFontMetricsF(mono).horizontalAdvance(scale);
             const qreal motionWidth = QFontMetricsF(label).horizontalAdvance(motion);
             const qreal left = qMax(x0, lane.left()) + 8;
             const qreal room = qMin(x1, lane.right()) - 8 - left;
-            painter.setPen(ink(selected ? 0.9 : 0.7));
             if (room >= scaleWidth) {
+                painter.setPen(ink(selected ? 0.92 : 0.76));
                 painter.setFont(mono);
                 painter.drawText(QRectF(left, lane.top(), scaleWidth, lane.height()), Qt::AlignVCenter, scale);
             }
-            if (room >= scaleWidth + motionWidth) {
+            if (room >= scaleWidth + 6 + motionWidth) {
+                painter.setPen(ink(selected ? 0.7 : 0.55));
                 painter.setFont(label);
-                painter.drawText(QRectF(left + scaleWidth, lane.top(), motionWidth, lane.height()),
+                painter.drawText(QRectF(left + scaleWidth + 6, lane.top(), motionWidth, lane.height()),
                                  Qt::AlignVCenter, motion);
             }
             if (selected) {
@@ -357,7 +359,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         if (m_zooms.isEmpty()) {
             painter.setFont(label);
             painter.setPen(ink(0.45));
-            painter.drawText(lane, Qt::AlignCenter, tr("Click to add a zoom · Z"));
+            painter.drawText(lane, Qt::AlignCenter, tr("Click or press Z to add a zoom"));
         }
         painter.restore();
         painter.setPen(Qt::NoPen);

@@ -20,7 +20,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     auto *hex = new QLineEdit(current.name().toUpper(), this);
     hex->setObjectName("ColorHex");
     hex->setAccessibleName("Hex colour");
-    hex->setToolTip("Hex colour · Enter to apply");
+    hex->setToolTip("Hex colour, Enter applies");
     hex->setValidator(new QRegularExpressionValidator(QRegularExpression("#[0-9a-fA-F]{6}"), hex));
     hex->setMaxLength(7);
     hex->setFixedHeight(theme::kFloatButton.height());

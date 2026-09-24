@@ -158,4 +158,18 @@ void setMenuLabel(QToolButton *button, const QString &text) {
                           - 2 * button->fontMetrics().horizontalAdvance(QLatin1Char(' ')));
 }
 
+QString tooltipHtml(const QString &tip) {
+    const QString key = QApplication::palette().color(QPalette::PlaceholderText).name();
+    QString rows;
+    for (const QString &line : tip.split(QLatin1Char('\n'))) {
+        const QString label = line.section(QLatin1Char('\t'), 0, 0).toHtmlEscaped();
+        const QString shortcut = line.section(QLatin1Char('\t'), 1).toHtmlEscaped();
+        rows += shortcut.isEmpty()
+            ? QStringLiteral("<tr><td colspan=\"2\">%1</td></tr>").arg(label)
+            : QStringLiteral("<tr><td>%1</td><td style=\"padding-left:12px; color:%2\" align=\"right\">%3</td></tr>")
+                  .arg(label, key, shortcut);
+    }
+    return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\">%1</table>").arg(rows);
+}
+
 } // namespace eddy::theme

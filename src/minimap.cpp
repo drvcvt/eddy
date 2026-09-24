@@ -12,7 +12,7 @@ MiniMap::MiniMap(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("MiniMap"));
     setAttribute(Qt::WA_StyledBackground);
     setCursor(Qt::OpenHandCursor);
-    setToolTip(tr("Drag to move the zoom · wheel to change it"));
+    setToolTip(tr("Drag to move the zoom\nScroll to change its level"));
 }
 
 void MiniMap::setContent(const QImage &image, const QRectF &content) {
