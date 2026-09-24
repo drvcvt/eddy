@@ -1,6 +1,7 @@
 #include "projectcodec.h"
 #include "items/arrowitem.h"
 #include "items/ellipseitem.h"
+#include "items/stepitem.h"
 #include "items/highlightitem.h"
 #include "items/penpathitem.h"
 #include "items/rectitem.h"
@@ -134,6 +135,10 @@ QJsonArray itemsToJson(const QList<QGraphicsItem *> &itemsInStackingOrder) {
         } else if (dynamic_cast<RectItem *>(item)) {
             o["type"] = "rect";
             o["rect"] = rectJson(a->rect());
+        } else if (auto *step = dynamic_cast<StepItem *>(item)) {
+            o["type"] = "step";
+            o["number"] = step->number();
+            o["size"] = step->size() == StepItem::Size::S ? "s" : step->size() == StepItem::Size::L ? "l" : "m";
         } else {
             continue;
         }
@@ -243,6 +248,16 @@ std::optional<QList<QGraphicsItem *>> itemsFromJson(const QJsonArray &items, con
                                             ? SpotlightShape::Ellipse : SpotlightShape::RoundedRect);
                 spot->setIntensity(int(intensity));
                 a = spot;
+            } else if (type == QLatin1String("step")) {
+                double number = 0;
+                if (!r.number(o.value("number"), 1, StepItem::kMaxNumber, &number, "number")) return give(false);
+                const QString size = o.value("size").toString();
+                if (size != QLatin1String("s") && size != QLatin1String("m") && size != QLatin1String("l")) {
+                    r.fail(QStringLiteral("a step's size is s, m or l"));
+                    return give(false);
+                }
+                a = new StepItem(int(number), size == QLatin1String("s") ? StepItem::Size::S
+                                              : size == QLatin1String("l") ? StepItem::Size::L : StepItem::Size::M);
             } else {
                 r.fail(QStringLiteral("unknown annotation type %1").arg(type));
                 return give(false);

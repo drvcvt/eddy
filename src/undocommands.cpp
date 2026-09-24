@@ -48,6 +48,15 @@ EditTextCommand::EditTextCommand(TextItem *item, const TextState &before, const 
 void EditTextCommand::undo() { m_item->applyState(m_before); }
 void EditTextCommand::redo() { m_item->applyState(m_after); }
 
+SetStepCommand::SetStepCommand(StepItem *item, int beforeNumber, StepItem::Size beforeSize, int afterNumber,
+                               StepItem::Size afterSize, QUndoCommand *parent)
+    : QUndoCommand(parent), m_item(item), m_beforeNumber(beforeNumber), m_afterNumber(afterNumber),
+      m_beforeSize(beforeSize), m_afterSize(afterSize) {
+    setText("edit step");
+}
+void SetStepCommand::undo() { m_item->setNumber(m_beforeNumber); m_item->setSize(m_beforeSize); }
+void SetStepCommand::redo() { m_item->setNumber(m_afterNumber); m_item->setSize(m_afterSize); }
+
 SetSpotlightStyleCommand::SetSpotlightStyleCommand(
     SpotlightItem *item, SpotlightShape beforeShape, int beforeIntensity,
     SpotlightShape afterShape, int afterIntensity)

@@ -70,6 +70,7 @@ add_library(eddy_core STATIC
     src/zoomlane.cpp
     src/fragments.cpp
     src/zoomsuggest.cpp
+    src/stepbar.cpp
     src/audiowaveform.cpp
     src/studiorenderer.cpp
     src/renderexport.cpp
@@ -89,6 +90,7 @@ add_library(eddy_core STATIC
     src/items/penpathitem.cpp
     src/items/rasteritem.cpp
     src/items/textitem.cpp
+    src/items/stepitem.cpp
     src/items/spotlightitem.cpp
     resources/eddy.qrc
 )
@@ -164,6 +166,7 @@ eddy_test(test_zoomlane)
 eddy_test(test_fragments)
 eddy_test(test_zoomsuggest)
 eddy_test(test_audiowaveform)
+eddy_test(test_stepitem)
 eddy_test(test_studiorenderer)
 eddy_test(test_renderexport)
 eddy_test(test_exporter)

@@ -7,6 +7,7 @@
 #include <QList>
 #include <functional>
 #include "items/textitem.h"
+#include "items/stepitem.h"
 #include "items/annotationitem.h"
 #include "items/spotlightitem.h"
 #include "studiodocument.h"
@@ -72,6 +73,16 @@ private:
     TextItem *m_item;
     TextState m_before;
     TextState m_after;
+};
+class SetStepCommand : public QUndoCommand {
+public:
+    SetStepCommand(StepItem *item, int beforeNumber, StepItem::Size beforeSize, int afterNumber, StepItem::Size afterSize,
+                   QUndoCommand *parent = nullptr);
+    void undo() override; void redo() override;
+private:
+    StepItem *m_item;
+    int m_beforeNumber, m_afterNumber;
+    StepItem::Size m_beforeSize, m_afterSize;
 };
 class SetSpotlightStyleCommand : public QUndoCommand {
 public:
