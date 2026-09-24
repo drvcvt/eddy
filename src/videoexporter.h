@@ -34,6 +34,9 @@ struct VideoExportRequest {
     // output path makes a paletted GIF without sound.
     int maxShortSide = 0;
     int maxFps = 60;
+    // Split, cut and sped-up stretches of the source (studio plan 6.6); empty
+    // keeps the whole trimmed range at 1x.
+    QVector<Fragment> fragments;
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.
     std::function<void(int percent)> progress;

@@ -64,6 +64,7 @@ add_library(eddy_core STATIC
     src/timemap.cpp
     src/camerapath.cpp
     src/zoomlane.cpp
+    src/fragments.cpp
     src/studiorenderer.cpp
     src/renderexport.cpp
     src/studiopopover.cpp
@@ -153,6 +154,7 @@ eddy_test(test_studiodocument)
 eddy_test(test_timemap)
 eddy_test(test_camerapath)
 eddy_test(test_zoomlane)
+eddy_test(test_fragments)
 eddy_test(test_studiorenderer)
 eddy_test(test_renderexport)
 eddy_test(test_exporter)

@@ -30,6 +30,15 @@ static QByteArray processOutput(const QString &program, const QStringList &args)
     return p.readAllStandardOutput().trimmed();
 }
 
+// Binary output as it came, for raw audio.
+static QByteArray rawOutput(const QString &program, const QStringList &args) {
+    QProcess p;
+    p.start(program, args);
+    if (!p.waitForFinished(20000) || p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0)
+        return {};
+    return p.readAllStandardOutput();
+}
+
 static double horizontalContrast(const QImage &image, const QRect &rect) {
     qint64 total = 0;
     qint64 samples = 0;
@@ -754,6 +763,72 @@ private slots:
             QVERIFY2(left.red() > 200 && left.blue() < 60, qPrintable(left.name()));
             if (zoom) QVERIFY2(right.red() > 200 && right.blue() < 60, qPrintable(right.name()));
             else QVERIFY2(right.blue() > 200 && right.red() < 60, qPrintable(right.name()));
+        }
+    }
+    void fragmentsCutAndSpeedUpPictureAndSound() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        // Six seconds, one colour per second, a short beep at the start of every second.
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error",
+            "-f", "lavfi", "-i", "color=red:s=64x48:r=30:d=1", "-f", "lavfi", "-i", "color=0x00ff00:s=64x48:r=30:d=1",
+            "-f", "lavfi", "-i", "color=blue:s=64x48:r=30:d=1", "-f", "lavfi", "-i", "color=yellow:s=64x48:r=30:d=1",
+            "-f", "lavfi", "-i", "color=white:s=64x48:r=30:d=1", "-f", "lavfi", "-i", "color=black:s=64x48:r=30:d=1",
+            "-f", "lavfi", "-i", "sine=frequency=1000:duration=6,volume='if(lt(mod(t,1),0.05),1,0)':eval=frame",
+            "-filter_complex", "[0:v][1:v][2:v][3:v][4:v][5:v]concat=n=6:v=1:a=0[v]",
+            "-map", "[v]", "-map", "6:a", "-pix_fmt", "yuv420p", "-c:a", "aac", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        // Keep 0-2 s, cut 2-3 s (blue), 3-5 s at 2x (yellow, white), keep 5-6 s.
+        const QVector<Fragment> fragments{{0, 1.0, false}, {2000, 1.0, true}, {3000, 2.0, false}, {5000, 1.0, false}};
+        auto colourAt = [&](const QString &file, double seconds) {
+            const QString frame = dir.filePath(QStringLiteral("f.png"));
+            runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", QString::number(seconds), "-i", file,
+                                                  "-frames:v", "1", frame});
+            return QImage(frame).pixelColor(32, 24);
+        };
+        auto duration = [&](const QString &file) {
+            return processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-show_entries", "format=duration",
+                                                             "-of", "csv=p=0", file}).toDouble();
+        };
+        for (bool render : {false, true}) {
+            VideoExportRequest request{input, dir.filePath(render ? QStringLiteral("r.mp4") : QStringLiteral("g.mp4")), overlay};
+            request.fragments = fragments;
+            if (render) request.zooms = {{1, 0, 100, 1.1, ZoomSegment::Target::Point, QPointF(32, 24),
+                                          ZoomSegment::Motion::Instant}};
+            const DeliverResult result = writeVideoWithOverlay(request);
+            QVERIFY2(result.ok, qPrintable(result.error));
+            // 2 s + 1 s (2 s at 2x) + 1 s = 4 s.
+            QVERIFY2(qAbs(duration(request.outputPath) - 4.0) < 0.1,
+                     qPrintable(QStringLiteral("render %1: %2 s").arg(render).arg(duration(request.outputPath))));
+            const struct { double at; QColor want; } probes[] = {
+                {0.5, Qt::red}, {1.5, Qt::green}, {2.25, Qt::yellow}, {2.75, Qt::white}, {3.5, Qt::black}};
+            for (const auto &probe : probes) {
+                const QColor c = colourAt(request.outputPath, probe.at);
+                QVERIFY2(qAbs(c.red() - probe.want.red()) < 60 && qAbs(c.green() - probe.want.green()) < 60
+                             && qAbs(c.blue() - probe.want.blue()) < 60,
+                         qPrintable(QStringLiteral("render %1 at %2: %3").arg(render).arg(probe.at).arg(c.name())));
+            }
+            // Beeps start at 0 and 1 s (kept), 2 s (source 3 s) and 2.5 s (source 4 s, at 2x), 3 s (source 5 s).
+            const QByteArray pcm = rawOutput(QStringLiteral("ffmpeg"), {"-v", "error", "-i", request.outputPath,
+                "-ac", "1", "-ar", "8000", "-f", "s16le", "-"});
+            const auto *samples = reinterpret_cast<const qint16 *>(pcm.constData());
+            QVector<double> onsets;
+            int quiet = 400;
+            for (qsizetype i = 0; i < pcm.size() / 2; ++i) {
+                if (qAbs(samples[i]) > 3000) {
+                    if (quiet >= 400) onsets.append(i / 8000.0);
+                    quiet = 0;
+                } else {
+                    ++quiet;
+                }
+            }
+            const QVector<double> want{0, 1, 2, 2.5, 3};
+            QVERIFY2(onsets.size() == want.size(), qPrintable(QStringLiteral("render %1: %2 beeps").arg(render).arg(onsets.size())));
+            for (int i = 0; i < want.size(); ++i)
+                QVERIFY2(qAbs(onsets[i] - want[i]) < 0.06,
+                         qPrintable(QStringLiteral("render %1 beep %2 at %3 s").arg(render).arg(i).arg(onsets[i])));
         }
     }
     void renderedExportKeepsTrimAndAudio() {
