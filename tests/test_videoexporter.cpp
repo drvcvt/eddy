@@ -511,6 +511,136 @@ private slots:
             QStringLiteral("-f"), QStringLiteral("null"), QStringLiteral("-")
         }), "trimmed output cannot be decoded completely");
     }
+    void renderedExportMatchesTheFilterGraph() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        // Red left half, blue right half: the blur below straddles the edge.
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=red:s=160x240:d=1:r=10", "-f", "lavfi", "-i", "color=c=blue:s=160x240:d=1:r=10",
+            "-filter_complex", "[0:v][1:v]hstack", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(320, 240, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        QPainter(&overlay).fillRect(QRect(40, 40, 40, 40), Qt::green);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("graph.mp4")), overlay};
+        request.cropRect = QRect(20, 20, 280, 200);
+        request.blurRects = {QRect(140, 100, 40, 40)};
+        request.studio.background = StudioStyle::Background::Color;
+        request.studio.color = QColor(255, 255, 0);
+        request.studio.padding = 10;
+        request.studio.radius = 10;
+        request.studio.shadow = 0;
+        const DeliverResult graph = writeVideoWithOverlay(request);
+        QVERIFY2(graph.ok, qPrintable(graph.error));
+        const QString graphPath = request.outputPath;
+        request.outputPath = dir.filePath(QStringLiteral("rendered.mp4"));
+        const DeliverResult rendered = writeVideoRendered(request);
+        QVERIFY2(rendered.ok, qPrintable(rendered.error));
+
+        const auto a = probeVideoFile(graphPath), b = probeVideoFile(request.outputPath);
+        QVERIFY(a.ok && b.ok);
+        QCOMPARE(b.info.size, a.info.size);
+        QVERIFY2(qAbs(a.info.durationMs - b.info.durationMs) <= 100,
+                 qPrintable(QStringLiteral("%1 vs %2 ms").arg(a.info.durationMs).arg(b.info.durationMs)));
+        QCOMPARE(qRound(b.info.fps), 60);
+        auto frameAt = [&](const QString &video, const QString &name) {
+            const QString png = dir.filePath(name);
+            return runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-ss", "0.5", "-i", video,
+                                                         "-frames:v", "1", png}) ? QImage(png) : QImage();
+        };
+        const QImage fromGraph = frameAt(graphPath, QStringLiteral("graph.png"));
+        const QImage fromRender = frameAt(request.outputPath, QStringLiteral("rendered.png"));
+        QVERIFY(!fromGraph.isNull() && fromGraph.size() == fromRender.size());
+        const QPoint origin = studioLayout(QSize(280, 200), request.studio).content.topLeft();
+        // Background, red, blue, the annotation and the middle of the blur.
+        for (const QPoint &p : {QPoint(4, 4), origin + QPoint(60, 150), origin + QPoint(220, 150),
+                                origin + QPoint(40, 40), origin + QPoint(140, 100)}) {
+            const QColor g = fromGraph.pixelColor(p), r = fromRender.pixelColor(p);
+            QVERIFY2(qAbs(g.red() - r.red()) <= 10 && qAbs(g.green() - r.green()) <= 10
+                         && qAbs(g.blue() - r.blue()) <= 10,
+                     qPrintable(QStringLiteral("%1,%2: %3 vs %4").arg(p.x()).arg(p.y())
+                                    .arg(g.name(), r.name())));
+        }
+        qint64 difference = 0;
+        for (int y = 0; y < fromGraph.height(); ++y)
+            for (int x = 0; x < fromGraph.width(); ++x) {
+                const QRgb g = fromGraph.pixel(x, y), r = fromRender.pixel(x, y);
+                difference += qAbs(qRed(g) - qRed(r)) + qAbs(qGreen(g) - qGreen(r)) + qAbs(qBlue(g) - qBlue(r));
+            }
+        const double mean = double(difference) / (3.0 * fromGraph.width() * fromGraph.height());
+        QVERIFY2(mean < 3.0, qPrintable(QStringLiteral("mean difference %1").arg(mean)));
+    }
+
+    void zoomSegmentFillsTheOutputWithItsTarget() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QImage quadrants(320, 240, QImage::Format_RGB32);
+        {
+            QPainter p(&quadrants);
+            p.fillRect(0, 0, 160, 120, Qt::red);
+            p.fillRect(160, 0, 160, 120, Qt::green);
+            p.fillRect(0, 120, 160, 120, Qt::blue);
+            p.fillRect(160, 120, 160, 120, Qt::white);
+        }
+        const QString still = dir.filePath(QStringLiteral("quadrants.png"));
+        QVERIFY(quadrants.save(still));
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-loop", "1", "-i", still, "-t", "1",
+            "-r", "30", "-vf", "setsar=1,format=yuv420p", input}));
+        QImage overlay(320, 240, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay};
+        request.zooms = {{1, 0, 1000, 2.0, ZoomSegment::Target::Point, QPointF(240, 60),
+                          ZoomSegment::Motion::Instant}};
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const auto probe = probeVideoFile(request.outputPath);
+        QVERIFY(probe.ok);
+        QCOMPARE(probe.info.size, QSize(320, 240));
+        QCOMPARE(qRound(probe.info.fps), 60);   // zooms went through the frame renderer
+        // Qt draws RGB; the output says which matrix turned it into YUV, so players do not guess.
+        QCOMPARE(processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-select_streams", "v:0",
+                 "-show_entries", "stream=color_space", "-of", "csv=p=0", request.outputPath}),
+                 QByteArray("bt709"));
+        const QString frame = dir.filePath(QStringLiteral("frame.png"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-ss", "0.5", "-i", request.outputPath,
+                                                     "-frames:v", "1", frame}));
+        const QImage decoded(frame);
+        for (const QPoint &p : {QPoint(20, 20), QPoint(300, 20), QPoint(20, 220), QPoint(300, 220), QPoint(160, 120)}) {
+            const QColor c = decoded.pixelColor(p);
+            QVERIFY2(c.green() > 200 && c.red() < 60 && c.blue() < 60,
+                     qPrintable(QStringLiteral("%1,%2 is %3").arg(p.x()).arg(p.y()).arg(c.name())));
+        }
+    }
+
+    void renderedExportKeepsTrimAndAudio() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x48:d=2:r=25", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+            "-shortest", "-pix_fmt", "yuv420p", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay, 500, 1500};
+        request.zooms = {{1, 0, 2000, 1.5, ZoomSegment::Target::Point, QPointF(32, 24),
+                          ZoomSegment::Motion::Focused}};
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const auto probe = probeVideoFile(request.outputPath);
+        QVERIFY2(probe.ok, qPrintable(probe.error));
+        QVERIFY2(qAbs(probe.info.durationMs - 1000) <= 80,
+                 qPrintable(QStringLiteral("duration was %1 ms").arg(probe.info.durationMs)));
+        const QByteArray audio = processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-select_streams",
+            "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", request.outputPath});
+        QVERIFY2(!audio.isEmpty(), "the rendered export lost its audio stream");
+    }
 };
 
 QTEST_GUILESS_MAIN(TestVideoExporter)
