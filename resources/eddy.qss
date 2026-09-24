@@ -311,20 +311,22 @@ QMenu#CropRatioMenu::item:checked { background: @raise2; color: @fg; }
 QMenu#CropRatioMenu::item:selected { background: @raise3; color: @fg; }
 QMenu#CropRatioMenu::indicator { image: none; width: 0; height: 0; }
 /* The zoom bar shares the crop bar's floating geometry. */
-QWidget#ZoomBar { background: @raise1; border: none; border-radius: 12px; }
-QWidget#ZoomBar QToolButton {
+QWidget#ZoomBar, QWidget#FragmentBar { background: @raise1; border: none; border-radius: 12px; }
+QWidget#ZoomBar QToolButton, QWidget#FragmentBar QToolButton {
     color: @sub; padding: 0 8px; border-radius: 8px;
     font-size: @fs-micro; font-weight: 500;
 }
-QWidget#ZoomBar QToolButton:hover, QWidget#ZoomBar QToolButton:focus { background: @raise2; color: @fg; }
-QWidget#ZoomBar QToolButton#ZoomScale { font-family: @font-mono; font-weight: 400; }
-QToolButton#ZoomScale::menu-indicator, QToolButton#ZoomMotion::menu-indicator { image: none; width: 0; height: 0; }
-QMenu#ZoomScaleMenu, QMenu#ZoomMotionMenu { background: @raise1; color: @sub; border: none; border-radius: 10px; padding: 4px; font-size: @fs-small; font-weight: 500; }
-QMenu#ZoomScaleMenu { font-family: @font-mono; font-weight: 400; }
-QMenu#ZoomScaleMenu::item, QMenu#ZoomMotionMenu::item { padding: 2px 8px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
-QMenu#ZoomScaleMenu::item:checked, QMenu#ZoomMotionMenu::item:checked { background: @raise2; color: @fg; }
-QMenu#ZoomScaleMenu::item:selected, QMenu#ZoomMotionMenu::item:selected { background: @raise3; color: @fg; }
-QMenu#ZoomScaleMenu::indicator, QMenu#ZoomMotionMenu::indicator { image: none; width: 0; height: 0; }
+QWidget#ZoomBar QToolButton:hover, QWidget#ZoomBar QToolButton:focus,
+QWidget#FragmentBar QToolButton:hover, QWidget#FragmentBar QToolButton:focus { background: @raise2; color: @fg; }
+QWidget#ZoomBar QToolButton#ZoomScale, QWidget#FragmentBar QToolButton#FragmentSpeed { font-family: @font-mono; font-weight: 400; }
+QToolButton#ZoomScale::menu-indicator, QToolButton#ZoomMotion::menu-indicator,
+QToolButton#FragmentSpeed::menu-indicator { image: none; width: 0; height: 0; }
+QMenu#ZoomScaleMenu, QMenu#ZoomMotionMenu, QMenu#FragmentSpeedMenu { background: @raise1; color: @sub; border: none; border-radius: 10px; padding: 4px; font-size: @fs-small; font-weight: 500; }
+QMenu#ZoomScaleMenu, QMenu#FragmentSpeedMenu { font-family: @font-mono; font-weight: 400; }
+QMenu#ZoomScaleMenu::item, QMenu#ZoomMotionMenu::item, QMenu#FragmentSpeedMenu::item { padding: 2px 8px; margin: 1px 0; border: none; border-radius: 6px; background: transparent; }
+QMenu#ZoomScaleMenu::item:checked, QMenu#ZoomMotionMenu::item:checked, QMenu#FragmentSpeedMenu::item:checked { background: @raise2; color: @fg; }
+QMenu#ZoomScaleMenu::item:selected, QMenu#ZoomMotionMenu::item:selected, QMenu#FragmentSpeedMenu::item:selected { background: @raise3; color: @fg; }
+QMenu#ZoomScaleMenu::indicator, QMenu#ZoomMotionMenu::indicator, QMenu#FragmentSpeedMenu::indicator { image: none; width: 0; height: 0; }
 QWidget#MiniMap { background: @raise1; border: none; border-radius: 10px; }
 /* Export popover at Save: segmented rows (Q7 B2), the choice a step brighter. */
 QMenu#ExportMenu { background: transparent; border: none; padding: 0; }

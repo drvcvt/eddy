@@ -25,6 +25,8 @@
 #include "previewitems.h"
 #include "zoomlane.h"
 #include "zoombar.h"
+#include "fragmentbar.h"
+#include "fragments.h"
 #include "exportpanel.h"
 #include "projectstore.h"
 #include <QThread>
@@ -569,6 +571,29 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_zoomBar->hide();
         m_miniMap = new MiniMap(m_canvas->viewport());
         m_miniMap->hide();
+        m_fragmentBar = new FragmentBar(m_canvas->viewport());
+        m_fragmentBar->hide();
+        connect(m_fragmentBar, &FragmentBar::speedChosen, this, [this](double speed) {
+            const int i = m_selectedFragment;
+            editStudio([i, speed](StudioDocument &d) { fragments::setSpeed(d.fragments, i, speed); });
+        });
+        connect(m_fragmentBar, &FragmentBar::cutToggled, this, [this] {
+            const int i = m_selectedFragment;
+            if (i < 0) return;
+            QVector<Fragment> list = m_studio.fragments;
+            if (!fragments::setRemoved(list, i, !list[i].removed)) {
+                m_toast->showMessage(tr("The last fragment stays"));
+                return;
+            }
+            editStudio([&](StudioDocument &d) { d.fragments = list; });
+        });
+        connect(m_fragmentBar, &FragmentBar::joinRequested, this, [this] {
+            const int i = m_selectedFragment;
+            QVector<Fragment> list = m_studio.fragments;
+            if (!fragments::join(list, i)) return;
+            editStudio([&](StudioDocument &d) { d.fragments = list; });
+            selectFragment(list.isEmpty() ? -1 : i - 1);
+        });
         connect(m_canvas, &Canvas::viewChanged, this, &EditorWindow::positionZoomUi);
         connect(m_zoomBar, &ZoomBar::scaleChosen, this, [this](double scale) {
             editZoom(m_selectedZoom, [scale](ZoomSegment &z) { z.scale = scale; });
@@ -815,7 +840,12 @@ QWidget *EditorWindow::createPlaybackBar() {
         rateGroup->addAction(action);
         connect(action, &QAction::triggered, this, [this, rate] {
             ensureVideoPlayer();
+            m_previewRate = rate;
+            theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate));
+            for (auto *other : m_speedButton->menu()->actions())
+                other->setChecked(qFuzzyCompare(other->data().toDouble(), rate));
             if (m_player) m_player->setPlaybackRate(rate);
+            if (m_player) followPlaybackPieces(m_player->position());
         });
     }
     m_speedButton->setMenu(rates);
@@ -936,6 +966,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         }
     });
     connect(m_timeline, &VideoTimeline::interactionStarted, this, [this](bool trimming) {
+        m_timelineTrimming = trimming;
         ensureVideoPlayer();
         m_timelineActive = true;
         m_resumeAfterSeek = !trimming && m_player
@@ -946,6 +977,9 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_timeline, &VideoTimeline::seekRequested, this, &EditorWindow::requestVideoSeek);
     connect(m_timeline, &VideoTimeline::interactionFinished, this, [this](bool cancelled) {
         m_timelineActive = false;
+        // A click on the film strip selects the fragment under the playhead.
+        if (!cancelled && !m_timelineTrimming && m_studio.fragments.size() > 1)
+            selectFragment(fragments::indexAt(m_studio.fragments, m_timeline->position()));
         if (cancelled) m_resumeAfterSeek = m_copyFramePending = false;
         flushVideoSeek();
         if (hasVideoEdits() && m_cachedVideoRevision != m_videoRevision) scheduleVideoExportCache();
@@ -956,6 +990,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             this, &EditorWindow::updateTrimTimeLabels);
     connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);
     connect(m_timeline, &VideoTimeline::zoomSelected, this, &EditorWindow::selectZoom);
+    connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::selectFragment);
     connect(m_timeline, &VideoTimeline::zoomsPreviewed, this, [this](const QVector<ZoomSegment> &zooms) {
         m_studio.zooms = zooms;   // the drag's own preview; the edit is one undo step at release
         if (!m_cameraRebuild->isActive()) m_cameraRebuild->start();
@@ -1239,6 +1274,8 @@ void EditorWindow::ensureVideoPlayer() {
                     : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
                 finishVideoSeek();
             updateCamera();
+            if (m_presentedStart >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState)
+                followPlaybackPieces(m_presentedStart);
             if (m_miniMap && m_miniMap->isVisible() && updateVideoBackground())
                 m_miniMap->setContent(m_bg.copy(cameraContent())
                     .scaled(304, 224, Qt::KeepAspectRatio, Qt::SmoothTransformation), QRectF(cameraContent()));
@@ -1261,10 +1298,11 @@ void EditorWindow::ensureVideoPlayer() {
                 color, color));
         }
     });
-    connect(m_player, &QMediaPlayer::playbackRateChanged, this, [this](qreal rate) {
-        theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate));
+    connect(m_player, &QMediaPlayer::playbackRateChanged, this, [this](qreal) {
+        // The label shows the preview rate; a fragment's own speed multiplies it.
+        theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(m_previewRate));
         for (auto *action : m_speedButton->menu()->actions())
-            action->setChecked(qFuzzyCompare(action->data().toDouble(), rate));
+            action->setChecked(qFuzzyCompare(action->data().toDouble(), m_previewRate));
     });
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this, [this](QMediaPlayer::MediaStatus status) {
         if (status == QMediaPlayer::EndOfMedia) handlePlaybackEnd();
@@ -1300,12 +1338,13 @@ void EditorWindow::ensureVideoPlayer() {
             m_timeline->setPosition(pos);
         if (m_timeLabel)
             m_timeLabel->setText(formatTime(pos) + QStringLiteral(" / ") + formatTime(m_player->duration()));
+        if (m_player->playbackState() == QMediaPlayer::PlayingState) followPlaybackPieces(pos);
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
             handlePlaybackEnd();
         }
         if (m_player->playbackState() == QMediaPlayer::PlayingState && m_hoverTime < 0
             && (pos < m_timeline->visibleStart() || pos > m_timeline->visibleEnd()))
-            m_timeline->panBy(pos - m_timeline->visibleStart());
+            m_timeline->ensureVisible(pos);
     });
     connect(m_player, &QMediaPlayer::seekableChanged, this, [this](bool seekable) {
         if (seekable && m_seekTarget >= 0) flushVideoSeek();
@@ -1612,6 +1651,8 @@ void EditorWindow::setStudioDocument(const StudioDocument &doc) {
     m_studio = doc;
     m_toolbar->setStudioActive(doc.style.active());
     if (zoomlane::indexOf(m_studio.zooms, m_selectedZoom) < 0) m_selectedZoom = 0;
+    if (m_studio.fragments.isEmpty() || m_selectedFragment >= m_studio.fragments.size()) m_selectedFragment = -1;
+    if (m_timeline) m_timeline->setSelectedFragment(m_selectedFragment);
     setCropRect(m_cropRect);   // the base view follows the ratio and "keep zoomed in"
     if (isVideo()) onVideoContentChanged();
 }
@@ -1739,6 +1780,8 @@ void EditorWindow::rebuildCamera() {
             CameraFrame{QRectF(content), base == content ? 0.0 : double(base.width()) / base.height(),
                         QRectF(base).center()});
     }
+    m_timeline->setFragments(m_studio.fragments);
+    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
     m_timeline->setZoomLaneVisible(m_studio.style.active() || !m_studio.zooms.isEmpty());
     m_timeline->setZooms(m_studio.zooms, [this](qint64 source) {
         const auto out = m_timeMap.toOutput(double(source));
@@ -1770,6 +1813,10 @@ void EditorWindow::updateCamera() {
 void EditorWindow::selectZoom(quint32 id) {
     if (zoomlane::indexOf(m_studio.zooms, id) < 0) id = 0;
     m_selectedZoom = id;
+    if (id && m_selectedFragment >= 0) {
+        m_selectedFragment = -1;
+        if (m_timeline) m_timeline->setSelectedFragment(-1);
+    }
     if (m_timeline) m_timeline->setSelectedZoom(id);
     updateCamera();
     refreshZoomUi();
@@ -1790,6 +1837,52 @@ void EditorWindow::addZoomAt(qint64 sourceMs) {
     if (m_player) m_player->pause();
     editStudio([&](StudioDocument &d) { zoomlane::insert(d.zooms, z); });
     selectZoom(z.id);
+}
+
+void EditorWindow::selectFragment(int index) {
+    if (m_studio.fragments.isEmpty() || index >= m_studio.fragments.size()) index = -1;
+    if (index >= 0 && m_selectedZoom) {
+        m_selectedZoom = 0;
+        if (m_timeline) m_timeline->setSelectedZoom(0);
+        updateCamera();
+    }
+    m_selectedFragment = index;
+    if (m_timeline) m_timeline->setSelectedFragment(index);
+    refreshZoomUi();
+}
+
+// S splits at the playhead and selects the part after it (studio plan 6.6).
+void EditorWindow::splitAtPlayhead() {
+    const qint64 at = m_timeline->position();
+    QVector<Fragment> list = m_studio.fragments;
+    if (!fragments::split(list, at, m_media.video.durationMs)) {
+        m_toast->showMessage(tr("Too close to a split to split again"));
+        return;
+    }
+    editStudio([&](StudioDocument &d) { d.fragments = list; });
+    selectFragment(fragments::indexAt(list, at));
+}
+
+// Playback skips cuts and plays each fragment at its speed times the preview
+// rate. Seeks at a seam can stutter a frame; the export is exact.
+void EditorWindow::followPlaybackPieces(qint64 sourceMs) {
+    if (!m_player || m_studio.fragments.isEmpty() || m_seekSettling) {
+        if (m_player && m_studio.fragments.isEmpty() && !qFuzzyCompare(m_player->playbackRate(), m_previewRate))
+            m_player->setPlaybackRate(m_previewRate);
+        return;
+    }
+    const QVector<TimePiece> &pieces = m_timeMap.pieces();
+    for (const TimePiece &piece : pieces) {
+        if (sourceMs < piece.srcStart - 1) {   // in a cut: on to the next kept piece
+            m_player->setPosition(qRound64(piece.srcStart) + 1);
+            return;
+        }
+        if (sourceMs < piece.srcEnd) {
+            const qreal rate = piece.speed * m_previewRate;
+            if (!qFuzzyCompare(m_player->playbackRate(), rate)) m_player->setPlaybackRate(rate);
+            return;
+        }
+    }
 }
 
 // Steers the selected zoom's target, or the "keep zoomed in" centre when no
@@ -1842,6 +1935,9 @@ void EditorWindow::refreshZoomUi() {
     const bool keep = cameraBase() != cameraContent();
     if (i >= 0 && !cropping) m_zoomBar->setZoom(m_studio.zooms[i]);
     m_zoomBar->setVisible(i >= 0 && !cropping);
+    const bool fragment = m_selectedFragment >= 0 && m_selectedFragment < m_studio.fragments.size() && !cropping;
+    if (fragment) m_fragmentBar->setFragment(m_studio.fragments[m_selectedFragment], m_selectedFragment > 0);
+    m_fragmentBar->setVisible(fragment);
     const bool map = !cropping && !playing && (i >= 0 || keep);
     if (map && !m_miniMap->isVisible()) {
         // The picture only changes with the frame; see videoFrameChanged. m_bg is
@@ -1864,6 +1960,10 @@ void EditorWindow::positionZoomUi() {
     const QRect bar(QPoint((viewport.width() - m_zoomBar->width()) / 2,
                            viewport.height() - m_zoomBar->height() - 12), m_zoomBar->size());
     m_zoomBar->move(bar.topLeft());
+    m_fragmentBar->adjustSize();
+    m_fragmentBar->move((viewport.width() - m_fragmentBar->width()) / 2,
+                        viewport.height() - m_fragmentBar->height() - 12);
+    m_fragmentBar->raise();
     // Bottom right inside the content; above the bar when they would meet.
     const QRectF camera = m_canvas->camera().isEmpty() ? m_canvas->contentRect() : m_canvas->camera();
     const QRect content = QRect(m_canvas->mapFromScene(camera.topLeft()),
@@ -1921,7 +2021,7 @@ bool EditorWindow::hasTrim() const {
 bool EditorWindow::hasVideoEdits() const {
     return hasVideoAnnotations() || hasTrim() || !m_cropRect.isEmpty() || m_studio.style.active()
         || !m_studio.zooms.isEmpty() || cameraBase() != cameraContent()
-        || m_exportSettings != ExportSettings{};
+        || m_exportSettings != ExportSettings{} || !m_studio.fragments.isEmpty();
 }
 
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
@@ -1960,8 +2060,10 @@ void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
             field->setText(formatPreciseTime(field == m_trimInLabel ? inMs : outMs));
         field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs)) + 16);
     }
+    // The output's length: cuts left out, sped-up fragments shorter.
     if (m_trimDurationLabel)
-        m_trimDurationLabel->setText(formatPreciseTime(outMs - inMs));
+        m_trimDurationLabel->setText(formatPreciseTime(qRound64(
+            TimeMap(m_media.video.durationMs, inMs, outMs, m_studio.fragments).outputDurationMs())));
 }
 
 void EditorWindow::commitTrimTime(QLineEdit *field) {
@@ -2096,6 +2198,7 @@ void EditorWindow::startVideoExportCache() {
     request.cropRect = m_cropRect;
     request.studio = m_studio.style;
     request.zooms = m_studio.zooms;
+    request.fragments = m_studio.fragments;
     request.maxShortSide = m_exportSettings.shortSide;
     request.maxFps = m_exportSettings.fps;
     if (cameraBase() != cameraContent()) request.baseView = cameraBase();
@@ -2847,6 +2950,17 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         QWidget::keyPressEvent(e);
         return;
     }
+    if (isVideo() && m_timeline && e->modifiers() == Qt::NoModifier && e->key() == Qt::Key_S) {
+        splitAtPlayhead();
+        e->accept();
+        return;
+    }
+    if (m_selectedFragment >= 0 && !m_selectedZoom && m_scene->selectedItems().isEmpty()
+        && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
+        if (!m_studio.fragments[m_selectedFragment].removed) emit m_fragmentBar->cutToggled();
+        e->accept();
+        return;
+    }
     if (isVideo() && m_timeline && e->modifiers() == Qt::NoModifier && e->key() == Qt::Key_Z) {
         addZoomAt(m_timeline->position());
         e->accept();
@@ -2876,6 +2990,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         if (m_canvas->cameraDragging()) { m_canvas->cancelCameraDrag(); e->accept(); return; }
         if (m_timeline && m_timeline->zoomDragging()) { m_timeline->cancelInteraction(); e->accept(); return; }
         if (m_selectedZoom) { selectZoom(0); e->accept(); return; }
+        if (m_selectedFragment >= 0) { selectFragment(-1); e->accept(); return; }
     }
     switch (e->key()) {
         case Qt::Key_I:

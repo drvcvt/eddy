@@ -5,6 +5,7 @@
 #include <QVector>
 #include <functional>
 #include "studiodocument.h"
+#include "timemap.h"
 
 namespace eddy {
 
@@ -24,8 +25,16 @@ public:
     void panBy(qint64 deltaMs);
     void fitClip();
     void cancelInteraction();
-    qint64 visibleStart() const { return m_viewStart; }
-    qint64 visibleEnd() const { return m_viewEnd; }
+    // Source times at the view's edges.
+    qint64 visibleStart() const { return source(m_viewStart); }
+    qint64 visibleEnd() const { return source(m_viewEnd); }
+    // Pans so `sourceMs` is in view.
+    void ensureVisible(qint64 sourceMs);
+    // Fragments (studio plan 6.6, Q5 = B): the timeline shows the edited
+    // time, cuts collapse to a notch in the ruler and 2x takes half the width.
+    // Every public time stays source time.
+    void setFragments(const QVector<Fragment> &fragments);
+    void setSelectedFragment(int index);   // -1: none
     QVector<qint64> thumbnailTimes() const;
     QImage thumbnailNear(qint64 time, qint64 *sampleTime) const;
     bool interacting() const { return m_drag != Drag::None; }
@@ -66,6 +75,7 @@ signals:
     void zoomsPreviewed(const QVector<ZoomSegment> &zooms);
     void zoomsEdited(const QVector<ZoomSegment> &before, const QVector<ZoomSegment> &after);
     void zoomMenuRequested(quint32 id, QPoint globalPos);
+    void cutClicked(int fragment);
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -81,6 +91,11 @@ protected:
 private:
     QRectF trackRect() const;
     quint32 zoomAt(QPointF pos, Drag *part) const;
+    int cutAt(QPointF pos) const;
+    double edited(qint64 sourceMs) const;
+    qint64 source(double editedMs) const;
+    qint64 editedDuration() const;
+    void rebuildAxis();
     void moveZoomDrag(qreal x);
     qreal xForTime(qint64 timeMs) const;
     qint64 timeForX(qreal x) const;
@@ -110,6 +125,10 @@ private:
     quint32 m_selectedZoom = 0, m_dragZoom = 0;
     qint64 m_grabOffset = 0;
     bool m_zoomMoved = false;
+    QVector<Fragment> m_fragments;
+    TimeMap m_axis;                 // source -> edited time, without the trim
+    int m_selectedFragment = -1;
+    int m_hoverCut = -1;
 };
 
 }

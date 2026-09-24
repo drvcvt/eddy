@@ -2,6 +2,7 @@
 #include "theme.h"
 #include "zoomlane.h"
 #include "motionicon.h"
+#include "fragments.h"
 #include <QFontDatabase>
 #include <QMouseEvent>
 #include <QPainter>
@@ -55,10 +56,62 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     });
 }
 
+double VideoTimeline::edited(qint64 sourceMs) const {
+    return m_fragments.isEmpty() ? double(sourceMs) : m_axis.toOutputAfter(double(sourceMs));
+}
+
+qint64 VideoTimeline::source(double editedMs) const {
+    return m_fragments.isEmpty() ? qRound64(editedMs) : qRound64(m_axis.toSource(editedMs));
+}
+
+qint64 VideoTimeline::editedDuration() const {
+    return m_fragments.isEmpty() ? m_duration : qRound64(m_axis.outputDurationMs());
+}
+
+void VideoTimeline::rebuildAxis() {
+    m_axis = TimeMap(m_duration, 0, m_duration, m_fragments);
+}
+
+void VideoTimeline::setFragments(const QVector<Fragment> &fragments) {
+    if (fragments == m_fragments) return;
+    const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
+    m_fragments = fragments;
+    rebuildAxis();
+    if (m_selectedFragment >= fragments::expanded(m_fragments).size()) m_selectedFragment = -1;
+    m_hoverCut = -1;
+    m_thumbnails.clear();
+    if (fullView) fitClip();
+    else setViewRange(m_viewStart, m_viewEnd);
+    emit viewRangeChanged();
+    update();
+}
+
+void VideoTimeline::setSelectedFragment(int index) {
+    if (index == m_selectedFragment) return;
+    m_selectedFragment = index;
+    update();
+}
+
+void VideoTimeline::ensureVisible(qint64 sourceMs) {
+    const double e = edited(sourceMs);
+    if (e >= m_viewStart && e <= m_viewEnd) return;
+    const qint64 span = m_viewEnd - m_viewStart;
+    setViewRange(qRound64(e), qRound64(e) + span);
+}
+
+int VideoTimeline::cutAt(QPointF pos) const {
+    const QRectF track = trackRect();
+    if (pos.y() > track.top() + 4) return -1;
+    const QVector<Fragment> parts = fragments::expanded(m_fragments);
+    for (int i = 0; i < parts.size(); ++i)
+        if (parts[i].removed && qAbs(pos.x() - xForTime(parts[i].startMs)) <= 6) return i;
+    return -1;
+}
+
 void VideoTimeline::setViewRange(qint64 startMs, qint64 endMs) {
-    const qint64 span = qBound<qint64>(qMin(m_duration, m_minimumRange * 10),
-                                     endMs - startMs, m_duration);
-    const qint64 start = qBound<qint64>(0, startMs, m_duration - span);
+    const qint64 total = editedDuration();
+    const qint64 span = qBound<qint64>(qMin(total, m_minimumRange * 10), endMs - startMs, total);
+    const qint64 start = qBound<qint64>(0, startMs, total - span);
     if (m_viewStart == start && m_viewEnd == start + span) return;
     m_viewStart = start;
     m_viewEnd = start + span;
@@ -69,10 +122,10 @@ void VideoTimeline::setViewRange(qint64 startMs, qint64 endMs) {
 
 void VideoTimeline::zoomAt(qreal factor, qint64 anchorMs) {
     if (m_duration <= 0 || !std::isfinite(factor) || factor <= 0) return;
-    anchorMs = qBound(m_viewStart, anchorMs, m_viewEnd);
+    anchorMs = qBound(m_viewStart, qRound64(edited(anchorMs)), m_viewEnd);
     const qint64 oldSpan = m_viewEnd - m_viewStart;
-    const qint64 span = qBound(qMin(m_duration, m_minimumRange * 10),
-                              qRound64(oldSpan / factor), m_duration);
+    const qint64 total = editedDuration();
+    const qint64 span = qBound(qMin(total, m_minimumRange * 10), qRound64(oldSpan / factor), total);
     const qreal fraction = oldSpan > 0 ? qreal(anchorMs - m_viewStart) / oldSpan : 0.5;
     const qint64 start = anchorMs - qRound64(fraction * span);
     setViewRange(start, start + span);
@@ -82,15 +135,14 @@ void VideoTimeline::panBy(qint64 deltaMs) {
     setViewRange(m_viewStart + deltaMs, m_viewEnd + deltaMs);
 }
 
-void VideoTimeline::fitClip() { setViewRange(0, m_duration); }
+void VideoTimeline::fitClip() { setViewRange(0, editedDuration()); }
 
 QVector<qint64> VideoTimeline::thumbnailTimes() const {
     QVector<qint64> times;
     if (m_duration <= 0) return times;
     const int count = qBound(6, width() / 64, 24);
     for (int i = 0; i < count; ++i)
-        times.append(qMin(m_duration - 1, m_viewStart
-            + qRound64((i + 0.5) * (m_viewEnd - m_viewStart) / count)));
+        times.append(qMin(m_duration - 1, source(m_viewStart + (i + 0.5) * (m_viewEnd - m_viewStart) / count)));
     return times;
 }
 
@@ -117,8 +169,9 @@ void VideoTimeline::setContactSheet(const QImage &image, int frameCount) {
 }
 
 void VideoTimeline::setDuration(qint64 durationMs) {
-    const bool fullView = m_viewStart == 0 && m_viewEnd == m_duration;
+    const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
     m_duration = qMax<qint64>(0, durationMs);
+    rebuildAxis();
     m_position = qBound<qint64>(0, m_position, m_duration);
     if (m_out == 0 || m_out > m_duration) m_out = m_duration;
     setTrimRange(m_in, m_out);
@@ -228,14 +281,14 @@ void VideoTimeline::moveZoomDrag(qreal x) {
 qreal VideoTimeline::xForTime(qint64 timeMs) const {
     const QRectF track = trackRect();
     if (m_viewEnd <= m_viewStart) return track.left();
-    return track.left() + track.width() * qreal(timeMs - m_viewStart) / (m_viewEnd - m_viewStart);
+    return track.left() + track.width() * (edited(timeMs) - m_viewStart) / (m_viewEnd - m_viewStart);
 }
 
 qint64 VideoTimeline::timeForX(qreal x) const {
     const QRectF track = trackRect();
     if (m_duration <= 0 || track.width() <= 0) return 0;
     const qreal fraction = qBound<qreal>(0, (x - track.left()) / track.width(), 1);
-    return m_viewStart + qRound64(fraction * (m_viewEnd - m_viewStart));
+    return source(m_viewStart + fraction * (m_viewEnd - m_viewStart));
 }
 
 void VideoTimeline::paintEvent(QPaintEvent *) {
@@ -258,7 +311,9 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     painter.save();
     painter.setClipPath(clip);
     painter.fillRect(track, ink(0.12));
-    if (!m_contactSheet.isNull()) {
+    // The contact sheet spans the whole source; with fragments only the
+    // thumbnails, sampled in edited time, are right.
+    if (!m_contactSheet.isNull() && m_fragments.isEmpty()) {
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
         // Crop each frame to its slot rather than stretching the contact sheet.
         const qreal sourceWidth = qreal(m_contactSheet.width()) / m_contactSheetFrames;
@@ -289,6 +344,22 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     painter.fillRect(QRectF(track.left(), track.top(), qMax(0.0, inX - track.left()), track.height()), shade);
     painter.fillRect(QRectF(qMax(track.left(), outX), track.top(),
                            qMax(0.0, track.right() - outX), track.height()), shade);
+    if (!m_fragments.isEmpty()) {
+        const QVector<Fragment> parts = fragments::expanded(m_fragments);
+        const bool pickedKept = m_selectedFragment >= 0 && m_selectedFragment < parts.size()
+            && !parts[m_selectedFragment].removed;
+        QColor quiet = background;
+        quiet.setAlpha(110);
+        for (const TimePiece &piece : m_axis.pieces()) {
+            const qreal x0 = xForTime(qRound64(piece.srcStart));
+            const qreal x1 = track.left() + track.width() * (piece.outEnd() - m_viewStart) / (m_viewEnd - m_viewStart);
+            // The other fragments step back while one is selected.
+            if (pickedKept && fragments::indexAt(m_fragments, qRound64(piece.srcStart)) != m_selectedFragment)
+                painter.fillRect(QRectF(x0, track.top(), x1 - x0, track.height()), quiet);
+            // A 2 px seam between fragments.
+            if (piece.outStart > 0) painter.fillRect(QRectF(x0 - 1, track.top(), 2, track.height()), background);
+        }
+    }
     painter.restore();
 
     if (m_laneVisible) {
@@ -428,6 +499,33 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     if (!endLabel.isEmpty()) painter.drawText(endLabel, Qt::AlignCenter, end);
     if (m_in < m_viewStart) painter.drawText(QRectF(0, 19, 14, 26), Qt::AlignCenter, QStringLiteral("‹"));
     if (m_out > m_viewEnd) painter.drawText(QRectF(width() - 14, 19, 14, 26), Qt::AlignCenter, QStringLiteral("›"));
+    // A cut is a notch in the ruler over its seam (E3); hover names it.
+    const QVector<Fragment> parts = fragments::expanded(m_fragments);
+    for (int i = 0; i < parts.size(); ++i) {
+        if (!parts[i].removed) continue;
+        const qreal x = xForTime(parts[i].startMs);
+        if (x < track.left() - 4 || x > track.right() + 4) continue;
+        const bool lit = i == m_hoverCut || i == m_selectedFragment;
+        QPainterPath notch;
+        notch.moveTo(x - 4, track.top() - 6);
+        notch.lineTo(x + 4, track.top() - 6);
+        notch.lineTo(x, track.top() - 1);
+        notch.closeSubpath();
+        painter.setPen(Qt::NoPen);
+        painter.fillPath(notch, ink(lit ? 0.95 : 0.6));
+        if (i == m_hoverCut) {
+            const double ms = double(fragments::endOf(m_fragments, i, m_duration) - parts[i].startMs);
+            const QString text = tr("Cut %1 s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
+            QFont hint = font();
+            hint.setPixelSize(theme::kFsMicro);
+            painter.setFont(hint);
+            const qreal w = QFontMetricsF(hint).horizontalAdvance(text) + 8;
+            const QRectF box(qBound(0.0, x + 6, width() - w), 0, w, 13);
+            painter.fillRect(box, background);
+            painter.setPen(ink(0.9));
+            painter.drawText(box, Qt::AlignCenter, text);
+        }
+    }
     if (hasFocus()) {
         painter.setPen(QPen(ink(0.4), 1)); painter.setBrush(Qt::NoBrush);
         painter.drawRoundedRect(track.adjusted(-2, -2, 2, 2), 7, 7);
@@ -437,6 +535,11 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
 void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     if (event->button() != Qt::LeftButton || m_duration <= 0) return;
     setFocus(Qt::MouseFocusReason);
+    if (const int cut = cutAt(event->position()); cut >= 0) {
+        emit cutClicked(cut);
+        event->accept();
+        return;
+    }
     if (m_laneVisible && event->position().y() >= zoomLaneRect().top() - 2) {
         Drag part = Drag::None;
         const quint32 id = zoomAt(event->position(), &part);
@@ -468,7 +571,7 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
         m_drag = Drag::Seek;
     m_beforeIn = m_in; m_beforeOut = m_out; m_beforePosition = m_position;
     m_dragX = x;
-    m_dragTime = m_drag == Drag::In ? m_in : m_out;
+    m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
     m_fine = event->modifiers().testFlag(Qt::ShiftModifier);
     emit interactionStarted(trimming());
     m_edgePan.start();
@@ -478,6 +581,16 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
 
 void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
     if (m_drag == Drag::None) {
+        const int cut = cutAt(event->position());
+        if (cut != m_hoverCut) {
+            m_hoverCut = cut;
+            update();
+        }
+        if (cut >= 0) {
+            setCursor(Qt::PointingHandCursor);
+            emit hoverLeft();
+            return;
+        }
         if (m_laneVisible && event->position().y() >= zoomLaneRect().top() - 2) {
             Drag part = Drag::None;
             zoomAt(event->position(), &part);
@@ -510,13 +623,13 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     if (zoomDragging()) { moveZoomDrag(x); return; }
     const bool fine = modifiers.testFlag(Qt::ShiftModifier);
     if (fine != m_fine) {
-        m_dragTime = m_drag == Drag::In ? m_in : m_out;
+        m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
         m_dragX = x;
         m_fine = fine;
     }
     const qint64 time = m_drag == Drag::Seek ? timeForX(x)
-        : qRound64(m_dragTime + (x - m_dragX) * (m_viewEnd - m_viewStart)
-                               / trackRect().width() * (m_fine ? 0.1 : 1.0));
+        : source(m_dragTime + (x - m_dragX) * (m_viewEnd - m_viewStart)
+                                / trackRect().width() * (m_fine ? 0.1 : 1.0));
     if (m_drag == Drag::In) {
         m_in = qBound<qint64>(0, time, m_out - qMin(m_minimumRange, m_duration));
         emit trimPreviewed(m_in, m_out);
@@ -557,6 +670,7 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
 
 void VideoTimeline::leaveEvent(QEvent *event) {
     m_hover = Drag::None;
+    m_hoverCut = -1;
     if (!interacting()) emit hoverLeft();
     setCursor(Qt::PointingHandCursor);
     update();
