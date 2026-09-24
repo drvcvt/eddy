@@ -21,11 +21,16 @@ Takes an image or video from a file (images also support stdin), lets you annota
 | Ellipse | `E` | Stroked ellipse outline |
 | Highlight | `H` | Semi-transparent highlight band |
 | Text | `T` | Inline text with wrapping, alignment, size, bold and filled-label styles |
+| Step | `N` | Numbered circles 1, 2, 3 in the stroke colour; the bar sets the number and S/M/L and renumbers all steps in the order they were made |
 | Redact | `X` | Draw a redaction region; a floating mode-bar lets you switch between **Blur / Blacken / OCR-Blur / OCR-Blacken** |
 | Spotlight | — | Keep one rounded or oval focus region bright while dimming the surrounding canvas |
 | Crop | `C` | Set the visible image or video area, with eight handles and aspect presets |
 
 Every annotation is a retained scene item — select and move it with the Move tool. Full undo/redo. Crisp anti-aliased rendering via Qt's QGraphicsView.
+Moved items snap to the edges and centres of other items and of the picture, with thin guides while
+dragging; hold `Ctrl` to place freely, or turn **Snap to objects** off in the canvas context menu.
+With two or more items selected a bar lines them up (left, centre, right, top, middle, bottom) and,
+from three on, spaces them evenly; each is one undo step.
 
 The interface uses Vis-style grayscale surfaces, bundled Outfit typography (SIL OFL) on an 11/13px scale, rounded
 controls, and grouped monochrome tool icons with tooltips (tool name + hotkey).
@@ -81,8 +86,26 @@ and **Keep zoomed in**, which fills a narrow output ratio such as 9:16 with a
 window of the video instead of background. Playback shows the camera ride, and the
 export matches the preview; zooms export through a frame renderer at 60 fps,
 everything else keeps the ffmpeg filter-graph export. When a video has a Boltsnap
-cursor track beside it (`clip.cursor.json`), Eddy loads it for later
-cursor-following zooms; the cursor itself stays the one Boltsnap baked in.
+cursor track beside it (`clip.cursor.json`), zooms can follow the pointer,
+**Keep zoomed in** follows it until you place the view by hand, and **Suggest zooms**
+on the Camera page proposes zooms where the pointer clicks or rests; the cursor itself
+stays the one Boltsnap baked in. **Blur** on the Camera page smears camera moves in the
+export only; the preview stays sharp. **Presets** save a Studio look, apply it and share it
+as a file, background image included.
+
+`S` splits a video at the playhead. A selected fragment can be cut, restored, sped up or
+slowed down, or joined with the one before; the timeline then shows the edited time and a
+cut becomes a notch in the ruler. Redactions and spotlights on a video can show from the
+playhead on; their stretch sits on a mask lane under the timeline, where it moves and
+resizes. Videos with sound get a waveform lane right under the filmstrip (its context menu
+hides it); **Include audio in output** in the speaker menu leaves the sound out of the saved
+video, shown as **No audio** beside the speaker, and undoes like any edit.
+
+The export popover (hold **Save**) picks a preset (Original, Web, Small, GIF), the format,
+the size and the frame rate, and its footer saves or opens a **project**: a `.eddy` file
+with an `.eddy.assets` folder holding a copy of the original, so every layer stays editable.
+Edits are also kept on their own while you work (up to 2 GB, in
+`~/.local/share/eddy/recovery`); **Resume…** there or `eddy --resume` brings them back.
 
 Video has an adaptive filmstrip and a time ruler. Hover for a source-frame preview,
 drag to scrub, or pull the end grips to trim. Hold **Shift** for fine trim; **Esc**
@@ -149,7 +172,8 @@ it does not track moving text.
 
 | Key | Action |
 |-----|--------|
-| `A` `P` `R` `E` `H` `T` `X` `M` | Switch tool |
+| `A` `P` `R` `E` `H` `T` `N` `X` `M` | Switch tool |
+| `Ctrl` while moving | Place freely, without snapping |
 | `Ctrl+Z` | Undo |
 | `Ctrl+Shift+Z` | Redo |
 | `Shift` while drawing/resizing | Constrain proportions; snap arrows to 45° |
@@ -168,6 +192,8 @@ it does not track moving text.
 | Tap `Space` / `K` on video | Play / Pause |
 | `J` / `L` on video | Pause and step backward / forward |
 | `I` / `O` on video | Set Start / End at the playhead |
+| `S` on video | Split at the playhead |
+| `Z` on video | Add a zoom at the playhead |
 | `Enter` / `Esc` in a trim time field | Apply / restore its value |
 | `C`, then `Enter` / `Esc` | Open Crop, apply / cancel |
 | `Z` on video | Add a zoom at the playhead |

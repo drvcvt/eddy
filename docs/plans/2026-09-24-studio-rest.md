@@ -597,6 +597,6 @@ im Resume-Dialog (Raster-Test aus W5). `ctest` 49/49.
 | W7 | G1 | Audio-Probe und Wellenform-Daten | `d84b51b` |
 | W7 | G2 | Wellenform-Spur | `f59cb2e` |
 | W7 | G3 | Ton in der Ausgabe | `40dd2cf` |
-| W8 | H1 | Nummerierte Schritte | |
-| W8 | H2 | Hilfslinien und Einrasten | |
-| W8 | H3 | Ausrichten und Verteilen | |
+| W8 | H1 | Nummerierte Schritte | `2fbff1c` |
+| W8 | H2 | Hilfslinien und Einrasten | `7e6ce49` |
+| W8 | H3 | Ausrichten und Verteilen | `067ebf7` |
