@@ -26,6 +26,41 @@ static QImage renderScene(QGraphicsScene &scene, const QSize &size) {
 class TestToolController : public QObject {
     Q_OBJECT
 private slots:
+    void aNewSpotlightReplacesOnlyWhatShowsAtThePlayhead() {
+        QGraphicsScene scene(0, 0, 200, 100);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(200, 100, QImage::Format_ARGB32_Premultiplied));
+        auto spotlights = [&] {
+            QList<SpotlightItem *> out;
+            for (auto *item : scene.items())
+                if (auto *s = dynamic_cast<SpotlightItem *>(item)) out.append(s);
+            return out;
+        };
+        auto draw = [&](QPointF a, QPointF b) {
+            tools.setTool(ToolType::Spotlight);
+            tools.begin(a);
+            tools.finish(b);
+        };
+        // Images and whole-clip spotlights: one replaces the other, as before.
+        draw({10, 10}, {50, 50});
+        draw({60, 10}, {90, 50});
+        QCOMPARE(spotlights().size(), 1);
+        // In a video a timed spotlight elsewhere stays, and the new one takes
+        // the free stretch after the playhead.
+        spotlights().first()->setTimeWindow(std::pair{qint64(0), qint64(2000)});
+        tools.setVideoTime(3000, 10000);
+        draw({10, 10}, {50, 50});
+        QCOMPARE(spotlights().size(), 2);
+        SpotlightItem *added = nullptr;
+        for (auto *s : spotlights()) if (s->timeWindow()->first == 3000) added = s;
+        QVERIFY(added);
+        QCOMPARE(added->timeWindow()->second, 10000);
+        // One drawn where that new one shows replaces it.
+        tools.setVideoTime(5000, 10000);
+        draw({20, 20}, {40, 40});
+        QCOMPARE(spotlights().size(), 2);
+        QVERIFY(undo.canUndo());
+    }
     void arrowDragAddsItem() {
         QGraphicsScene scene; QUndoStack undo;
         ToolController tc(&scene, &undo, QImage(100,100,QImage::Format_ARGB32_Premultiplied));

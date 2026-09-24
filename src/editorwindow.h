@@ -12,6 +12,8 @@
 #include "exportsettings.h"
 #include "projectcodec.h"
 #include "projectstore.h"
+#include "items/annotationitem.h"
+#include "studiorenderer.h"
 #include <QSet>
 #include <QHash>
 #include <QPointer>
@@ -173,6 +175,10 @@ private:
     void positionZoomUi();
     void addZoomAt(qint64 sourceMs);
     void selectFragment(int index);
+    void refreshMasks();
+    void applyTimeWindows(qint64 sourceMs);
+    void setTimeScope(AnnotationItem *item, bool fromPlayhead);
+    QVector<TimedOverlay> renderTimedOverlays();
     void splitAtPlayhead();
     void followPlaybackPieces(qint64 sourceMs);
     FragmentBar *m_fragmentBar = nullptr;

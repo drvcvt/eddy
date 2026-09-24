@@ -209,6 +209,37 @@ private slots:
         QVERIFY(qAbs(timeline.visibleStart() - start) <= 2);
         QVERIFY(qAbs(timeline.visibleEnd() - end) <= 2);
     }
+    void maskLaneSelectsAndResizesWindows() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        QVERIFY(timeline.maskLaneRect().isEmpty());
+        timeline.setMasks({{7, 2000, 4000, QStringLiteral("Blur"), false}});
+        QCOMPARE(timeline.height(), 76);
+        QCOMPARE(timeline.maskLaneRect().top(), 52.0);
+        timeline.show();
+        QSignalSpy selected(&timeline, &VideoTimeline::maskSelected);
+        QSignalSpy edited(&timeline, &VideoTimeline::maskWindowEdited);
+        const int y = int(timeline.maskLaneRect().center().y());
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(126, y));   // end edge at 4 s
+        QCOMPARE(selected.count(), 1);
+        QCOMPARE(selected.first().first().value<quintptr>(), quintptr(7));
+        QTest::mouseMove(&timeline, QPoint(160, y));
+        QTest::mouseMove(&timeline, QPoint(186, y));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(186, y));
+        QCOMPARE(edited.count(), 1);
+        QCOMPARE(edited.first().at(2).toLongLong(), 6000);   // (key, from, to, before from, before to)
+        QCOMPARE(edited.first().at(4).toLongLong(), 4000);
+        // Esc during a drag puts it back.
+        timeline.setMasks({{7, 2000, 6000, QStringLiteral("Blur"), true}});
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(126, y));   // the body
+        QTest::mouseMove(&timeline, QPoint(160, y));
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(160, y));
+        QCOMPARE(edited.count(), 1);
+        timeline.setMasks({});
+        QCOMPARE(timeline.height(), 52);
+    }
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;
         timeline.setDuration(10000);

@@ -7,6 +7,7 @@
 #include <QList>
 #include <functional>
 #include "items/textitem.h"
+#include "items/annotationitem.h"
 #include "items/spotlightitem.h"
 #include "studiodocument.h"
 namespace eddy {
@@ -114,6 +115,21 @@ private:
     StudioDocument m_before, m_after;
     Apply m_apply;
     int m_key;
+};
+
+// A redaction's or spotlight's time window (studio plan 6.7).
+class SetTimeWindowCommand : public QUndoCommand {
+public:
+    SetTimeWindowCommand(AnnotationItem *item, AnnotationItem::TimeWindow before,
+                         AnnotationItem::TimeWindow after, std::function<void()> changed)
+        : QUndoCommand(QStringLiteral("Time window")), m_item(item), m_before(before), m_after(after),
+          m_changed(std::move(changed)) {}
+    void undo() override { m_item->setTimeWindow(m_before); m_changed(); }
+    void redo() override { m_item->setTimeWindow(m_after); m_changed(); }
+private:
+    AnnotationItem *m_item;
+    AnnotationItem::TimeWindow m_before, m_after;
+    std::function<void()> m_changed;
 };
 
 class SetCropCommand : public QUndoCommand {

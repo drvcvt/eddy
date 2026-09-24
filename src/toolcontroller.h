@@ -25,6 +25,9 @@ public:
     void setTextFont(const QString &family) { m_textFont = family; }
     void setAnimationsEnabled(bool on) { m_animations = on; }
     void setBackground(const QImage &background) { m_bg = background; }
+    // Videos: where the playhead is, so a new spotlight only replaces the one
+    // showing there (decision E6).
+    void setVideoTime(qint64 playheadMs, qint64 durationMs) { m_playhead = playheadMs; m_duration = durationMs; }
 
     void begin(const QPointF &p);
     void update(const QPointF &p, Qt::KeyboardModifiers modifiers = Qt::NoModifier);
@@ -61,6 +64,7 @@ private:
     QList<QGraphicsItem *> m_moveItems;
     QList<QPointF> m_moveBefore;
     bool m_duplicateMove = false;
+    qint64 m_playhead = -1, m_duration = 0;   // -1: not a video
     QPointer<TextItem> m_editingText;
     TextState m_textBefore;
     bool m_textIsNew = false;

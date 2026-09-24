@@ -10,7 +10,14 @@ class TestRedactBar : public QObject {
 private slots:
     void hasFourModeButtons() {
         RedactBar bar;
-        QCOMPARE(bar.findChildren<QToolButton *>().size(), 4);
+        const auto scopes = bar.findChildren<QToolButton *>(QStringLiteral("TimeScope"));
+        QCOMPARE(bar.findChildren<QToolButton *>().size() - scopes.size(), 4);
+        // Whole clip and From playhead appear for videos only.
+        QCOMPARE(scopes.size(), 2);
+        for (auto *b : scopes) QVERIFY(b->isHidden());
+        bar.setTimeScope(true, true);
+        for (auto *b : scopes) QVERIFY(!b->isHidden());
+        QVERIFY(scopes[1]->isChecked());
     }
     void clickEmitsModeChosen() {
         RedactBar bar;

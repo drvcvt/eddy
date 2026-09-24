@@ -19,6 +19,7 @@ SpotlightItem *SpotlightItem::clone() const {
     auto *copy = new SpotlightItem(m_region, m_canvasSize);
     copy->setSpotlightShape(m_shape);
     copy->setIntensity(m_intensity);
+    copy->setTimeWindow(m_window);
     return copy;
 }
 

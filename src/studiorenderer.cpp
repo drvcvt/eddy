@@ -17,16 +17,19 @@ StudioRenderer::StudioRenderer(QSize source, QRect content, const StudioStyle &s
     }
 }
 
-void StudioRenderer::render(const QImage &frame, const QRectF &camera, QImage &out) const {
+void StudioRenderer::render(const QImage &frame, const QRectF &camera, QImage &out, double sourceMs) const {
     QPainter p(&out);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     p.drawImage(m_target, frame, camera);
-    if (!m_overlay.isNull()) {
-        const qreal sx = qreal(m_overlay.width()) / m_source.width();
-        const qreal sy = qreal(m_overlay.height()) / m_source.height();
-        p.drawImage(m_target, m_overlay,
+    auto overlay = [&](const QImage &image) {
+        const qreal sx = qreal(image.width()) / m_source.width();
+        const qreal sy = qreal(image.height()) / m_source.height();
+        p.drawImage(m_target, image,
                     QRectF(camera.x() * sx, camera.y() * sy, camera.width() * sx, camera.height() * sy));
-    }
+    };
+    if (!m_overlay.isNull()) overlay(m_overlay);
+    for (const TimedOverlay &timed : m_timed)
+        if (sourceMs >= timed.fromMs && sourceMs < timed.toMs) overlay(timed.image);
     if (!m_frame.isNull()) p.drawImage(0, 0, m_frame);
 }
 

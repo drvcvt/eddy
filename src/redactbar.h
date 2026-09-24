@@ -14,12 +14,16 @@ class RedactBar : public QWidget {
 public:
     explicit RedactBar(QWidget *parent = nullptr);
     void setMode(RedactMode m);     // check the matching button (does not emit)
+    // Videos show Whole clip and From playhead; `timed` checks the latter.
+    void setTimeScope(bool video, bool timed);
 
 signals:
     void modeChosen(RedactMode m);
+    void timeScopeChosen(bool fromPlayhead);
 
 private:
     QHash<int, QToolButton *> m_btns;   // int(RedactMode) -> button
+    QToolButton *m_scopes[2]{};
 };
 
 }
