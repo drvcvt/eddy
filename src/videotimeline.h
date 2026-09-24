@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QImage>
+#include <QPointer>
 #include <QTimer>
 #include <QVector>
 #include <functional>
@@ -8,6 +9,8 @@
 #include "timemap.h"
 
 namespace eddy {
+
+class AudioWaveformProvider;
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
@@ -63,6 +66,14 @@ public:
     bool hasContactSheet() const { return !m_contactSheet.isNull(); }
     int contactSheetFrameCount() const { return m_contactSheetFrames; }
 
+    // Waveform lane (21.09. plan 4, E8): 28 px right under the film strip,
+    // for videos with sound. Clicks scrub like the film strip. Hiding it is a
+    // view setting from the context menu, not an edit.
+    void setWaveform(AudioWaveformProvider *waveform);
+    void setWaveformVisible(bool visible);
+    bool waveformShown() const { return m_waveform && m_waveformVisible; }
+    QRectF waveformRect() const;
+
     // Zoom lane (studio plan 6.1, Q1 = C): a 28 px row under the film strip on
     // the same time axis, shown while Studio is on or zooms exist.
     void setZoomLaneVisible(bool visible);
@@ -114,6 +125,8 @@ private:
     int maskAt(QPointF pos, Drag *part) const;
     void moveMaskDrag(qreal x);
     void updateHeight();
+    qreal belowWaveform() const;   // the bottom of the film strip or the waveform under it
+    void paintWaveform(QPainter &painter, qreal inX, qreal outX, const std::function<QColor(qreal)> &ink);
     bool inZoomLane(QPointF pos) const;
     double edited(qint64 sourceMs) const;
     qint64 source(double editedMs) const;
@@ -154,6 +167,8 @@ private:
     int m_hoverCut = -1;
     QVector<MaskBlock> m_masks;
     int m_dragMask = -1;
+    QPointer<AudioWaveformProvider> m_waveform;
+    bool m_waveformVisible = true;
     MaskBlock m_maskBefore{};
 };
 

@@ -1,4 +1,5 @@
 #include "editorwindow.h"
+#include "audiowaveform.h"
 #include "canvas.h"
 #include "cropcontroller.h"
 #include "cropbar.h"
@@ -770,6 +771,9 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_timeline->setMinimumRange(m_media.video.fps > 0.0
         ? qMax<qint64>(1, qRound64(1000.0 / m_media.video.fps)) : 1);
     m_timeline->setTrimRange(m_trimInMs, m_trimOutMs);
+    if (m_media.video.hasAudio && !m_media.path.isEmpty())
+        m_timeline->setWaveform(new AudioWaveformProvider(m_media.path, m_media.video.durationMs,
+                                                          m_media.video.audioOffsetMs, m_timeline));
     m_trimInLabel = new QLineEdit(formatPreciseTime(m_trimInMs), bar);
     m_trimInLabel->setObjectName(QStringLiteral("TrimInTime"));
     m_trimOutLabel = new QLineEdit(formatPreciseTime(m_trimOutMs), bar);
