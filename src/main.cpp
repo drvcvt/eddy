@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
 
     auto load = eddy::loadMediaInput(pr.options.input);
     if (!load.ok) { std::fprintf(stderr, "eddy: %s\n", qPrintable(load.error)); return 1; }
+    if (!load.warning.isEmpty()) std::fprintf(stderr, "eddy: %s\n", qPrintable(load.warning));
 
     eddy::Config cfg = eddy::loadConfig(pr.options.configPath);
     eddy::applyCli(cfg, pr.options);
