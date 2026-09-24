@@ -456,6 +456,13 @@ dem Gesamtplan 10 damit erledigt). Abweichung: ein gewählter Cursor-Zoom zeigt 
 Fenster um den Zeiger am Playhead (bzw. am Zoom-Anfang), eine folgende Basis beginnt schon
 beim ersten Frame auf dem Zeiger. D2 und D3 liegen in einem Commit.
 
+Abweichungen W5: Recovery ist eine App-Funktion, die `main.cpp` einschaltet; Tests und
+Werkzeuge schreiben nie in den Recovery-Ordner des Nutzers. Jeder Eintrag ist ein normales
+Projekt (Wiederverwendung von A1). Beim Schließen wird die letzte Änderung sofort gesichert;
+eine erste Kopie des Originals dabei nur bis 100 MB. Das Angebot beim Wiederöffnen ist ein
+Toast mit "Resume"; es ersetzt die neue Bearbeitung nicht und schließt das neue Fenster nur,
+wenn es noch unverändert ist. Kein eigener Desktop-Eintrag "Resume editing" (nur `--resume`).
+
 Review W1 bis W3 (`/code-review high` über `d2d4bf3..e5adc67`): zehn Funde, alle behoben in
 einem Commit (Join ins Leere, Wiedergabe über einen Schnitt am Ende, Trim ganz im Schnitt,
 Format bei `-o`, Restore ohne Verschmelzen, springende Ansicht, Asset-Kopie bei jedem
@@ -474,7 +481,7 @@ Speichern, zweites ffprobe, Textvergleich statt Zustand, doppelte Uhr). `ctest` 
 | W4 | D2 | Follow Cursor | `5b68b73` |
 | W4 | D3 | Zoom-Vorschläge | `5b68b73` |
 | W4 | D4 | keep zoomed in mit Cursor | `5b68b73` |
-| W5 | A3 | Autosave, Recovery, Resume | |
+| W5 | A3 | Autosave, Recovery, Resume | `486f14d` |
 | W6 | E1 | Zeitfenster: Modell und Export | |
 | W6 | E2 | Masken-Spur und Leisten | |
 | W6 | F1 | Studio-Presets | |
