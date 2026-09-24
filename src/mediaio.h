@@ -3,6 +3,8 @@
 #include <QSize>
 #include <QString>
 #include "cli.h"
+#include "cursortrack.h"
+#include <optional>
 
 namespace eddy {
 
@@ -23,6 +25,8 @@ struct MediaDocument {
     QImage image;
     QString path;
     VideoInfo video;
+    // Optional pointer data recorded next to the video; absent for most files.
+    std::optional<CursorTrack> cursorTrack;
 
     QSize nativeSize() const;
 };
@@ -37,6 +41,7 @@ struct LoadMediaResult {
     bool ok = false;
     MediaDocument document;
     QString error;
+    QString warning;   // non-fatal, e.g. an unusable cursor track
 };
 
 struct ContactSheetResult {

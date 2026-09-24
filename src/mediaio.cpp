@@ -185,6 +185,9 @@ LoadMediaResult loadMediaInput(const InputSpec &spec) {
         r.document.kind = MediaKind::Video;
         r.document.path = QFileInfo(spec.path).absoluteFilePath();
         r.document.video = probe.info;
+        auto cursor = loadCursorTrack(r.document.path, probe.info.size);
+        if (cursor.ok) r.document.cursorTrack = std::move(cursor.track);
+        else if (cursor.found) r.warning = QStringLiteral("ignoring cursor track: ") + cursor.error;
         return r;
     }
 
