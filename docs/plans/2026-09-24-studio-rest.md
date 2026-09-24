@@ -434,12 +434,21 @@ E8 wie empfohlen, E9 a, E10 a).
 
 ## 4. Status
 
+Zwischendurch auf Wunsch (2026-09-24): alle Punkt-Trenner aus Tooltips, Menüs und Labels
+entfernt (`204624d`); Kürzel stehen als leise Spalte, Hinweise auf eigenen Zeilen.
+
+Abweichungen W1/W2: Der Popover ist Inhalt eines Menüs am Save-Knopf (Halten, Alt+Down),
+damit Position und Schließen wie beim Copy-Menü funktionieren. Unter "Original" markiert
+die Format-Reihe das Format der Quelle. Open project öffnet ein zweites Fenster im selben
+Prozess. Der volle SHA-256 wird nur bei "Locate original" geprüft; beim normalen Öffnen
+genügen Existenz und Größe (Hash eines großen Videos bei jedem Öffnen wäre spürbar).
+
 | Welle | ID | Punkt | Commit |
 | --- | --- | --- | --- |
-| W1 | C1 | Export-Popover und Presets | |
-| W1 | C2 | GIF-Export | |
-| W2 | A1 | Projektformat | |
-| W2 | A2 | Projekt speichern und öffnen | |
+| W1 | C1 | Export-Popover und Presets | `3b40865` |
+| W1 | C2 | GIF-Export (mit Größe und Bildrate im Exporter) | `0a7afc4` |
+| W2 | A1 | Projektformat | `4d29dc5` |
+| W2 | A2 | Projekt speichern und öffnen, Locate original | `b91cb21`, siehe Log |
 | W3 | B1 | Fragmente: Modell und Timeline | |
 | W3 | B2 | Fragmente im Export | |
 | W3 | B3 | Fragmente in der Vorschau | |
