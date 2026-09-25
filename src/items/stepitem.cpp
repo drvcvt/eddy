@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <algorithm>
+#include <cmath>
 
 namespace eddy {
 
@@ -15,6 +16,17 @@ static qreal baseDiameter(StepItem::Size size) {
 }
 
 static quint64 s_serial = 0;
+
+// Qt flattens a small ellipse into facets you can see, its edge coverage off
+// by up to a sixth. A polygon whose sides stay within 1/100 px of the circle
+// at the device size antialiases almost exactly, zoomed in or not.
+static QPolygonF disc(qreal r, const QTransform &device) {
+    const qreal onDevice = std::max<qreal>(1, r * std::sqrt(std::abs(device.determinant())));
+    const int n = std::clamp(int(std::ceil(M_PI / std::sqrt(0.02 / onDevice))), 32, 2048);
+    QPolygonF polygon(n);
+    for (int i = 0; i < n; ++i) polygon[i] = QPointF(r * std::cos(2 * M_PI * i / n), r * std::sin(2 * M_PI * i / n));
+    return polygon;
+}
 
 StepItem::StepItem(int number, Size size)
     : m_number(std::clamp(number, 1, kMaxNumber)), m_size(size), m_serial(++s_serial) {
@@ -72,7 +84,7 @@ void StepItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) {
     const qreal r = diameter() / 2;
     p->setPen(Qt::NoPen);
     p->setBrush(m_stroke);
-    p->drawEllipse(QPointF(), r, r);
+    p->drawPolygon(disc(r, p->deviceTransform()));
     // Digits centred by their ink, not by the font's line box.
     const QString text = QString::number(m_number);
     const QFont f = font();

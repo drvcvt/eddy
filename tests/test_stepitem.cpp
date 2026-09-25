@@ -53,6 +53,40 @@ private slots:
         QVERIFY(StepItem(100).diameter() > StepItem(10).diameter());
         QVERIFY(StepItem(1, StepItem::Size::L).diameter() > StepItem(1, StepItem::Size::S).diameter());
     }
+    void theCircleEdgeIsSmooth() {
+        // Qt's own ellipse leaves visible facets: its edge coverage was off by
+        // 2.5 % on average and up to 17 % against the exact circle.
+        StepItem step(1, StepItem::Size::L);
+        step.setStrokeColor(QColor(0, 0, 255));
+        const qreal r = step.diameter() / 2;
+        for (qreal scale : {1.0, 3.0}) {
+            const int side = int(std::ceil(2 * r * scale)) + 8;
+            const QPointF centre(side / 2.0 + 0.3, side / 2.0 + 0.3);
+            QImage image(side, side, QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::black);
+            QPainter p(&image);
+            p.translate(centre);
+            p.scale(scale, scale);
+            step.paint(&p, nullptr, nullptr);
+            p.end();
+            const qreal R = r * scale;
+            double sum = 0, worst = 0;
+            int n = 0;
+            for (int y = 0; y < side; ++y)
+                for (int x = 0; x < side; ++x) {
+                    int inside = 0;
+                    for (int i = 0; i < 8; ++i)
+                        for (int j = 0; j < 8; ++j)
+                            inside += std::hypot(x + (i + 0.5) / 8 - centre.x(), y + (j + 0.5) / 8 - centre.y()) <= R;
+                    if (inside == 0 || inside == 64) continue;
+                    const double error = std::abs(qBlue(image.pixel(x, y)) / 255.0 - inside / 64.0);
+                    sum += error;
+                    worst = std::max(worst, error);
+                    ++n;
+                }
+            QVERIFY2(sum / n < 0.012 && worst < 0.06, qPrintable(QStringLiteral("%1x: mean %2 worst %3").arg(scale).arg(sum / n).arg(worst)));
+        }
+    }
     void clicksCountOnAndUndoKeepsTheNumbers() {
         QGraphicsScene scene(0, 0, 400, 300);
         QUndoStack undo;
