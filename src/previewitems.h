@@ -14,6 +14,10 @@ namespace eddy {
 class DownscaledImage {
 public:
     void draw(QPainter *painter, const QRectF &target, const QImage &image);
+    // The device size draw() shrinks `image` to under `device`; empty when it does not shrink.
+    static QSize shrunkSize(const QTransform &device, const QRectF &target, QSize image);
+    // `image` area-filtered to `size`, as draw() would; any thread.
+    static QImage shrunk(const QImage &image, QSize size);
 private:
     qint64 m_key = 0;
     QImage m_scaled;
@@ -33,14 +37,16 @@ private:
 // Qt's own paint samples the nearest texel at any zoom. Each frame is
 // converted once, and no more often than the screen refreshes: a 240 fps
 // recording would otherwise convert and filter four frames per refresh.
+// While playing, conversion and filtering run on a pool thread.
 // Eddy sizes the item to the frame, so the aspect-ratio mode is not applied,
 // and a visible child (the paused still) is taken to cover the whole frame.
 class PreviewVideoItem : public QGraphicsVideoItem {
 public:
-    using QGraphicsVideoItem::QGraphicsVideoItem;
+    explicit PreviewVideoItem(QGraphicsItem *parent = nullptr);
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) override;
 private:
     DownscaledImage m_image;
+    bool m_converting = false;
     QVideoFrame m_shown;          // the frame m_frameImage was converted from
     QImage m_frameImage;
     QElapsedTimer m_converted;

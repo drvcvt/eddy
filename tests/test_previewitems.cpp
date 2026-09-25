@@ -132,6 +132,28 @@ private slots:
         // A skipped frame asks for its own repaint, so a view catches up without new frames.
         QVERIFY(changed.count() > 0 || render(scene, 0.5).pixelColor(10, 10) == QColor(Qt::blue));
     }
+
+    void playingOnAfterAPauseNeverShowsTheOldFrame() {
+        // Later frames convert off the GUI thread, a frame late. The first one
+        // after a pause converts at once: the old picture must not flash up.
+        QGraphicsScene scene(0, 0, 40, 40);
+        auto *video = new PreviewVideoItem;
+        video->setSize(QSizeF(40, 40));
+        video->setAspectRatioMode(Qt::IgnoreAspectRatio);
+        scene.addItem(video);
+        auto *still = new PreviewPixmapItem(video);
+        still->hide();
+        QImage red(40, 40, QImage::Format_RGB32), blue(40, 40, QImage::Format_RGB32);
+        red.fill(Qt::red);
+        blue.fill(Qt::blue);
+        video->videoSink()->setVideoFrame(QVideoFrame(red));
+        QCOMPARE(render(scene, 0.5).pixelColor(10, 10), QColor(Qt::red));
+        still->show();   // paused
+        render(scene, 0.5);
+        still->hide();   // playing on, from elsewhere
+        video->videoSink()->setVideoFrame(QVideoFrame(blue));
+        QCOMPARE(render(scene, 0.5).pixelColor(10, 10), QColor(Qt::blue));
+    }
 };
 QTEST_MAIN(TestPreviewItems)
 #include "test_previewitems.moc"

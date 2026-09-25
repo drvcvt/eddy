@@ -169,6 +169,9 @@ private:
     int m_dragMask = -1;
     QPointer<AudioWaveformProvider> m_waveform;
     bool m_waveformVisible = true;
+    QImage m_waveCache;             // the lane before trim shading
+    size_t m_waveKey = 0;
+    quint64 m_waveRevision = 0;     // new peaks or a new axis
     MaskBlock m_maskBefore{};
 };
 

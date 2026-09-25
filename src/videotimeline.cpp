@@ -5,6 +5,7 @@
 #include "motionicon.h"
 #include "fragments.h"
 #include <QFontDatabase>
+#include <QHashFunctions>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -66,41 +67,55 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
 
 // A grey envelope, the same up and down, with a brighter RMS core on a fixed
 // scale. Stretches not read yet get a dotted line, never a flat "silence".
+// Drawn once into a cache: the playhead repaints the timeline every frame.
 void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, const std::function<QColor(qreal)> &ink) {
     const QRectF lane = waveformRect();
+    const qreal dpr = devicePixelRatioF();
+    const size_t key = qHashMulti(0, lane.width(), lane.height(), m_viewStart, m_viewEnd, dpr, m_waveRevision,
+                                  ink(0).rgba(), ink(1).rgba(), int(m_waveform->state()));
+    if (m_waveCache.isNull() || key != m_waveKey) {
+        m_waveKey = key;
+        m_waveCache = QImage((lane.size() * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+        m_waveCache.setDevicePixelRatio(dpr);
+        m_waveCache.fill(Qt::transparent);
+        QPainter p(&m_waveCache);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.translate(-lane.topLeft());
+        p.setPen(Qt::NoPen);
+        p.fillRect(lane, ink(0.07));
+        if (m_waveform->state() == AudioWaveformProvider::State::Failed) {
+            QFont label = font();
+            label.setPixelSize(theme::kFsMicro);
+            p.setFont(label);
+            p.setPen(ink(0.45));
+            p.drawText(lane, Qt::AlignCenter, tr("Waveform unavailable"));
+        } else {
+            const qreal middle = lane.center().y(), reach = lane.height() / 2 - 2;
+            const QColor envelope = ink(0.32), core = ink(0.5), pending = ink(0.2);
+            const int left = int(std::floor(lane.left())), right = int(std::ceil(lane.right()));
+            for (int x = left; x < right; ++x) {
+                // A column at a cut reads its own piece only, never the sound that was cut.
+                const qint64 from = timeForX(x);
+                qint64 to = timeForX(x + 1);
+                if (!m_fragments.isEmpty())
+                    for (const TimePiece &piece : m_axis.pieces())
+                        if (from >= piece.srcStart && from < piece.srcEnd) to = std::min<qint64>(to, qint64(piece.srcEnd));
+                const auto s = m_waveform->summary(from, to);
+                if (!s.known) {
+                    if (x % 4 == 0) p.fillRect(QRectF(x, middle - 0.5, 2, 1), pending);
+                    continue;
+                }
+                const qreal peak = std::max<qreal>(0.5, reach * s.peak), rms = reach * s.rms;
+                p.fillRect(QRectF(x, middle - peak, 1, 2 * peak), envelope);
+                if (rms >= 0.5) p.fillRect(QRectF(x, middle - rms, 1, 2 * rms), core);
+            }
+        }
+    }
     QPainterPath shape;
     shape.addRoundedRect(lane, 6, 6);
     painter.save();
     painter.setClipPath(shape);
-    painter.setPen(Qt::NoPen);
-    painter.fillRect(lane, ink(0.07));
-    if (m_waveform->state() == AudioWaveformProvider::State::Failed) {
-        QFont label = font();
-        label.setPixelSize(theme::kFsMicro);
-        painter.setFont(label);
-        painter.setPen(ink(0.45));
-        painter.drawText(lane, Qt::AlignCenter, tr("Waveform unavailable"));
-    } else {
-        const qreal middle = lane.center().y(), reach = lane.height() / 2 - 2;
-        const QColor envelope = ink(0.32), core = ink(0.5), pending = ink(0.2);
-        const int left = int(std::floor(lane.left())), right = int(std::ceil(lane.right()));
-        for (int x = left; x < right; ++x) {
-            // A column at a cut reads its own piece only, never the sound that was cut.
-            const qint64 from = timeForX(x);
-            qint64 to = timeForX(x + 1);
-            if (!m_fragments.isEmpty())
-                for (const TimePiece &piece : m_axis.pieces())
-                    if (from >= piece.srcStart && from < piece.srcEnd) to = std::min<qint64>(to, qint64(piece.srcEnd));
-            const auto s = m_waveform->summary(from, to);
-            if (!s.known) {
-                if (x % 4 == 0) painter.fillRect(QRectF(x, middle - 0.5, 2, 1), pending);
-                continue;
-            }
-            const qreal peak = std::max<qreal>(0.5, reach * s.peak), rms = reach * s.rms;
-            painter.fillRect(QRectF(x, middle - peak, 1, 2 * peak), envelope);
-            if (rms >= 0.5) painter.fillRect(QRectF(x, middle - rms, 1, 2 * rms), core);
-        }
-    }
+    painter.drawImage(lane.topLeft(), m_waveCache);
     QColor shade = palette().color(QPalette::Window);
     shade.setAlpha(205);
     painter.fillRect(QRectF(lane.left(), lane.top(), qMax(0.0, inX - lane.left()), lane.height()), shade);
@@ -121,6 +136,7 @@ qint64 VideoTimeline::editedDuration() const {
 }
 
 void VideoTimeline::rebuildAxis() {
+    ++m_waveRevision;
     m_axis = TimeMap(m_duration, 0, m_duration, m_fragments);
 }
 
@@ -268,7 +284,10 @@ void VideoTimeline::setWaveform(AudioWaveformProvider *waveform) {
     if (m_waveform) m_waveform->disconnect(this);
     m_waveform = waveform;
     // The provider is the timeline's child and goes with it; the QPointer is all it needs.
-    if (waveform) connect(waveform, &AudioWaveformProvider::changed, this, qOverload<>(&QWidget::update));
+    if (waveform) connect(waveform, &AudioWaveformProvider::changed, this, [this] {
+        ++m_waveRevision;
+        update();
+    });
     updateHeight();
     update();
 }

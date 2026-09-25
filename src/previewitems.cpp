@@ -1,6 +1,9 @@
 #include "previewitems.h"
+#include <QApplication>
 #include <QPainter>
+#include <QPointer>
 #include <QScreen>
+#include <QThreadPool>
 #include <QTimer>
 #include <QWidget>
 #include <QVideoFrame>
@@ -39,12 +42,26 @@ static QImage shrink(QImage image, QSize size) {
     return image.size() == size ? image : image.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 }
 
+QSize DownscaledImage::shrunkSize(const QTransform &device, const QRectF &target, QSize image) {
+    const QRectF mapped = device.mapRect(target);
+    if (device.type() > QTransform::TxScale
+        || mapped.width() > image.width() + 0.5 || mapped.height() > image.height() + 0.5) return {};
+    return QSize(qRound(mapped.right()) - qRound(mapped.left()), qRound(mapped.bottom()) - qRound(mapped.top()));
+}
+
+QImage DownscaledImage::shrunk(const QImage &image, QSize size) {
+    return size.isEmpty() ? image : shrink(image, size);
+}
+
 void DownscaledImage::draw(QPainter *painter, const QRectF &target, const QImage &image) {
     if (image.isNull()) return;
     const QTransform device = painter->deviceTransform();
     const QRectF mapped = device.mapRect(target);
-    if (device.type() > QTransform::TxScale
-        || mapped.width() > image.width() + 0.5 || mapped.height() > image.height() + 0.5) {
+    // An image shrunk ahead for this view (off the GUI thread) is used as it is.
+    const bool ready = device.type() <= QTransform::TxScale
+        && image.size() == QSize(qRound(mapped.right()) - qRound(mapped.left()), qRound(mapped.bottom()) - qRound(mapped.top()));
+    if (!ready && (device.type() > QTransform::TxScale
+        || mapped.width() > image.width() + 0.5 || mapped.height() > image.height() + 0.5)) {
         // Enlarged: blended below 2x, where square pixels would come out one or
         // two device pixels wide and bend text; crisp squares from 2x on.
         painter->save();
@@ -75,10 +92,16 @@ void PreviewPixmapItem::paint(QPainter *painter, const QStyleOptionGraphicsItem 
     m_image.draw(painter, QRectF(offset(), pixmap.deviceIndependentSize()), pixmap.toImage());
 }
 
+PreviewVideoItem::PreviewVideoItem(QGraphicsItem *parent) : QGraphicsVideoItem(parent) {}
+
 void PreviewVideoItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) {
-    // A visible child is the paused still, which covers the frame: skip filtering twice.
+    // A visible child is the paused still, which covers the frame: skip filtering
+    // twice, and drop the picture so playing on never starts with a stale one.
     for (const QGraphicsItem *child : childItems())
-        if (child->isVisible()) return;
+        if (child->isVisible()) {
+            m_frameImage = QImage();
+            return;
+        }
     const QVideoFrame frame = videoSink()->videoFrame();
     painter->setRenderHint(QPainter::SmoothPixmapTransform);
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
@@ -100,9 +123,31 @@ void PreviewVideoItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *
         const qint64 step = m_shown.isValid() && frame.startTime() >= 0 && m_shown.startTime() >= 0
             ? (frame.startTime() - m_shown.startTime()) / 1000 : interval;
         if (step < 0 || step >= interval || since >= 4 * interval) {
-            m_shown = frame;
-            m_frameImage = frame.isValid() ? frame.toImage() : QImage();
-            m_converted.restart();
+            if (m_frameImage.isNull() || !frame.isValid()) {
+                // The first picture after loading or a pause: now, rather than none.
+                m_shown = frame;
+                m_frameImage = frame.isValid() ? frame.toImage() : QImage();
+                m_converted.restart();
+            } else if (!m_converting) {
+                // Converting and shrinking a frame takes milliseconds (a GPU
+                // download for hardware decoding); off the GUI thread, a 120 fps
+                // clip on a 240 Hz screen no longer stalls the editor. The one
+                // running job finishes first; its repaint then takes the newest frame.
+                m_shown = frame;
+                m_converted.restart();
+                m_converting = true;
+                const QSize size = DownscaledImage::shrunkSize(painter->deviceTransform(), boundingRect(), frame.size());
+                QPointer<PreviewVideoItem> self(this);
+                QThreadPool::globalInstance()->start([self, frame, size] {
+                    const QImage image = DownscaledImage::shrunk(frame.toImage(), size);
+                    QMetaObject::invokeMethod(qApp, [self, image] {
+                        if (!self) return;
+                        self->m_converting = false;
+                        self->m_frameImage = image;
+                        self->update();
+                    }, Qt::QueuedConnection);
+                });
+            }
         } else if (!m_refreshQueued) {
             // Too soon after the last one: show that, and come back for the newest.
             m_refreshQueued = true;
