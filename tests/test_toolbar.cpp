@@ -164,7 +164,24 @@ private slots:
         tb.setDark(false);
         QVERIFY(darkAction != theme->icon().pixmap(20, 20).toImage());
     }
-
+    void holdToOpenButtonsDrawNoArrow() {
+        // Save and Copy open their menus when held; the native arrow drew into their icons.
+        qApp->setStyleSheet(theme::styleSheet(true));
+        auto restore = qScopeGuard([] { qApp->setStyleSheet(QString()); });
+        Toolbar tb;
+        tb.resize(900, 46);
+        tb.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&tb));
+        auto *save = tb.findChild<QToolButton *>("Save");
+        auto *copy = tb.findChild<QToolButton *>("Copy");
+        QVERIFY(save && copy);
+        const QImage saveBefore = save->grab().toImage(), copyBefore = copy->grab().toImage();
+        tb.enableExportMenu(new QWidget);
+        tb.enableVideoFrameCopy();
+        QVERIFY(save->menu() && copy->menu());
+        QCOMPARE(save->grab().toImage(), saveBefore);
+        QCOMPARE(copy->grab().toImage(), copyBefore);
+    }
 };
 QTEST_MAIN(TestToolbar)
 #include "test_toolbar.moc"

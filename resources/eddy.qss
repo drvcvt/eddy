@@ -34,6 +34,7 @@ QToolButton {
 QToolButton:disabled { color: @faint; }
 /* No native menu arrows: hold-to-open buttons show none, and the menu buttons
    carry theme::setMenuArrow's rounded, filled one instead. */
+QToolButton#Save::menu-indicator,
 QToolButton#Copy::menu-indicator,
 QToolButton#PlaybackMute::menu-indicator,
 QToolButton#PlaybackSpeed::menu-indicator,
