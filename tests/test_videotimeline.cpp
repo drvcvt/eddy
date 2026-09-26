@@ -2,6 +2,7 @@
 #include <QSignalSpy>
 #include "videotimeline.h"
 #include "audiowaveform.h"
+#include <QPainter>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -360,6 +361,72 @@ private slots:
         timeline.setWaveformVisible(false);
         QCOMPARE(timeline.zoomLaneRect().top(), zoomTop);
         QCOMPARE(timeline.height(), 52 + 32);
+    }
+    void quietSoundStillShowsInTheWaveform() {
+        // Screen recordings sit far below full scale; on a linear scale a tone
+        // at -40 dB was a flat line.
+        if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("quiet.mkv"));
+        QProcess make;
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x48:d=3:r=25",
+            "-f", "lavfi", "-i", "aevalsrc=exprs=if(between(t\\,1\\,2)\\,0.01*sin(2*PI*440*t)\\,0):s=48000:d=3",
+            "-c:a", "pcm_s16le", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        VideoTimeline timeline;
+        timeline.resize(612, 52);
+        timeline.setDuration(3000);
+        AudioWaveformProvider waveform(file, 3000, 0);
+        timeline.setWaveform(&waveform);
+        QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
+        const QRectF lane = timeline.waveformRect();
+        auto xAt = [&](qint64 ms) { return int(lane.left() + lane.width() * ms / 3000.0); };
+        const QImage shot = timeline.grab().toImage();
+        const int y = int(lane.center().y()) - 3;
+        QVERIFY2(shot.pixelColor(xAt(1500), y) != shot.pixelColor(xAt(2500), y),
+                 qPrintable(shot.pixelColor(xAt(1500), y).name()));
+    }
+    void aMovingPlayheadRepaintsOnlyItsColumns() {
+        // Playback moves the playhead with every frame; the film strip, the
+        // lanes and the ruler stay as they are.
+        VideoTimeline timeline;
+        timeline.resize(612, 84);
+        timeline.setDuration(10000);
+        timeline.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&timeline));
+        timeline.setPosition(2000);
+        QCoreApplication::processEvents();
+        struct Spy : QObject {
+            QRegion painted;
+            bool eventFilter(QObject *, QEvent *e) override {
+                if (e->type() == QEvent::Paint) painted += static_cast<QPaintEvent *>(e)->region();
+                return false;
+            }
+        } spy;
+        timeline.installEventFilter(&spy);
+        timeline.setPosition(6000);
+        const int from = 6 + 600 * 2 / 10, to = 6 + 600 * 6 / 10;   // the film strip spans x 6 to 606
+        QTRY_VERIFY(!spy.painted.isEmpty());
+        QVERIFY(spy.painted.contains(QPoint(from, 40)));
+        QVERIFY(spy.painted.contains(QPoint(to, 40)));
+        QVERIFY(!spy.painted.contains(QPoint((from + to) / 2, 40)));
+    }
+    void anEditKeepsTheStripUntilNewThumbnailsArrive() {
+        // A cut, a zoom or a resize asks for new thumbnails; meanwhile each slot
+        // shows the nearest one it already has instead of an empty strip.
+        VideoTimeline timeline;
+        timeline.resize(612, 52);
+        timeline.setDuration(4000);
+        QImage red(128, 72, QImage::Format_RGB32);
+        red.fill(Qt::red);
+        for (qint64 t : timeline.thumbnailTimes()) timeline.setThumbnail(t, red);
+        const int y = 33;   // the film strip spans x 6 to 606, y 18 to 48
+        QCOMPARE(timeline.grab().toImage().pixelColor(18, y), QColor(Qt::red));
+        timeline.setFragments({{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}});
+        timeline.resize(700, 52);
+        const QImage shot = timeline.grab().toImage();
+        QCOMPARE(shot.pixelColor(18, y), QColor(Qt::red));
+        QCOMPARE(shot.pixelColor(680, y), QColor(Qt::red));
     }
     void storesContactSheetWithoutDiskState() {
         VideoTimeline timeline;

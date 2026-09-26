@@ -66,7 +66,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
 }
 
 // A grey envelope, the same up and down, with a brighter RMS core on a fixed
-// scale. Stretches not read yet get a dotted line, never a flat "silence".
+// dB scale. Stretches not read yet get a dotted line, never a flat "silence".
 // Drawn once into a cache: the playhead repaints the timeline every frame.
 void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, const std::function<QColor(qreal)> &ink) {
     const QRectF lane = waveformRect();
@@ -91,6 +91,11 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
             p.drawText(lane, Qt::AlignCenter, tr("Waveform unavailable"));
         } else {
             const qreal middle = lane.center().y(), reach = lane.height() / 2 - 2;
+            // In dB from -60 to 0: screen recordings sit far below full scale,
+            // and a linear scale drew them as a flat line.
+            auto level = [](float amplitude) {
+                return amplitude <= 0.001f ? 0.0 : std::clamp((20 * std::log10(double(amplitude)) + 60) / 60, 0.0, 1.0);
+            };
             const QColor envelope = ink(0.32), core = ink(0.5), pending = ink(0.2);
             const int left = int(std::floor(lane.left())), right = int(std::ceil(lane.right()));
             for (int x = left; x < right; ++x) {
@@ -105,7 +110,7 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
                     if (x % 4 == 0) p.fillRect(QRectF(x, middle - 0.5, 2, 1), pending);
                     continue;
                 }
-                const qreal peak = std::max<qreal>(0.5, reach * s.peak), rms = reach * s.rms;
+                const qreal peak = std::max<qreal>(0.5, reach * level(s.peak)), rms = reach * level(s.rms);
                 p.fillRect(QRectF(x, middle - peak, 1, 2 * peak), envelope);
                 if (rms >= 0.5) p.fillRect(QRectF(x, middle - rms, 1, 2 * rms), core);
             }
@@ -149,7 +154,6 @@ void VideoTimeline::setFragments(const QVector<Fragment> &fragments) {
     rebuildAxis();
     if (m_selectedFragment >= fragments::expanded(m_fragments).size()) m_selectedFragment = -1;
     m_hoverCut = -1;
-    m_thumbnails.clear();
     if (fullView) fitClip();
     else setViewRange(qRound64(edited(sourceStart)), qRound64(edited(sourceEnd)));
     emit viewRangeChanged();
@@ -185,7 +189,6 @@ void VideoTimeline::setViewRange(qint64 startMs, qint64 endMs) {
     if (m_viewStart == start && m_viewEnd == start + span) return;
     m_viewStart = start;
     m_viewEnd = start + span;
-    m_thumbnails.clear();
     emit viewRangeChanged();
     update();
 }
@@ -217,10 +220,14 @@ QVector<qint64> VideoTimeline::thumbnailTimes() const {
 }
 
 void VideoTimeline::setThumbnail(qint64 timeMs, const QImage &image) {
-    if (!image.isNull() && thumbnailTimes().contains(timeMs)) {
-        m_thumbnails.insert(timeMs, image);
-        update();
-    }
+    const QVector<qint64> times = thumbnailTimes();
+    if (image.isNull() || !times.contains(timeMs)) return;
+    m_thumbnails.insert(timeMs, image);
+    // Older ones stand in while a new strip loads; beyond a few strips' worth, only the current stay.
+    if (m_thumbnails.size() > 72)
+        for (auto it = m_thumbnails.begin(); it != m_thumbnails.end();)
+            it = times.contains(it.key()) ? std::next(it) : m_thumbnails.erase(it);
+    update();
 }
 
 QImage VideoTimeline::thumbnailNear(qint64 time, qint64 *sampleTime) const {
@@ -258,8 +265,13 @@ void VideoTimeline::setPosition(qint64 positionMs) {
     if (interacting()) return;
     const qint64 position = qBound<qint64>(0, positionMs, m_duration);
     if (position == m_position) return;
+    // Only the playhead moves: repaint its old and new column, not the whole
+    // timeline, which playback would otherwise redraw with every frame.
+    for (const qint64 at : {m_position, position}) {
+        const qreal x = xForTime(at);
+        update(QRectF(x - 5, 0, 10, height()).toAlignedRect());
+    }
     m_position = position;
-    update();
 }
 
 void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
@@ -512,15 +524,15 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     }
     const auto times = thumbnailTimes();
     for (int i = 0; i < times.size(); ++i) {
-        const auto it = m_thumbnails.constFind(times[i]);
-        if (it == m_thumbnails.cend()) continue;
         const QRectF slot(track.left() + i * track.width() / times.size(), track.top(),
                           track.width() / times.size(), track.height());
-        const qreal scale = qMax(slot.width() / it->width(), slot.height() / it->height());
+        // Until its own thumbnail arrives, a slot shows the nearest one kept from
+        // before an edit, zoom or resize, rather than a strip gone empty.
+        const QImage image = thumbnailNear(times[i], nullptr);
+        if (image.isNull()) continue;
+        const qreal scale = qMax(slot.width() / image.width(), slot.height() / image.height());
         const QSizeF crop(slot.width() / scale, slot.height() / scale);
-        const QRectF source((it->width() - crop.width()) / 2,
-                            (it->height() - crop.height()) / 2, crop.width(), crop.height());
-        painter.drawImage(slot, *it, source);
+        painter.drawImage(slot, image, QRectF(QPointF(image.width() - crop.width(), image.height() - crop.height()) / 2, crop));
     }
     QColor shade = background;
     shade.setAlpha(205);
@@ -986,7 +998,6 @@ void VideoTimeline::wheelEvent(QWheelEvent *event) {
 
 void VideoTimeline::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
-    m_thumbnails.clear();
     emit viewRangeChanged();
 }
 
