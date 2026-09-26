@@ -276,7 +276,12 @@ void Canvas::drawFrame(QPainter *painter) {
         painter->resetTransform();
         painter->setRenderHint(QPainter::Antialiasing);
         const QTransform view = viewWithoutCamera();
-        const QRectF output = view.mapRect(m_studioOutput);
+        // On whole device pixels: two antialiased fills meeting on a fractional
+        // edge let the video show through as a thin coloured line.
+        const qreal dpr = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+        const QRectF exact = view.mapRect(m_studioOutput);
+        const QRectF output(QPointF(qRound(exact.left() * dpr), qRound(exact.top() * dpr)) / dpr,
+                            QPointF(qRound(exact.right() * dpr), qRound(exact.bottom() * dpr)) / dpr);
         const QRectF content = view.mapRect(contentRect());
         const qreal radius = m_studioRadius * view.m11();
         QPainterPath outside;

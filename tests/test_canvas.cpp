@@ -78,6 +78,29 @@ private slots:
         canvas.setCamera(QRectF(100, 50, 200, 100));
         QCOMPARE(canvas.viewport()->grab().toImage().pixelColor(frame), QColor(Qt::red));
     }
+    void studioFrameEdgeLetsNothingThrough() {
+        // The picture under the frame (a zoomed video reaches past it) must not
+        // show as a thin line where the frame's two fills meet on a fractional edge.
+        QGraphicsScene scene(0, 0, 400, 200);
+        scene.addRect(QRectF(-200, -200, 800, 600), Qt::NoPen, Qt::green);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(520, 320);
+        canvas.show();
+        QPixmap red(10, 10);
+        red.fill(Qt::red);
+        canvas.setStudioFrame(red, QRectF(-40.3, -40.3, 480.6, 280.6), 0);
+        canvas.resetZoom();
+        const QImage shot = canvas.viewport()->grab().toImage();
+        const int y = canvas.mapFromScene(QPointF(0, 100)).y();
+        for (int x = 0; x < shot.width(); ++x) {
+            const QColor c = shot.pixelColor(x, y);
+            if (c.green() > 200) continue;   // the content itself
+            QVERIFY2(c.green() < 8, qPrintable(QStringLiteral("x %1: %2").arg(x).arg(c.name())));
+        }
+    }
     void cameraDragReportsDocumentDistances() {
         QGraphicsScene scene(0, 0, 400, 200);
         QUndoStack undo;
