@@ -97,6 +97,7 @@ private:
 public:
     QColor workspaceColor() const;  // behind the picture: a touch deeper than the frame
 private:
+    void drawWorkspaceCorners(QPainter *painter);
     QPixmap m_studioBackground;
     QRectF m_studioOutput;
     qreal m_studioRadius = 0;

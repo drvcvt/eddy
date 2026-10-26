@@ -208,6 +208,21 @@ void Canvas::fitMedia() {
     emit viewChanged();
 }
 
+// The workspace meets the frame on squircle corners; the frame's grey fills what
+// lies outside them. Drawn by the view only, so no export carries it.
+void Canvas::drawWorkspaceCorners(QPainter *painter) {
+    const QRectF view(viewport()->rect());
+    QPainterPath outside;
+    outside.addRect(view);
+    outside = outside.subtracted(theme::squircleRect(view, theme::kS6));
+    painter->save();
+    painter->resetTransform();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->fillPath(outside, theme::tone(theme::Tone::Bg,
+                                           QApplication::palette().color(QPalette::Window).lightness() < 128));
+    painter->restore();
+}
+
 QColor Canvas::workspaceColor() const {
     return theme::tone(theme::Tone::Well, QApplication::palette().color(QPalette::Window).lightness() < 128);
 }
@@ -271,6 +286,7 @@ void Canvas::setCropController(CropController *crop) {
 
 void Canvas::drawForeground(QPainter *painter, const QRectF &) {
     drawFrame(painter);
+    drawWorkspaceCorners(painter);
     if (m_guides.isEmpty()) return;
     // Thin and neutral, over everything; the view draws them, so no export has them.
     QColor ink = palette().color(QPalette::WindowText);

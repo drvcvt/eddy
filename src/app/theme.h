@@ -60,6 +60,9 @@ inline constexpr int kFloatIcon = 20;
 // A superellipse filling `rect`: corners that flow into the sides, where a rounded
 // rectangle joins an arc to a straight edge.
 QPainterPath squircle(const QRectF &rect);
+// A rectangle whose corners are quarter superellipses `radius` across: the
+// curvature grows into the corner instead of an arc meeting a straight edge.
+QPainterPath squircleRect(const QRectF &rect, qreal radius);
 
 QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active,
                  int size = kIconSize);
