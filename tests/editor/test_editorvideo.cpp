@@ -549,6 +549,58 @@ private slots:
         QVERIFY(exportTimer);
         QVERIFY(!exportTimer->isActive());
     }
+    void anEditStopsTheStaleExportAndStartsAFreshOne() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString calls = dir.filePath(QStringLiteral("calls"));
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        // Fail the hardware probes quickly, then note the encoder's pid and hang.
+        script.write(QStringLiteral("#!/bin/sh\ncase \"$*\" in *lavfi*) exit 1;; esac\n"
+                                    "echo $$ >> '%1'\nwhile :; do sleep 0.05; done\n").arg(calls).toUtf8());
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        const auto encoders = [&] {
+            QFile file(calls);
+            return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList();
+        };
+
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/eddy-stale-video-export-test.mp4");
+        doc.video.size = QSize(64, 48);
+        doc.video.durationMs = 1000;
+        doc.video.fps = 25.0;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(doc, cfg, CliOptions());
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *cancel = w.findChild<QToolButton *>(QStringLiteral("VideoExportCancel"));
+        auto *status = w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"));
+        QVERIFY(timeline && cancel && status);
+        timeline->setPosition(200);
+        QTest::keyClick(&w, Qt::Key_I);
+        w.sendToShelf();
+        QTRY_COMPARE_WITH_TIMEOUT(encoders().size(), 1, 5000);
+        const QString stale = encoders().first();
+
+        timeline->setPosition(800);
+        QTest::keyClick(&w, Qt::Key_O);
+        QTRY_COMPARE_WITH_TIMEOUT(encoders().size(), 2, 5000);
+        QVERIFY2(QProcess::execute(QStringLiteral("kill"), {QStringLiteral("-0"), stale}) != 0,
+                 "the stale encoder still runs");
+
+        QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
+        QTest::mouseClick(cancel, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QStringLiteral("Edited"), 2000);
+        qputenv("PATH", oldPath);
+        QVERIFY2(w.close(), "window stayed blocked after cancelling the export");
+#endif
+    }
     void runningVideoExportCanBeCancelled() {
 #ifdef Q_OS_WIN
         QSKIP("POSIX fake ffmpeg helper is not available on Windows");

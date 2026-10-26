@@ -324,6 +324,9 @@ void EditorWindow::startVideoExportCache() {
     if (!isVideo() || !hasVideoEdits() || !m_videoStatusRequested || m_timelineActive
         || (m_crop && m_crop->active())) return;
     if (m_videoExportInProgress) {
+        // An edit made the running export stale: stop it rather than let it finish
+        // first. finishVideoExportCache then starts the fresh one.
+        if (m_videoExportRevision != m_videoRevision && m_videoExportCancel) m_videoExportCancel->store(true);
         m_videoExportPending = true;
         return;
     }
@@ -336,6 +339,7 @@ void EditorWindow::startVideoExportCache() {
     }
 
     const int revision = m_videoRevision;
+    m_videoExportRevision = revision;
     VideoExportRequest request{
         m_media.path, path, renderAnnotationOverlay(),
         m_trimInMs, hasTrim() ? m_trimOutMs : -1, 30 * 60 * 1000

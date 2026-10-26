@@ -317,6 +317,7 @@ private:
     int m_videoRevision = 0;
     int m_cachedVideoRevision = -1;
     bool m_videoExportInProgress = false;
+    int m_videoExportRevision = -1;   // the revision the running export renders
     bool m_videoExportPending = false;
     std::shared_ptr<std::atomic_bool> m_videoExportCancel;
     bool m_videoStatusRequested = false;
