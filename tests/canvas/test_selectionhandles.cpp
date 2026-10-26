@@ -69,9 +69,8 @@ private slots:
         r->setSelected(true);
         const QPointF before = handles.handleScenePos(0);   // top-left handle
         r->moveBy(30, 20);                                   // move the item body
-        QCoreApplication::processEvents();                  // let scene::changed -> reposition fire
-        const QPointF after = handles.handleScenePos(0);
-        QCOMPARE(after, before + QPointF(30, 20));            // handle tracked the move
+        // scene::changed is queued, and the freshly added handles take one more pass.
+        QTRY_COMPARE(handles.handleScenePos(0), before + QPointF(30, 20));
     }
 };
 QTEST_MAIN(TestSelectionHandles)

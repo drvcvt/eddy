@@ -93,10 +93,11 @@ private slots:
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *play = w.findChild<QToolButton *>(QStringLiteral("PlaybackPlay"));
         QTRY_COMPARE(timeline->height(), 84);
-        const QRect lane = QRect(timeline->mapTo(&w, QPoint()), timeline->size());
-        const QRect button = QRect(play->mapTo(&w, QPoint()), play->size());
-        QVERIFY2(!lane.intersects(button), qPrintable(QStringLiteral("timeline %1..%2, play %3..%4")
-            .arg(lane.top()).arg(lane.bottom()).arg(button.top()).arg(button.bottom())));
+        // The bar re-lays itself out a pass after the timeline grows.
+        const auto lane = [&] { return QRect(timeline->mapTo(&w, QPoint()), timeline->size()); };
+        const auto button = [&] { return QRect(play->mapTo(&w, QPoint()), play->size()); };
+        QTRY_VERIFY2(!lane().intersects(button()), qPrintable(QStringLiteral("timeline %1..%2, play %3..%4")
+            .arg(lane().top()).arg(lane().bottom()).arg(button().top()).arg(button().bottom())));
     }
     void zAddsASelectedZoomInOneUndoStep() {
         QTemporaryDir dir;
