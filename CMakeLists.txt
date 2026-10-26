@@ -48,6 +48,7 @@ add_library(eddy_core STATIC
     src/bars/textbar.cpp
     src/bars/spotlightbar.cpp
     src/timeline/videotimeline.cpp
+    src/timeline/videotimeline_paint.cpp
     src/video/videopreviewprovider.cpp
     src/chrome/toast.cpp
     src/chrome/dragpill.cpp
@@ -58,6 +59,14 @@ add_library(eddy_core STATIC
     src/app/theme.cpp
     src/project/boltsnapipc.cpp
     src/editor/editorwindow.cpp
+    src/editor/editorwindow_playbackbar.cpp
+    src/editor/editorwindow_playback.cpp
+    src/editor/editorwindow_bars.cpp
+    src/editor/editorwindow_studio.cpp
+    src/editor/editorwindow_video.cpp
+    src/editor/editorwindow_output.cpp
+    src/editor/editorwindow_project.cpp
+    src/editor/editorwindow_keys.cpp
     src/output/exporter.cpp
     src/output/imageio.cpp
     src/video/mediaio.cpp
@@ -138,6 +147,10 @@ add_executable(eddy_preview tools/eddy_preview.cpp)
 target_link_libraries(eddy_preview PRIVATE eddy_core)
 
 enable_testing()
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME layout COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/check_layout.py ${CMAKE_SOURCE_DIR})
+endif()
 function(eddy_test path)
     get_filename_component(name ${path} NAME)
     add_executable(${name} tests/${path}.cpp)
@@ -176,6 +189,7 @@ eddy_test(output/test_renderexport)
 eddy_test(output/test_exporter)
 eddy_test(project/test_boltsnapipc)
 eddy_test(video/test_videoexporter)
+eddy_test(video/test_videorender)
 eddy_test(output/test_exportsettings)
 eddy_test(popovers/test_exportpanel)
 eddy_test(project/test_projectcodec)
@@ -190,6 +204,8 @@ eddy_test(edit/test_toolcontroller)
 eddy_test(output/test_compositor)
 eddy_test(chrome/test_toolbar)
 eddy_test(editor/test_editorwindow)
+eddy_test(editor/test_editorvideo)
+eddy_test(editor/test_editorvideoout)
 eddy_test(studio/test_studiozooms)
 eddy_test(project/test_projects)
 eddy_test(timeline/test_fragmentsedit)
