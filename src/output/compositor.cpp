@@ -16,11 +16,16 @@ QStringList hyprlandRules(const QString &appId) {
     };
 }
 
+QString hyprlandBatch(const QString &appId) {
+    QStringList commands;
+    for (const QString &rule : hyprlandRules(appId)) commands << QStringLiteral("keyword windowrulev2 ") + rule;
+    return commands.join(QStringLiteral(" ; "));
+}
+
 void pushWindowRules(const QString &appId) {
     const auto env = QProcessEnvironment::systemEnvironment();
     if (env.contains("HYPRLAND_INSTANCE_SIGNATURE")) {
-        for (const QString &rule : hyprlandRules(appId))
-            QProcess::execute("hyprctl", {"keyword", "windowrulev2", rule});
+        QProcess::execute("hyprctl", {"--batch", hyprlandBatch(appId)});
     }
     if (env.contains("SWAYSOCK")) {
         QProcess::execute("swaymsg",

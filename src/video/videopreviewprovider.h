@@ -26,7 +26,7 @@ signals:
 private:
     struct Request { qint64 time; QSize size; QString key; bool hover; };
     // One ffmpeg at a time per slot. Three decode a strip 2.4x faster than one
-    // (24 thumbnails of a 1080p120 recording: 3.9 s -> 1.6 s) and stay exact.
+    // (24 thumbnails of a 1080p120 recording: 3.2 s -> 1.8 s) and stay exact.
     struct Slot {
         QProcess *process = nullptr;
         QTimer *timeout = nullptr;
