@@ -77,6 +77,21 @@ private slots:
         }
         QTest::mouseRelease(canvas.viewport(), Qt::MiddleButton, Qt::NoModifier, pointer);
     }
+    void resizingKeepsTheCentreWhereItWas() {
+        // A floating window resized from any edge: the picture stays put, it does
+        // not slide with the top-left corner or creep half a pixel per step.
+        Canvas canvas(&m_scene, &m_tools);
+        canvas.resize(800, 500); canvas.show(); canvas.resetZoom();
+        wheel(canvas, QPoint(400, 250), QPoint(0, 240));   // zoomed in, so not fitted
+        canvas.centerOn(1000, 600);
+        const QPointF centre = canvas.mapToScene(canvas.viewport()->rect()).boundingRect().center();
+        for (int step = 0; step < 40; ++step)
+            canvas.resize(800 + (step % 2 ? 37 : -23) + step, 500 + (step % 3) * 11);
+        canvas.resize(800, 500);
+        const QPointF after = canvas.mapToScene(canvas.viewport()->rect()).boundingRect().center();
+        QVERIFY2(distance(after, centre) * canvas.transform().m11() <= 1.0,
+                 qPrintable(QStringLiteral("centre moved %1 px").arg(distance(after, centre) * canvas.transform().m11())));
+    }
 };
 
 QTEST_MAIN(TestCanvasZoom)

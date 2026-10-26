@@ -1,6 +1,7 @@
 #pragma once
 #include <QColor>
 #include <QPalette>
+#include <QPainterPath>
 #include <QIcon>
 #include <QSize>
 #include <QString>
@@ -37,6 +38,9 @@ inline constexpr int kBar = kCtl + 2 * kBarPad;      // top bar, footer, tool ra
 inline constexpr int kRChip = 6;                     // a control's fill
 inline constexpr int kRBar = kRChip + kS1;           // a floating bar or menu around kS1-inset chips
 inline constexpr int kRPop = 14;                     // popovers, toast; children take kRChip
+// The selection and hover mark of an icon button in the top bar and tool rail: a
+// squircle kS6 across, centred in the kCtl button.
+inline constexpr int kMarkInset = (kCtl - kS6) / 2;
 // The type scale: captions and technical values, then labels. Painted text uses these too.
 inline constexpr int kFsCaption = 12;
 inline constexpr int kFsUi = 15;
@@ -51,6 +55,10 @@ inline constexpr int kFloatIcon = 20;
 // An SVG (resource path) as a monochrome QIcon: `rest` colour for the Off/Normal
 // state, `active` for the On state. It rasterises per paint at the real device
 // pixel size, so `size` only documents what the caller displays.
+// A superellipse filling `rect`: corners that flow into the sides, where a rounded
+// rectangle joins an arc to a straight edge.
+QPainterPath squircle(const QRectF &rect);
+
 QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active,
                  int size = kIconSize);
 

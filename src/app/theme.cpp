@@ -42,10 +42,9 @@ QColor oklch(qreal l, qreal c, qreal hueDegrees) {
 }
 } // namespace
 
-// One hue and chroma for every surface; text carries half the chroma.
+// Plain grey: one lightness ladder in OKLab, no hue (mt, 2026-10-27: a blue tint read as blue).
 QColor tone(Tone which, bool dark) {
-    // Light surfaces show a tint sooner: they carry less chroma.
-    constexpr qreal kHue = 255, kChromaDark = 0.008, kChromaLight = 0.005;
+    constexpr qreal kHue = 0, kChroma = 0;
     struct Step { qreal dark, light; };
     static constexpr Step kSteps[] = {
         {0.13, 0.93},    // Canvas
@@ -61,9 +60,7 @@ QColor tone(Tone which, bool dark) {
         {0.28, 0.915},   // BarActive
     };
     const Step step = kSteps[int(which)];
-    const bool text = which == Tone::Fg || which == Tone::Sub;
-    const qreal chroma = dark ? kChromaDark : kChromaLight;
-    return oklch(dark ? step.dark : step.light, text ? chroma / 2 : chroma, kHue);
+    return oklch(dark ? step.dark : step.light, kChroma, kHue);
 }
 
 QPalette darkPalette() {
@@ -267,6 +264,25 @@ void CapButton::paintEvent(QPaintEvent *) {
     }
     p.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText));
     p.drawText(QPointF(x, baseline), text());
+}
+
+QPainterPath squircle(const QRectF &rect) {
+    // |x/a|^5 + |y/b|^5 = 1, sampled finely enough that no facet shows at this size.
+    constexpr int kSteps = 96;
+    constexpr qreal kExponent = 5;
+    const QPointF centre = rect.center();
+    const qreal a = rect.width() / 2, b = rect.height() / 2;
+    QPolygonF outline;
+    outline.reserve(kSteps);
+    for (int i = 0; i < kSteps; ++i) {
+        const qreal t = 2 * M_PI * i / kSteps, c = std::cos(t), s = std::sin(t);
+        outline << QPointF(centre.x() + a * std::copysign(std::pow(std::abs(c), 2 / kExponent), c),
+                           centre.y() + b * std::copysign(std::pow(std::abs(s), 2 / kExponent), s));
+    }
+    QPainterPath path;
+    path.addPolygon(outline);
+    path.closeSubpath();
+    return path;
 }
 
 QString spokenName(const QString &tip) {

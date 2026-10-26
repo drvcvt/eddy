@@ -24,13 +24,15 @@ private slots:
         QCOMPARE(p.color(QPalette::Highlight), theme::tone(theme::Tone::Raise3, true));
         QVERIFY(p.color(QPalette::Window).lightnessF() < 0.15);
     }
-    void graphiteLeansCool() {
-        // One hue for every surface: a touch of blue, never a tint you would name.
-        for (bool dark : {true, false}) {
-            const QColor bg = theme::tone(theme::Tone::Bg, dark);
-            QVERIFY2(bg.blue() > bg.red(), qPrintable(bg.name()));
-            QVERIFY2(bg.blue() - bg.red() <= 6, qPrintable(bg.name()));
-        }
+    void greysCarryNoTint() {
+        // Plain grey, no hue: a blue tint over the screenshot read as blue.
+        using theme::Tone;
+        for (bool dark : {true, false})
+            for (Tone tone : {Tone::Canvas, Tone::Bg, Tone::Raise1, Tone::Raise2, Tone::Raise3, Tone::SegmentOn,
+                              Tone::Faint, Tone::Sub, Tone::Fg, Tone::BarHover, Tone::BarActive}) {
+                const QColor c = theme::tone(tone, dark);
+                QVERIFY2(c.red() == c.green() && c.green() == c.blue(), qPrintable(c.name()));
+            }
     }
     void textKeepsItsContrastOnEverySurface() {
         // WCAG relative luminance; body text needs 4.5:1 wherever it sits.

@@ -69,7 +69,7 @@ void Canvas::cancelPan() {
 void Canvas::updateNavigationBounds() {
     // The document keeps its native bounds; only the camera needs room to pan
     // when a fitted or small image has no natural scrollbar range.
-    const QPointF center = mapToScene(viewport()->rect().center());
+    const QPointF center = viewportCentreInScene();   // exact: rect().center() sits half a pixel off
     const qreal scale = qMax(0.001, transform().m11());
     const qreal dx = viewport()->width() / scale;
     const qreal dy = viewport()->height() / scale;
@@ -646,8 +646,24 @@ void Canvas::mouseReleaseEvent(QMouseEvent *e) {
 
 void Canvas::resizeEvent(QResizeEvent *e) {
     if (m_eyedropper) cancelEyedropper();        // snapshot + loupe placement go stale on resize
+    // The picture keeps its place: the scene point in the middle stays in the middle.
+    // A run of resize steps holds the first exact point, so whole scroll-bar pixels never add up.
+    const QPoint scroll(horizontalScrollBar()->value(), verticalScrollBar()->value());
+    if (scroll != m_resizeAnchor.scroll || m_zoom != m_resizeAnchor.zoom || !m_camera.isIdentity())
+        m_resizeAnchor = {{}, viewportTransform().inverted().map(
+            QPointF(e->oldSize().width() / 2.0, e->oldSize().height() / 2.0)), {}, 0};
     QGraphicsView::resizeEvent(e);
-    withoutCamera([&] { if (m_fitted) fitMedia(); else updateNavigationBounds(); });
+    withoutCamera([&] {
+        if (m_fitted) { fitMedia(); return; }
+        updateNavigationBounds();
+        if (!m_camera.isIdentity() || !e->oldSize().isValid()) return;
+        const QPointF off = viewportTransform().map(m_resizeAnchor.scene)
+                            - QPointF(viewport()->width() / 2.0, viewport()->height() / 2.0);
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + qRound(off.x()));
+        verticalScrollBar()->setValue(verticalScrollBar()->value() + qRound(off.y()));
+        m_resizeAnchor.scroll = {horizontalScrollBar()->value(), verticalScrollBar()->value()};
+        m_resizeAnchor.zoom = m_zoom;
+    });
     emit viewChanged();
 }
 

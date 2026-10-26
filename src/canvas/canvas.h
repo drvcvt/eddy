@@ -109,9 +109,9 @@ private:
     bool m_animations = true;
     Spring *m_zoomSpring = nullptr;   // keyboard zoom; the wheel follows the hand unanimated
     QPointF m_zoomHeld;              // the scene point keyboard zoom holds at the centre
-    // The scene point a run of wheel steps at one spot holds still. Each step lands
+    // The scene point a run of wheel steps at one spot (or of resize steps) holds still. Each step lands
     // it from the same exact point, so the scroll bars' whole pixels never add up.
-    struct WheelAnchor { QPointF view, scene; QPoint scroll; double zoom = 0; } m_wheelAnchor;
+    struct ViewAnchor { QPointF view, scene; QPoint scroll; double zoom = 0; } m_wheelAnchor, m_resizeAnchor;
     bool m_eyedropper = false;      // eyedropper colour-pick in progress
     QImage m_eyeShot;               // frozen viewport snapshot (device px) being sampled
     qreal m_eyeDpr = 1.0;           // snapshot device-pixel ratio

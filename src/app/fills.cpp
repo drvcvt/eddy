@@ -34,6 +34,13 @@ bool ownsItsBackground(const QToolButton *button) {
     return names.contains(button->objectName());
 }
 
+// Icon buttons in the top bar and tool rail take the squircle mark their selection uses.
+bool inChromeBar(const QToolButton *button) {
+    for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget())
+        if (w->objectName() == QLatin1String("Toolbar") || w->objectName() == QLatin1String("ToolRail")) return true;
+    return false;
+}
+
 // One step above the surface the button sits on.
 QColor fillFor(const QToolButton *button) {
     for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget()) {
@@ -93,7 +100,12 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
         fill.setAlphaF(fill.alphaF() * qMin<qreal>(1, level));
         painter.setPen(Qt::NoPen);
         painter.setBrush(fill);
-        painter.drawRoundedRect(QRectF(button->rect()), theme::kRChip, theme::kRChip);
+        if (button->width() == button->height() && inChromeBar(button)) {
+            const qreal inset = theme::kMarkInset;
+            painter.drawPath(theme::squircle(QRectF(button->rect()).adjusted(inset, inset, -inset, -inset)));
+        } else {
+            painter.drawRoundedRect(QRectF(button->rect()), theme::kRChip, theme::kRChip);
+        }
         break;
     }
     default:
@@ -129,7 +141,8 @@ SelectionGlide::SelectionGlide(QButtonGroup *group, QWidget *surface, theme::Ton
         if (rect.isEmpty()) return;
         painter.setPen(Qt::NoPen);
         painter.setBrush(theme::tone(m_tone, dark()));
-        painter.drawRoundedRect(rect, theme::kRChip, theme::kRChip);
+        const qreal inset = theme::kMarkInset;
+        painter.drawPath(theme::squircle(rect.adjusted(inset, inset, -inset, -inset)));
     });
     m_layer->lower();
     m_x = new Spring(motion::kFast, [this](qreal) { m_layer->update(); }, this);
