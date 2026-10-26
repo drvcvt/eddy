@@ -23,8 +23,12 @@ private slots:
         QSignalSpy hover(&provider, &VideoPreviewProvider::hoverReady);
         provider.requestStrip({200, 1200}, QSize(64, 48));
         QTRY_COMPARE_WITH_TIMEOUT(thumbs.count(), 2, 5000);
-        const QImage red = qvariant_cast<QImage>(thumbs[0][1]);
-        const QImage blue = qvariant_cast<QImage>(thumbs[1][1]);
+        // Decoded side by side, so they may arrive in either order.
+        const auto at = [&](qint64 time) {
+            for (const auto &args : thumbs) if (args[0].toLongLong() == time) return qvariant_cast<QImage>(args[1]);
+            return QImage();
+        };
+        const QImage red = at(200), blue = at(1200);
         QVERIFY(red.pixelColor(10, 10).red() > 200);
         QVERIFY(blue.pixelColor(10, 10).blue() > 200);
         provider.requestHover(400, QSize(80, 60));

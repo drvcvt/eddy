@@ -4,50 +4,54 @@
 #include <QStandardPaths>
 #include <QBuffer>
 #include <QImageReader>
+#include <algorithm>
 
 namespace eddy {
 
 VideoPreviewProvider::VideoPreviewProvider(QString source, QObject *parent, QString executable)
     : QObject(parent), m_source(std::move(source)),
-      m_executable(executable.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : executable),
-      m_process(new QProcess(this)) {
+      m_executable(executable.isEmpty() ? QStandardPaths::findExecutable("ffmpeg") : executable) {
     m_hoverDelay.setSingleShot(true);
     m_hoverDelay.setInterval(80);
-    m_timeout.setSingleShot(true);
-    m_timeout.setInterval(5000);
-    connect(&m_hoverDelay, &QTimer::timeout, this, [this] {
-        if (m_active && m_hover && m_active->key != m_hover->key) m_process->kill();
-        else startNext();
-    });
-    connect(&m_timeout, &QTimer::timeout, m_process, &QProcess::kill);
-    connect(m_process, &QProcess::readyReadStandardOutput, this, [this] {
-        m_bytes += m_process->readAllStandardOutput();
-        if (m_bytes.size() > 4 * 1024 * 1024) {
-            m_bytes.clear();
-            m_process->kill();
-        }
-    });
-    connect(m_process, &QProcess::readyReadStandardError, this, [this] {
-        m_process->readAllStandardError(); // Drain diagnostics; no unbounded stderr buffer.
-    });
-    connect(m_process, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
-        finish(code == 0 && status == QProcess::NormalExit);
-    });
-    connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error == QProcess::FailedToStart) finish(false);
-    });
+    connect(&m_hoverDelay, &QTimer::timeout, this, [this] { killStaleHover(); startNext(); });
+    for (Slot &slot : m_slots) {
+        slot.process = new QProcess(this);
+        slot.timeout = new QTimer(this);
+        slot.timeout->setSingleShot(true);
+        slot.timeout->setInterval(5000);
+        QProcess *process = slot.process;
+        connect(slot.timeout, &QTimer::timeout, process, &QProcess::kill);
+        connect(process, &QProcess::readyReadStandardOutput, this, [&slot] {
+            slot.bytes += slot.process->readAllStandardOutput();
+            if (slot.bytes.size() > 4 * 1024 * 1024) {
+                slot.bytes.clear();
+                slot.process->kill();
+            }
+        });
+        connect(process, &QProcess::readyReadStandardError, this, [process] {
+            process->readAllStandardError(); // Drain diagnostics; no unbounded stderr buffer.
+        });
+        connect(process, &QProcess::finished, this, [this, &slot](int code, QProcess::ExitStatus status) {
+            finish(slot, code == 0 && status == QProcess::NormalExit);
+        });
+        connect(process, &QProcess::errorOccurred, this, [this, &slot](QProcess::ProcessError error) {
+            if (error == QProcess::FailedToStart) finish(slot, false);
+        });
+    }
 }
 
 VideoPreviewProvider::~VideoPreviewProvider() {
-    if (m_process->state() != QProcess::NotRunning) {
+    for (Slot &slot : m_slots) {
+        QProcess *process = slot.process;
+        if (process->state() == QProcess::NotRunning) continue;
         // Let its own finished signal reap the child without blocking the GUI.
-        m_process->disconnect(this);
-        m_process->setParent(nullptr);
-        connect(m_process, &QProcess::finished, m_process, &QObject::deleteLater);
-        connect(m_process, &QProcess::errorOccurred, m_process, [process = m_process](QProcess::ProcessError error) {
+        process->disconnect(this);
+        process->setParent(nullptr);
+        connect(process, &QProcess::finished, process, &QObject::deleteLater);
+        connect(process, &QProcess::errorOccurred, process, [process](QProcess::ProcessError error) {
             if (error == QProcess::FailedToStart) process->deleteLater();
         });
-        m_process->kill();
+        process->kill();
     }
 }
 
@@ -88,43 +92,57 @@ void VideoPreviewProvider::cancelHover() {
     m_hover.reset();
     m_hoverPending = false;
     m_hoverDelay.stop();
-    if (m_active && m_active->hover) m_process->kill();
+    killStaleHover();
+}
+
+// A hover decode the pointer has moved on from only holds a slot.
+void VideoPreviewProvider::killStaleHover() {
+    for (Slot &slot : m_slots)
+        if (slot.active && slot.active->hover && (!m_hover || slot.active->key != m_hover->key))
+            slot.process->kill();
 }
 
 void VideoPreviewProvider::startNext() {
-    if (m_active) return;
-    if (m_hoverPending && !m_hoverDelay.isActive()) {
-        m_active = m_hover;
-        m_hoverPending = false;
-    } else if (!m_strip.isEmpty()) {
-        m_active = m_strip.takeFirst();
-    } else return;
-    m_bytes.clear();
-    const Request &next = *m_active;
+    for (Slot &slot : m_slots) {
+        if (slot.active) continue;
+        const bool hoverRunning = std::any_of(std::begin(m_slots), std::end(m_slots), [this](const Slot &s) {
+            return s.active && m_hover && s.active->key == m_hover->key; });
+        if (m_hoverPending && !m_hoverDelay.isActive() && !hoverRunning) {
+            m_hoverPending = false;
+            start(slot, *m_hover);
+        } else if (!m_strip.isEmpty()) {
+            start(slot, m_strip.takeFirst());
+        } else return;
+    }
+}
+
+void VideoPreviewProvider::start(Slot &slot, const Request &next) {
+    slot.active = next;
+    slot.bytes.clear();
     const QString filter = QStringLiteral("scale=%1:%2:force_original_aspect_ratio=decrease")
         .arg(next.size.width()).arg(next.size.height());
-    m_process->start(m_executable, {"-v", "error", "-nostdin", "-ss",
+    slot.process->start(m_executable, {"-v", "error", "-nostdin", "-ss",
         QString::number(next.time / 1000.0, 'f', 3), "-i", m_source,
         "-an", "-sn", "-frames:v", "1", "-vf", filter, "-threads", "1",
         "-f", "image2pipe", "-vcodec", "png", "pipe:1"});
-    m_timeout.start();
+    slot.timeout->start();
 }
 
-void VideoPreviewProvider::finish(bool success) {
-    if (!m_active) return;
-    m_timeout.stop();
-    const Request done = *m_active;
-    m_active.reset();
-    m_bytes += m_process->readAllStandardOutput();
+void VideoPreviewProvider::finish(Slot &slot, bool success) {
+    if (!slot.active) return;
+    slot.timeout->stop();
+    const Request done = *slot.active;
+    slot.active.reset();
+    QByteArray bytes = slot.bytes + slot.process->readAllStandardOutput();
+    slot.bytes.clear();
     QImage image;
-    if (success && m_bytes.size() <= 4 * 1024 * 1024) {
-        QBuffer buffer(&m_bytes); buffer.open(QIODevice::ReadOnly);
+    if (success && bytes.size() <= 4 * 1024 * 1024) {
+        QBuffer buffer(&bytes); buffer.open(QIODevice::ReadOnly);
         QImageReader reader(&buffer, "PNG");
         const QSize size = reader.size();
         if (size.width() > 0 && size.height() > 0 && size.width() <= 640 && size.height() <= 360)
             image = reader.read();
     }
-    m_bytes.clear();
     if (!image.isNull()) {
         m_cache.insert(done.key, new QImage(image), qMax(1, int(image.sizeInBytes() / 1024)));
         if (m_hover && m_hover->key == done.key) {
