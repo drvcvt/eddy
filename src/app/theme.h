@@ -17,7 +17,8 @@ namespace theme {
 
 // Neutral graphite from one OKLCH hue; only lightness changes (docs/design.md).
 // Annotation colours are content and stay independent.
-enum class Tone { Canvas, Bg, Raise1, Raise2, Raise3, SegmentOn, Faint, Sub, Fg, BarHover, BarActive };
+// Bg is the frame (bars, tool rail); Well the workspace behind the picture, a touch deeper.
+enum class Tone { Canvas, Bg, Raise1, Raise2, Raise3, SegmentOn, Faint, Sub, Fg, BarHover, BarActive, Well };
 QColor tone(Tone tone, bool dark);
 inline constexpr const char *kStroke          = "#ff3b30";
 
@@ -31,21 +32,22 @@ QString styleSheet(bool dark);
 // Geometry on a 4 px grid (docs/design.md). Every text and icon control is kCtl
 // high; bars are kCtl plus kBarPad on each side.
 inline constexpr int kS1 = 4, kS2 = 8, kS3 = 12, kS4 = 16, kS6 = 24;
-inline constexpr int kCtl = 28;                      // ~1.9x kFsUi; kCtl - cap height is even
+inline constexpr int kCtl = 26;                      // 2x kFsUi
 inline constexpr QSize kControl{kCtl, kCtl};
-inline constexpr int kBarPad = 6;                    // (kBar - kCtl) / 2, the one value off the grid
+inline constexpr int kBarPad = 5;                    // (kBar - kCtl) / 2, the one value off the grid
 inline constexpr int kBar = kCtl + 2 * kBarPad;      // top bar, footer, tool rail width
 inline constexpr int kRChip = 6;                     // a control's fill
 inline constexpr int kRBar = kRChip + kS1;           // a floating bar or menu around kS1-inset chips
 inline constexpr int kRPop = 14;                     // popovers, toast; children take kRChip
 // The selection and hover mark of an icon button in the top bar and tool rail: a
-// squircle kS6 across, centred in the kCtl button.
-inline constexpr int kMarkInset = (kCtl - kS6) / 2;
+// squircle centred in the kCtl button, kMarkInset in from its edges.
+inline constexpr int kMarkInset = 2;   // a kCtl - 4 mark: inside the button, never touching its neighbour's
 // The type scale: captions and technical values, then labels. Painted text uses these too.
 inline constexpr int kFsCaption = 12;
-inline constexpr int kFsUi = 15;
+inline constexpr int kFsUi = 13;
 inline constexpr int kFsDisplay = 18;
 inline constexpr int kIconSize = 18;                 // a free-standing chrome icon
+inline constexpr int kLabelIcon = 16;                // beside a kFsUi label: its ink (13 px) no taller than the text
 // tintedIcon insets the glyph by size/11 per side; this is the ink that remains.
 constexpr int iconInk(int size) { return size * 9 / 11; }
 // The floating bars sit right on the canvas with nothing else competing, so

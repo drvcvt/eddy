@@ -120,7 +120,8 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         auto *b = mkBtn(true, true);
         b->setIcon(theme::tintedIcon(QString(":/icons/%1.svg").arg(t.id),
                                      iconRest, iconOn));
-        b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+        // The rail has nothing beside its glyphs, so they run a step larger than the top bar's.
+        b->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
         b->setObjectName(QString::fromLatin1(t.id));
         b->setToolTip(*t.key ? QString("%1\t%2").arg(t.name, t.key)
                              : QString::fromLatin1(t.name));
@@ -129,8 +130,12 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         m_btns.insert(int(t.type), b);
         connect(b, &QToolButton::clicked, this, [this, tt=t.type]{ emit toolChosen(tt); });
         rail->addWidget(b);
+        // Groups by what a tool does: select | draw | label | hide | crop. Only space between them.
+        if (t.type == ToolType::Move || t.type == ToolType::Highlight || t.type == ToolType::Step
+            || t.type == ToolType::Spotlight)
+            rail->addSpacing(theme::kS3);
     }
-    new SelectionGlide(group, m_toolRail, theme::Tone::BarActive);
+    new SelectionGlide(group, m_toolRail, theme::Tone::Raise2);
 
     auto *wgroup = new QButtonGroup(this); wgroup->setExclusive(true);
     struct W { const char *id; const char *icon; const char *tip; double w; };
@@ -152,7 +157,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         connect(b, &QToolButton::clicked, this, [this, w=x.w]{ emit widthChosen(w); });
         lay->addWidget(b);
     }
-    new SelectionGlide(wgroup, this, theme::Tone::Raise3);
+    new SelectionGlide(wgroup, this, theme::Tone::Raise2);
 
     auto *color = mkBtn(false, true);
     color->setObjectName("Swatch");
@@ -188,7 +193,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     // state mirrors the document; a click always opens the popover.
     m_studioBtn = mkBtn(true, false, new theme::CapButton); m_studioBtn->setObjectName("Studio");
     m_studioBtn->setIcon(theme::tintedIcon(QStringLiteral(":/icons/studio.svg"), iconRest, iconHover));
-    m_studioBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+    m_studioBtn->setIconSize(QSize(theme::kLabelIcon, theme::kLabelIcon));
     m_studioBtn->setText(QStringLiteral("Studio"));
     m_studioBtn->setToolTip(QStringLiteral("Studio background and framing"));
     m_studioBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -221,7 +226,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     // line; the label takes the body step so the 15px ink is not larger than it.
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
                                      iconRest, iconHover));
-    shelf->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+    shelf->setIconSize(QSize(theme::kLabelIcon, theme::kLabelIcon));
     shelf->setToolTip("Send to Boltsnap shelf");
     shelf->setText(QStringLiteral("To shelf"));
     shelf->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);

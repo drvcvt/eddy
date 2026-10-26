@@ -74,7 +74,8 @@ private slots:
         window.resize(1000, 640);
         window.show();
         QTest::qWait(50);
-        static const QSet<int> scale{0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 72};
+        // The spacing scale plus kBarPad, the one value the bar height derives.
+        static const QSet<int> scale{0, 1, 2, 4, theme::kBarPad, 6, 8, 12, 16, 24, 32, 48, 72};
         QStringList bad;
         auto name = [](const QObject *o) {
             for (; o; o = o->parent()) if (!o->objectName().isEmpty()) return o->objectName();

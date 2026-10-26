@@ -417,7 +417,7 @@ void EditorWindow::toggleTheme() {
     m_dark = !m_dark;
     QApplication::setPalette(theme::palette(m_dark));
     qApp->setStyleSheet(theme::styleSheet(m_dark));
-    m_canvas->setBackgroundBrush(QApplication::palette().color(QPalette::Window));
+    m_canvas->setBackgroundBrush(m_canvas->workspaceColor());
     m_toolbar->setDark(m_dark);
     if (m_playButton) {
         const QColor color = palette().color(QPalette::ButtonText);

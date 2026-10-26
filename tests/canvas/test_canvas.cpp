@@ -98,7 +98,8 @@ private slots:
         for (int x = 0; x < shot.width(); ++x) {
             const QColor c = shot.pixelColor(x, y);
             if (c.green() > 200) continue;   // the content itself
-            QVERIFY2(c.green() < 8, qPrintable(QStringLiteral("x %1: %2").arg(x).arg(c.name())));
+            // Grey or red fills are fine; any green tint is the picture leaking through.
+            QVERIFY2(c.green() - qMax(c.red(), c.blue()) < 8, qPrintable(QStringLiteral("x %1: %2").arg(x).arg(c.name())));
         }
     }
     void cameraDragReportsDocumentDistances() {

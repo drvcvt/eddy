@@ -1,4 +1,5 @@
 #include "canvas/canvas.h"
+#include "app/theme.h"
 #include <QContextMenuEvent>
 #include <QMenu>
 #include <utility>
@@ -34,7 +35,7 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
     // Clean look: no scrollbars; pan via middle-drag, navigate via zoom.
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setBackgroundBrush(QApplication::palette().color(QPalette::Window));
+    setBackgroundBrush(workspaceColor());
     connect(m_tools, &ToolController::toolChanged, this, [this]{ updateCursor(); });
     updateCursor();
 }
@@ -207,6 +208,10 @@ void Canvas::fitMedia() {
     emit viewChanged();
 }
 
+QColor Canvas::workspaceColor() const {
+    return theme::tone(theme::Tone::Well, QApplication::palette().color(QPalette::Window).lightness() < 128);
+}
+
 QRectF Canvas::viewRect() const {
     return m_studioOutput.isEmpty() ? contentRect() : m_studioOutput;
 }
@@ -297,7 +302,7 @@ void Canvas::drawFrame(QPainter *painter) {
         QPainterPath outside;
         outside.addRect(viewport()->rect());
         outside.addRect(output);
-        painter->fillPath(outside, palette().color(QPalette::Window));
+        painter->fillPath(outside, workspaceColor());
         QPainterPath ring;
         ring.addRect(output);
         ring.addRoundedRect(content, radius, radius);
@@ -318,7 +323,7 @@ void Canvas::drawFrame(QPainter *painter) {
     QPainterPath outside;
     outside.addRect(viewport()->rect());
     outside.addRect(frame);
-    painter->fillPath(outside, cropping ? QColor(0, 0, 0, 155) : palette().color(QPalette::Window));
+    painter->fillPath(outside, cropping ? QColor(0, 0, 0, 155) : workspaceColor());
     if (cropping) {
         painter->setRenderHint(QPainter::Antialiasing);
         painter->setPen(QPen(QColor(255, 255, 255, 70), 1));

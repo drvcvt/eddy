@@ -64,7 +64,7 @@ QMenu {
 }
 QMenu::item {
     min-width: 44px;
-    padding: 4px @s2;    /* 4 + 19 px line + 4 + 1 px margin each side: one @ctl row */
+    padding: 4px @s2;    /* 4 + 16 px line + 4, and 1 px margin each side: one @ctl row */
     margin: 1px 0;
     border: none;
     border-radius: @r-chip;

@@ -58,6 +58,7 @@ QColor tone(Tone which, bool dark) {
         {0.95, 0.22},    // Fg
         {0.235, 0.94},   // BarHover
         {0.28, 0.915},   // BarActive
+        {0.175, 0.955},  // Well
     };
     const Step step = kSteps[int(which)];
     return oklch(dark ? step.dark : step.light, kChroma, kHue);
@@ -116,11 +117,9 @@ QString styleSheet(bool dark) {
         {"@ctl", px(kCtl)}, {"@s1", px(kS1)}, {"@s2", px(kS2)}, {"@s3", px(kS3)}, {"@s4", px(kS4)}};
     for (const auto &[token, value] : sizes) qss.replace(token, value);
     const auto hex = [dark](Tone which) { return tone(which, dark).name(); };
-    // The dark bar is translucent, so its state fills are pre-blended: stacking
-    // two translucent layers smears the rounded corners into mush.
     const QList<QPair<QString, QString>> colors{
         {"@bar-active", hex(Tone::BarActive)}, {"@bar-hover", hex(Tone::BarHover)},
-        {"@bar", dark ? QStringLiteral("rgba(0, 0, 0, 153)") : hex(Tone::Raise1)},
+        {"@bar", hex(Tone::Bg)},   // the frame: bars and rail on the window's own grey
         {"@chip-on-fg", dark ? hex(Tone::Fg) : hex(Tone::Bg)}, {"@chip-on", dark ? hex(Tone::Raise3) : hex(Tone::Fg)},
         {"@raise3", hex(Tone::Raise3)}, {"@raise2", hex(Tone::Raise2)}, {"@segment-on", hex(Tone::SegmentOn)},
         {"@raise1", hex(Tone::Raise1)}, {"@faint", hex(Tone::Faint)},

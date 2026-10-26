@@ -94,6 +94,9 @@ private:
     CropController *m_crop = nullptr;
     QRectF m_contentRect;
     QRectF viewRect() const;        // what Fit shows: the Studio frame or the content
+public:
+    QColor workspaceColor() const;  // behind the picture: a touch deeper than the frame
+private:
     QPixmap m_studioBackground;
     QRectF m_studioOutput;
     qreal m_studioRadius = 0;
