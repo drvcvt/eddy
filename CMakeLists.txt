@@ -8,6 +8,8 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+# -O2, not CMake's -O3: the same speed here for less code (the whole program goes through LTO).
+string(REPLACE "-O3" "-O2" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -106,6 +108,9 @@ add_library(eddy_core STATIC
     resources/eddy.qrc
 )
 target_include_directories(eddy_core PUBLIC src)
+# Compress every resource that shrinks by 30 %, not only by rcc's default 70 %:
+# the bundled font (54 % smaller) was stored raw.
+set_target_properties(eddy_core PROPERTIES AUTORCC_OPTIONS "--compress;9;--threshold;30")
 target_compile_definitions(eddy_core PRIVATE EDDY_VERSION="${PROJECT_VERSION}")
 target_link_libraries(eddy_core PUBLIC Qt6::Widgets Qt6::Svg Qt6::Multimedia Qt6::MultimediaWidgets)
 if(WIN32)
@@ -123,10 +128,12 @@ if(WIN32)
     target_sources(eddy PRIVATE resources/eddy.rc)
     set_target_properties(eddy PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
-if(MSVC)
-    target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:/O2>)
-else()
-    target_compile_options(eddy PRIVATE $<$<CONFIG:Release>:-O2>)
+if(NOT MSVC)
+    # Release strips symbols and packs relocations; nothing links what it doesn't call.
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "-Wl,-z,pack-relative-relocs" EDDY_PACK_RELOCS)
+    target_link_options(eddy PRIVATE -Wl,--as-needed $<$<CONFIG:Release>:-s>
+        $<$<BOOL:${EDDY_PACK_RELOCS}>:-Wl,-z,pack-relative-relocs>)
 endif()
 
 install(TARGETS eddy RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
