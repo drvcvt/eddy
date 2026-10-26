@@ -1,0 +1,17 @@
+#pragma once
+#include "items/annotationitem.h"
+#include <QPolygonF>
+namespace eddy {
+class PenPathItem : public AnnotationItem {
+public:
+    explicit PenPathItem(const QPointF &start);
+    void addPoint(const QPointF &p);
+    int pointCount() const { return m_pts.size(); }
+    QPolygonF points() const { return m_pts; }
+    PenPathItem *clone() const override;
+    QRectF boundingRect() const override;
+    void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override;
+private:
+    QPolygonF m_pts;
+};
+}

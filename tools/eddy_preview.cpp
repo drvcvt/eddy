@@ -1,22 +1,22 @@
 // Dev tool: render the editor chrome to a PNG for visual verification (offscreen).
 // Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera] [MEDIA]
-#include "editorwindow.h"
-#include "theme.h"
-#include "config.h"
-#include "cli.h"
-#include "items/textitem.h"
-#include "items/arrowitem.h"
-#include "colorpopover.h"
-#include "mediaio.h"
-#include "videotimeline.h"
-#include "cropcontroller.h"
-#include "toolcontroller.h"
-#include "studiodocument.h"
-#include "studiostyle.h"
-#include "recoverystore.h"
-#include "resumedialog.h"
-#include "items/redactitem.h"
-#include "items/spotlightitem.h"
+#include "editor/editorwindow.h"
+#include "app/theme.h"
+#include "app/config.h"
+#include "app/cli.h"
+#include "items/labels/textitem.h"
+#include "items/shapes/arrowitem.h"
+#include "popovers/colorpopover.h"
+#include "video/mediaio.h"
+#include "timeline/videotimeline.h"
+#include "edit/cropcontroller.h"
+#include "edit/toolcontroller.h"
+#include "studio/studiodocument.h"
+#include "studio/studiostyle.h"
+#include "project/recoverystore.h"
+#include "popovers/resumedialog.h"
+#include "items/regions/redactitem.h"
+#include "items/regions/spotlightitem.h"
 #include <QUndoStack>
 #include <QUndoCommand>
 #include <QLockFile>
@@ -39,8 +39,8 @@
 #include <QElapsedTimer>
 #include <memory>
 #include <QPainter>
-#include "items/stepitem.h"
-#include "items/rectitem.h"
+#include "items/labels/stepitem.h"
+#include "items/shapes/rectitem.h"
 
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
