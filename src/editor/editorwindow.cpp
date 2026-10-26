@@ -654,7 +654,7 @@ void EditorWindow::showEvent(QShowEvent *e) {
     const QSize native = m_media.nativeSize();
     if (native.width() > viewport.width() || native.height() > viewport.height())
         m_canvas->fitMedia();
-    if (isVideo()) { scheduleVideoLoad(); scheduleContactSheetLoad(); }
+    if (isVideo()) { scheduleVideoLoad(); scheduleStripLoad(); }
     QTimer::singleShot(0, this, &EditorWindow::offerKeptEdit);
     if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
     auto *a = new QPropertyAnimation(this, "windowOpacity", this);

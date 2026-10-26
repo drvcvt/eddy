@@ -331,7 +331,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_stripTimer = new QTimer(this);
     m_stripTimer->setSingleShot(true);
     m_stripTimer->setInterval(100);
-    connect(m_stripTimer, &QTimer::timeout, this, &EditorWindow::scheduleContactSheetLoad);
+    connect(m_stripTimer, &QTimer::timeout, this, &EditorWindow::scheduleStripLoad);
     connect(m_timeline, &VideoTimeline::viewRangeChanged, this, [this] {
         hideVideoPreview();
         m_stripTimer->start();

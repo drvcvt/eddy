@@ -428,14 +428,6 @@ private slots:
         QCOMPARE(shot.pixelColor(18, y), QColor(Qt::red));
         QCOMPARE(shot.pixelColor(680, y), QColor(Qt::red));
     }
-    void storesContactSheetWithoutDiskState() {
-        VideoTimeline timeline;
-        QImage sheet(320, 45, QImage::Format_RGB32);
-        sheet.fill(Qt::red);
-        timeline.setContactSheet(sheet, 4);
-        QVERIFY(timeline.hasContactSheet());
-        QCOMPARE(timeline.contactSheetFrameCount(), 4);
-    }
 };
 
 QTEST_MAIN(TestVideoTimeline)

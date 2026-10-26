@@ -155,7 +155,7 @@ private:
     void togglePlayback();
     void handlePlaybackEnd();
     void scheduleVideoLoad();
-    void scheduleContactSheetLoad();
+    void scheduleStripLoad();
     void hideVideoPreview();
     void showVideoPreview();
     void setVideoPreviewImage(const QImage &image);

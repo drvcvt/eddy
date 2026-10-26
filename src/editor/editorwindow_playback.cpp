@@ -219,7 +219,7 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     return QWidget::eventFilter(object, event);
 }
 
-void EditorWindow::scheduleContactSheetLoad() {
+void EditorWindow::scheduleStripLoad() {
     if (!m_previewProvider || !isVisible()) return;
     m_previewProvider->requestStrip(m_timeline->thumbnailTimes(), QSize(128, 72) * devicePixelRatioF());
 }

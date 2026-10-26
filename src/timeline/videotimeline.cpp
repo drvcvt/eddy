@@ -176,11 +176,6 @@ QImage VideoTimeline::thumbnailNear(qint64 time, qint64 *sampleTime) const {
     return nearest.value();
 }
 
-void VideoTimeline::setContactSheet(const QImage &image, int frameCount) {
-    m_contactSheet = image;
-    m_contactSheetFrames = image.isNull() ? 0 : qMax(1, frameCount);
-    update();
-}
 
 void VideoTimeline::setDuration(qint64 durationMs) {
     const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();

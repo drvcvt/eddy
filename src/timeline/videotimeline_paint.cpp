@@ -99,22 +99,6 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     painter.save();
     painter.setClipPath(clip);
     painter.fillRect(track, ink(0.12));
-    // The contact sheet spans the whole source; with fragments only the
-    // thumbnails, sampled in edited time, are right.
-    if (!m_contactSheet.isNull() && m_fragments.isEmpty()) {
-        painter.setRenderHint(QPainter::SmoothPixmapTransform);
-        // Crop each frame to its slot rather than stretching the contact sheet.
-        const qreal sourceWidth = qreal(m_contactSheet.width()) / m_contactSheetFrames;
-        const qreal slotWidth = track.width() / m_contactSheetFrames;
-        const qreal scale = qMax(slotWidth / sourceWidth, track.height() / m_contactSheet.height());
-        const QSizeF crop(slotWidth / scale, track.height() / scale);
-        for (int i = 0; i < m_contactSheetFrames; ++i) {
-            const QRectF source(i * sourceWidth + (sourceWidth - crop.width()) / 2,
-                                (m_contactSheet.height() - crop.height()) / 2, crop.width(), crop.height());
-            painter.drawImage(QRectF(track.left() + i * slotWidth, track.top(), slotWidth, track.height()),
-                              m_contactSheet, source);
-        }
-    }
     const auto times = thumbnailTimes();
     for (int i = 0; i < times.size(); ++i) {
         const QRectF slot(track.left() + i * track.width() / times.size(), track.top(),

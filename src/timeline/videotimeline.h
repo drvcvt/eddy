@@ -22,7 +22,6 @@ public:
     void setMinimumRange(qint64 durationMs);
     void setPosition(qint64 positionMs);
     void setTrimRange(qint64 inMs, qint64 outMs);
-    void setContactSheet(const QImage &image, int frameCount);
     void setThumbnail(qint64 timeMs, const QImage &image);
     void zoomAt(qreal factor, qint64 anchorMs);
     void panBy(qint64 deltaMs);
@@ -63,8 +62,6 @@ public:
     qint64 position() const { return m_position; }
     qint64 trimIn() const { return m_in; }
     qint64 trimOut() const { return m_out; }
-    bool hasContactSheet() const { return !m_contactSheet.isNull(); }
-    int contactSheetFrameCount() const { return m_contactSheetFrames; }
 
     // Waveform lane (21.09. plan 4, E8): 28 px right under the film strip,
     // for videos with sound. Clicks scrub like the film strip. Hiding it is a
@@ -153,8 +150,6 @@ private:
     QHash<qint64, QImage> m_thumbnails;
     Drag m_drag = Drag::None;
     Drag m_hover = Drag::None;
-    QImage m_contactSheet;
-    int m_contactSheetFrames = 0;
     bool m_laneVisible = false;
     QVector<ZoomSegment> m_zooms, m_zoomsBefore;
     std::function<double(qint64)> m_zoomLevel;
