@@ -1,7 +1,11 @@
 #include "items/shapes/penpathitem.h"
 #include <QPainter>
 namespace eddy {
-PenPathItem::PenPathItem(const QPointF &start) { m_pts << start; }
+PenPathItem::PenPathItem(const QPointF &start) {
+    m_pts << start;
+    // A long stroke takes tens of milliseconds to rasterise: once per zoom level, not per repaint.
+    setCacheMode(DeviceCoordinateCache);
+}
 void PenPathItem::addPoint(const QPointF &p) { prepareGeometryChange(); m_pts << p; update(); }
 PenPathItem *PenPathItem::clone() const {
     auto *copy = new PenPathItem(m_pts.first());

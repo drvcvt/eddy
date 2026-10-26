@@ -7,6 +7,7 @@
 #include "popovers/resumedialog.h"
 #include "app/theme.h"
 #include <QApplication>
+#include <QPixmapCache>
 #ifdef Q_OS_WIN
 #include <QFileDialog>
 #include <fcntl.h>
@@ -40,6 +41,9 @@ int main(int argc, char **argv) {
     attachParentConsole();
 #endif
     QApplication app(argc, argv);
+    // Cached strokes and arrows hold a pixmap the size of the item on screen; the
+    // default 10 MB evicts a single long arrow at 2x and repaints it every frame.
+    QPixmapCache::setCacheLimit(96 * 1024);
     const QPalette systemPalette = app.palette();
     QApplication::setStyle("Fusion");
     app.setApplicationName("eddy");

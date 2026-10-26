@@ -7,7 +7,11 @@
 namespace eddy {
 
 ArrowItem::ArrowItem(const QPointF &start, const QPointF &end)
-    : m_start(start), m_end(end) {}
+    : m_start(start), m_end(end) {
+    // Its silhouette costs milliseconds; every video frame and drag move under it
+    // would pay that again. Rasterised once per zoom level instead.
+    setCacheMode(DeviceCoordinateCache);
+}
 
 void ArrowItem::setStart(const QPointF &start) { prepareGeometryChange(); m_start = start; update(); }
 void ArrowItem::setEnd(const QPointF &end) { prepareGeometryChange(); m_end = end; update(); }
