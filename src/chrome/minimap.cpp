@@ -1,4 +1,5 @@
 #include "chrome/minimap.h"
+#include "app/theme.h"
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -31,7 +32,7 @@ void MiniMap::setWidthLimit(int width) {
 void MiniMap::fitSize() {
     if (m_content.isEmpty()) return;
     const double scale = qMin(m_widthLimit / m_content.width(), m_widthLimit * 112.0 / 152 / m_content.height());
-    setFixedSize(qRound(m_content.width() * scale) + 8, qRound(m_content.height() * scale) + 8);
+    setFixedSize(qRound(m_content.width() * scale) + 2 * theme::kS1, qRound(m_content.height() * scale) + 2 * theme::kS1);
 }
 
 void MiniMap::setCamera(const QRectF &camera) {

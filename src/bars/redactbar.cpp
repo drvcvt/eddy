@@ -11,8 +11,8 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
     setObjectName("RedactBar");
     setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(4, 4, 4, 4);
-    lay->setSpacing(2);
+    lay->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    lay->setSpacing(theme::kS1);
     auto *group = new QButtonGroup(this);
     group->setExclusive(true);
 
@@ -28,7 +28,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
         b->setFocusPolicy(Qt::NoFocus);     // keep window hotkeys working
         b->setCursor(Qt::PointingHandCursor);
         b->setText(QString::fromUtf8(m.label));
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         group->addButton(b);
         m_btns.insert(int(m.mode), b);
         connect(b, &QToolButton::clicked, this, [this, mode = m.mode] { emit modeChosen(mode); });
@@ -46,7 +46,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
         b->setAutoRaise(true);
         b->setFocusPolicy(Qt::NoFocus);
         b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         b->hide();
         scopes->addButton(b, i);
         lay->addWidget(b);

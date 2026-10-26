@@ -13,7 +13,7 @@
 #include <QGraphicsScene>
 #include <QFont>
 #include <QUndoStack>
-#include <QVariantAnimation>
+#include "app/spring.h"
 #include <cmath>
 #include <numbers>
 
@@ -62,14 +62,14 @@ void ToolController::fadeIn(QGraphicsItem *it) {
     if (!m_animations) { it->setOpacity(1.0); return; }
     it->setOpacity(0.0);
     m_fadingItem = it;
-    auto *a = new QVariantAnimation(this);
-    a->setStartValue(0.0); a->setEndValue(1.0);
-    a->setDuration(130); a->setEasingCurve(QEasingCurve::OutCubic);
-    QObject::connect(a, &QVariantAnimation::valueChanged, this, [it](const QVariant &v){
-        if (it->scene()) it->setOpacity(v.toDouble());  // guard: undone mid-fade (item still alive)
+    auto *fade = new Spring(motion::kFast, [it](qreal opacity) {
+        if (it->scene()) it->setOpacity(opacity);   // guard: undone mid-fade (item still alive)
+    }, this);
+    connect(fade, &QAbstractAnimation::stateChanged, fade, [fade](QAbstractAnimation::State now) {
+        if (now == QAbstractAnimation::Stopped) fade->deleteLater();
     });
-    m_fadeAnim = a;
-    a->start(QAbstractAnimation::DeleteWhenStopped);
+    m_fadeAnim = fade;
+    fade->setTarget(1);
 }
 
 template <class T> static void style(T *it, const QColor &c, double w) {

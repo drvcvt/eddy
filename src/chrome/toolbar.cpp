@@ -1,4 +1,5 @@
 #include "chrome/toolbar.h"
+#include "app/fills.h"
 #include <QWidgetAction>
 #include "popovers/colorpopover.h"
 #include "app/theme.h"
@@ -56,74 +57,14 @@ void Toolbar::enableVideoFrameCopy() {
     copy->setAccessibleName(tr("Copy video; hold or press Alt+Down for frame copy"));
 }
 
-// A top-bar button with an icon and a label. Qt centres the icon box on the
-// label's line box, which leaves a 15 px label's capitals a pixel below the
-// glyph and only 5 px between them. This draws both itself: the glyph's ink
-// centred on the capitals and 8 px from the text (mt-ui-style, body gap), on
-// whole device pixels at every scale.
-class LabelButton : public QToolButton {
-public:
-    QSize sizeHint() const override {
-        const QRectF ink = inkRect(devicePixelRatioF());
-        return QSize(qCeil(2 * kPad + ink.width() + kGap + QFontMetricsF(font()).horizontalAdvance(text())),
-                     theme::kBarButton.height());
-    }
-    QSize minimumSizeHint() const override { return sizeHint(); }
-
-protected:
-    void paintEvent(QPaintEvent *) override {
-        QStylePainter p(this);
-        QStyleOptionToolButton option;
-        initStyleOption(&option);
-        option.text.clear();
-        option.icon = QIcon();
-        p.drawComplexControl(QStyle::CC_ToolButton, option);   // the hover or checked fill
-        const qreal dpr = devicePixelRatioF();
-        auto snap = [dpr](qreal v) { return std::round(v * dpr) / dpr; };
-        const QFontMetricsF metrics(font());
-        const qreal baseline = snap((height() + metrics.capHeight()) / 2);
-        const qreal capMiddle = baseline - metrics.capHeight() / 2;
-        const QRectF ink = inkRect(dpr);
-        const QIcon::Mode mode = !isEnabled() ? QIcon::Disabled : underMouse() ? QIcon::Active : QIcon::Normal;
-        p.drawPixmap(QPointF(snap(kPad - ink.left()), snap(capMiddle - ink.center().y())),
-                     icon().pixmap(iconSize(), dpr, mode, isChecked() ? QIcon::On : QIcon::Off));
-        p.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText));
-        p.drawText(QPointF(kPad + ink.width() + kGap, baseline), text());
-    }
-
-private:
-    static constexpr qreal kPad = 8, kGap = 8;
-    // The glyph's ink inside its pixmap, in logical pixels; measured, not
-    // derived from the SVG, so every glyph sits by what is actually drawn.
-    QRectF inkRect(qreal dpr) const {
-        if (dpr != m_inkDpr) {
-            const QImage image = icon().pixmap(iconSize(), dpr).toImage()
-                                     .convertToFormat(QImage::Format_ARGB32);
-            int left = image.width(), top = image.height(), right = -1, bottom = -1;
-            for (int y = 0; y < image.height(); ++y)
-                for (int x = 0; x < image.width(); ++x)
-                    if (qAlpha(image.pixel(x, y)) > 64) {
-                        left = qMin(left, x); right = qMax(right, x);
-                        top = qMin(top, y); bottom = qMax(bottom, y);
-                    }
-            m_ink = right < 0 ? QRectF() : QRectF(left / dpr, top / dpr, (right - left + 1) / dpr,
-                                                  (bottom - top + 1) / dpr);
-            m_inkDpr = dpr;
-        }
-        return m_ink;
-    }
-    mutable QRectF m_ink;
-    mutable qreal m_inkDpr = 0;
-};
-
 static QToolButton *mkBtn(bool checkable, bool square, QToolButton *b = nullptr) {
     if (!b) b = new QToolButton;
     b->setCheckable(checkable);
     b->setAutoRaise(true);
     b->setFocusPolicy(Qt::NoFocus);      // keep keyboard focus on the window for hotkeys
     b->setCursor(Qt::PointingHandCursor);
-    if (square) b->setFixedSize(theme::kBarButton);
-    else b->setFixedHeight(theme::kBarButton.height());
+    if (square) b->setFixedSize(theme::kControl);
+    else b->setFixedHeight(theme::kCtl);
     return b;
 }
 
@@ -132,15 +73,15 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
 
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(4, 4, 4, 4);   // same left axis as the tool rail
-    lay->setSpacing(2);
+    lay->setContentsMargins(theme::kBarPad, theme::kBarPad, theme::kBarPad, theme::kBarPad);   // same left axis as the tool rail
+    lay->setSpacing(theme::kS1);
     m_toolRail = new QWidget(this);
     m_toolRail->setObjectName(QStringLiteral("ToolRail"));
     m_toolRail->setAttribute(Qt::WA_StyledBackground, true);
     m_toolRail->hide(); // The editor places this beside the canvas.
     auto *rail = new QVBoxLayout(m_toolRail);
-    rail->setContentsMargins(4, 4, 4, 4);
-    rail->setSpacing(2);
+    rail->setContentsMargins(theme::kBarPad, theme::kBarPad, theme::kBarPad, theme::kBarPad);
+    rail->setSpacing(theme::kS1);
     m_toolRail->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *group = new QButtonGroup(this); group->setExclusive(true);
     const QPalette palette = QApplication::palette();
@@ -162,7 +103,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     connect(m_redoBtn, &QToolButton::clicked, this, [this]{ emit redoRequested(); });
     lay->addWidget(m_redoBtn);
 
-    lay->addSpacing(6);
+    lay->addSpacing(theme::kS3);
 
     struct T { ToolType type; const char *id; const char *name; const char *key; };
     const QVector<T> tools = {
@@ -189,6 +130,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         connect(b, &QToolButton::clicked, this, [this, tt=t.type]{ emit toolChosen(tt); });
         rail->addWidget(b);
     }
+    new SelectionGlide(group, m_toolRail, theme::Tone::BarActive);
 
     auto *wgroup = new QButtonGroup(this); wgroup->setExclusive(true);
     struct W { const char *id; const char *icon; const char *tip; double w; };
@@ -204,12 +146,13 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
                                      iconRest, iconHover));
         b->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
         b->setToolTip(QString::fromUtf8(x.tip));
-        b->setAccessibleName(b->toolTip());
+        b->setAccessibleName(theme::spokenName(b->toolTip()));
         if (x.w == 4.0) b->setChecked(true);             // default M
         wgroup->addButton(b);
         connect(b, &QToolButton::clicked, this, [this, w=x.w]{ emit widthChosen(w); });
         lay->addWidget(b);
     }
+    new SelectionGlide(wgroup, this, theme::Tone::Raise3);
 
     auto *color = mkBtn(false, true);
     color->setObjectName("Swatch");
@@ -239,11 +182,11 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     });
     lay->addWidget(color);
     lay->addStretch(1);
-    lay->addSpacing(6);
+    lay->addSpacing(theme::kS3);
 
     // Studio frames the output, so it sits with the output actions. Its checked
     // state mirrors the document; a click always opens the popover.
-    m_studioBtn = mkBtn(true, false, new LabelButton); m_studioBtn->setObjectName("Studio");
+    m_studioBtn = mkBtn(true, false, new theme::CapButton); m_studioBtn->setObjectName("Studio");
     m_studioBtn->setIcon(theme::tintedIcon(QStringLiteral(":/icons/studio.svg"), iconRest, iconHover));
     m_studioBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_studioBtn->setText(QStringLiteral("Studio"));
@@ -254,7 +197,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
         emit studioRequested();
     });
     lay->addWidget(m_studioBtn);
-    lay->addSpacing(6);
+    lay->addSpacing(theme::kS3);
 
     // Actions brighten on hover; the active tool keeps its own selection state.
     auto *save = mkBtn(false, true); save->setObjectName("Save");
@@ -273,7 +216,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     connect(copy, &QToolButton::clicked, this, [this]{ emit copyRequested(); });
     lay->addWidget(copy);
 
-    auto *shelf = mkBtn(false, false, new LabelButton); shelf->setObjectName("SendToShelf");
+    auto *shelf = mkBtn(false, false, new theme::CapButton); shelf->setObjectName("SendToShelf");
     // Same icon box as Save and Copy so the row's glyphs start and end on one
     // line; the label takes the body step so the 15px ink is not larger than it.
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
@@ -292,7 +235,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     lay->addWidget(m_themeBtn);
 
     for (auto *button : findChildren<QToolButton *>())
-        if (button->accessibleName().isEmpty()) button->setAccessibleName(button->toolTip());
+        if (button->accessibleName().isEmpty()) button->setAccessibleName(theme::spokenName(button->toolTip()));
 
     syncTool(ToolType::Arrow);   // sensible default highlight (snaps on first show)
     setDark(QApplication::palette().color(QPalette::Window).lightness() < 128);
@@ -312,7 +255,7 @@ void Toolbar::setRedoEnabled(bool on) { if (m_redoBtn) m_redoBtn->setEnabled(on)
 void Toolbar::setSwatchColor(const QColor &c) {
     if (!m_swatch) return;
     m_swatchColor = c;
-    constexpr int d = 14;
+    constexpr int d = theme::iconInk(theme::kIconSize);   // the size of its neighbours' ink
     const qreal dpr = m_swatch->devicePixelRatioF();   // crisp on HiDPI, like tintedIcon
     QPixmap pm(qRound(d * dpr), qRound(d * dpr));
     pm.setDevicePixelRatio(dpr);
@@ -355,7 +298,7 @@ void Toolbar::setDark(bool dark) {
         rest, hover));
     m_themeBtn->setToolTip(dark ? QStringLiteral("Switch to light theme")
                                 : QStringLiteral("Switch to dark theme"));
-    m_themeBtn->setAccessibleName(m_themeBtn->toolTip());
+    m_themeBtn->setAccessibleName(theme::spokenName(m_themeBtn->toolTip()));
     setSwatchColor(m_swatchColor);
 }
 

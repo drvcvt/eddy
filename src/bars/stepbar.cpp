@@ -15,14 +15,14 @@ StepBar::StepBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("StepBar"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(2);
+    layout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    layout->setSpacing(theme::kS1);
 
     m_number = new QLineEdit(this);
     m_number->setObjectName(QStringLiteral("StepNumber"));
     m_number->setValidator(new QIntValidator(1, StepItem::kMaxNumber, m_number));
     m_number->setAlignment(Qt::AlignCenter);
-    m_number->setFixedSize(44, theme::kFloatButton.height());
+    m_number->setFixedSize(2 * theme::kCtl, theme::kCtl);
     m_number->setToolTip(tr("Step number\nApply\tEnter\nCancel\tEsc"));
     m_number->setAccessibleName(tr("Step number"));
     m_number->installEventFilter(this);

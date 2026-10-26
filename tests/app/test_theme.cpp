@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <cmath>
 #include <QPalette>
 #include <QIcon>
 #include <QPixmap>
@@ -16,15 +17,50 @@ class TestTheme : public QObject {
 private slots:
     void paletteIsDark() {
         QPalette p = theme::darkPalette();
-        QCOMPARE(p.color(QPalette::Window), QColor("#181818"));
-        QCOMPARE(p.color(QPalette::Base), QColor("#202020"));
-        QCOMPARE(p.color(QPalette::WindowText), QColor("#EEEEEE"));
-        QCOMPARE(p.color(QPalette::PlaceholderText), QColor("#999999"));
-        QCOMPARE(p.color(QPalette::Highlight), QColor(theme::kAccent));
+        QCOMPARE(p.color(QPalette::Window), theme::tone(theme::Tone::Bg, true));
+        QCOMPARE(p.color(QPalette::Base), theme::tone(theme::Tone::Raise1, true));
+        QCOMPARE(p.color(QPalette::WindowText), theme::tone(theme::Tone::Fg, true));
+        QCOMPARE(p.color(QPalette::PlaceholderText), theme::tone(theme::Tone::Sub, true));
+        QCOMPARE(p.color(QPalette::Highlight), theme::tone(theme::Tone::Raise3, true));
+        QVERIFY(p.color(QPalette::Window).lightnessF() < 0.15);
+    }
+    void graphiteLeansCool() {
+        // One hue for every surface: a touch of blue, never a tint you would name.
+        for (bool dark : {true, false}) {
+            const QColor bg = theme::tone(theme::Tone::Bg, dark);
+            QVERIFY2(bg.blue() > bg.red(), qPrintable(bg.name()));
+            QVERIFY2(bg.blue() - bg.red() <= 6, qPrintable(bg.name()));
+        }
+    }
+    void textKeepsItsContrastOnEverySurface() {
+        // WCAG relative luminance; body text needs 4.5:1 wherever it sits.
+        const auto luminance = [](const QColor &c) {
+            auto channel = [](qreal v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+            return 0.2126 * channel(c.redF()) + 0.7152 * channel(c.greenF()) + 0.0722 * channel(c.blueF());
+        };
+        const auto contrast = [&](const QColor &a, const QColor &b) {
+            const qreal la = luminance(a), lb = luminance(b);
+            return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+        };
+        using theme::Tone;
+        const QList<QPair<Tone, QList<Tone>>> pairs{
+            {Tone::Fg, {Tone::Bg, Tone::Raise1, Tone::Raise2, Tone::Raise3, Tone::SegmentOn, Tone::BarActive}},
+            {Tone::Sub, {Tone::Bg, Tone::Raise1, Tone::BarHover}},
+        };
+        QStringList low;
+        for (bool dark : {true, false})
+            for (const auto &[text, surfaces] : pairs)
+                for (Tone surface : surfaces) {
+                    const qreal ratio = contrast(theme::tone(text, dark), theme::tone(surface, dark));
+                    if (ratio < 4.5)
+                        low << QStringLiteral("%1 %2 on %3: %4").arg(dark ? "dark" : "light")
+                                   .arg(int(text)).arg(int(surface)).arg(ratio, 0, 'f', 2);
+                }
+        QVERIFY2(low.isEmpty(), qPrintable(low.join(QStringLiteral(", "))));
     }
     void tintedIconRecolours() {
         QIcon ic = theme::tintedIcon(":/icons/rect.svg",
-                                     QColor(theme::kIconRest), QColor(theme::kIconActive));
+                                     theme::tone(theme::Tone::Sub, true), theme::tone(theme::Tone::Fg, true));
         QVERIFY(!ic.isNull());
         QPixmap off = ic.pixmap(QSize(22,22), QIcon::Normal, QIcon::Off);
         QPixmap on  = ic.pixmap(QSize(22,22), QIcon::Normal, QIcon::On);
@@ -35,8 +71,8 @@ private slots:
     void tintedIconRendersAtTheDevicePixelSize() {
         // A fixed 2x pixmap gets smooth-scaled on 1x and fractional displays,
         // which made the chrome icons softer than the text beside them.
-        const QIcon icon = theme::tintedIcon(":/icons/rect.svg", QColor(theme::kIconRest),
-                                             QColor(theme::kIconActive));
+        const QIcon icon = theme::tintedIcon(":/icons/rect.svg", theme::tone(theme::Tone::Sub, true),
+                                             theme::tone(theme::Tone::Fg, true));
         QVERIFY(icon.availableSizes().isEmpty());          // nothing pre-rasterised
         for (qreal scale : {1.0, 1.5, 2.0}) {
             const int size = theme::kIconSize;
@@ -85,11 +121,12 @@ private slots:
     }
     void lightPaletteUsesApprovedTokens() {
         const QPalette p = theme::palette(false);
-        QCOMPARE(p.color(QPalette::Window), QColor("#FAFAFA"));
-        QCOMPARE(p.color(QPalette::Base), QColor("#F1F1F1"));
-        QCOMPARE(p.color(QPalette::WindowText), QColor("#1A1A1A"));
-        QCOMPARE(p.color(QPalette::Highlight), QColor("#1A1A1A"));
-        QCOMPARE(p.color(QPalette::HighlightedText), QColor("#FAFAFA"));
+        QCOMPARE(p.color(QPalette::Window), theme::tone(theme::Tone::Bg, false));
+        QCOMPARE(p.color(QPalette::Base), theme::tone(theme::Tone::Raise1, false));
+        QCOMPARE(p.color(QPalette::WindowText), theme::tone(theme::Tone::Fg, false));
+        QCOMPARE(p.color(QPalette::Highlight), theme::tone(theme::Tone::Fg, false));
+        QCOMPARE(p.color(QPalette::HighlightedText), theme::tone(theme::Tone::Bg, false));
+        QVERIFY(p.color(QPalette::Window).lightnessF() > 0.95);
     }
     void systemThemeResolvesFromWindowBrightness() {
         QPalette light;
@@ -122,7 +159,8 @@ private slots:
         const QString raw = QString::fromUtf8(file.readAll());
         static const QSet<int> scale{0, 1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 72};
         static const QRegularExpression spacing(QStringLiteral("(padding|margin)[a-z-]*\\s*:([^;]*);"));
-        static const QRegularExpression number(QStringLiteral("-?(\\d+)"));
+        // Raw numbers only: a token such as @s3 is on the scale by definition.
+        static const QRegularExpression number(QStringLiteral("(?<![@\\w-])-?(\\d+)"));
         for (auto rule = spacing.globalMatch(raw); rule.hasNext();) {
             const auto declaration = rule.next();
             for (auto value = number.globalMatch(declaration.captured(2)); value.hasNext();)
@@ -141,8 +179,11 @@ private slots:
         QVERIFY(!light.isEmpty());
         QVERIFY(!dark.contains(QStringLiteral("@bg")));
         QVERIFY(!light.contains(QStringLiteral("@bg")));
-        QVERIFY(dark.contains(QStringLiteral("#181818")));
-        QVERIFY(light.contains(QStringLiteral("#FAFAFA")));
+        QVERIFY(dark.contains(theme::tone(theme::Tone::Bg, true).name()));
+        QVERIFY(light.contains(theme::tone(theme::Tone::Bg, false).name()));
+        // Every token expanded: colours, sizes and radii alike.
+        static const QRegularExpression leftover(QStringLiteral("@[a-z]"));
+        QVERIFY2(!leftover.match(dark).hasMatch(), qPrintable(leftover.match(dark).captured()));
         QVERIFY(dark.contains(QStringLiteral("QToolTip")));
         QVERIFY(light.contains(QStringLiteral("QToolTip")));
         QVERIFY(dark.contains(QStringLiteral("QWidget#PlaybackBar QLabel")));

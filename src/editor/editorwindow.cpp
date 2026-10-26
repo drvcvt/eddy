@@ -1,4 +1,6 @@
 #include "editor/editorwindow.h"
+#include "app/fills.h"
+#include "app/spring.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -467,28 +469,28 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     auto *viewControls = new QWidget(this);
     viewControls->setObjectName(QStringLiteral("ViewControls"));
     auto *fl = new QGridLayout(viewControls);
-    fl->setContentsMargins(4, 4, 4, 4);
-    fl->setSpacing(2);
+    fl->setContentsMargins(theme::kBarPad, theme::kBarPad, theme::kBarPad, theme::kBarPad);
+    fl->setSpacing(theme::kS1);
     auto *zoomControls = new QHBoxLayout;
-    zoomControls->setSpacing(2);
+    zoomControls->setSpacing(theme::kS1);
     fl->addLayout(zoomControls, 0, 0, Qt::AlignLeft);
-    auto *fit = new QToolButton(viewControls);
+    auto *fit = new theme::CapButton(viewControls);
     fit->setObjectName(QStringLiteral("ZoomFit"));
     fit->setText(QStringLiteral("Fit"));
     fit->setToolTip(QStringLiteral("Fit to window\t0"));
     fit->setAccessibleName(QStringLiteral("Fit to window"));
     fit->setFocusPolicy(Qt::NoFocus);
     fit->setCursor(Qt::PointingHandCursor);
-    fit->setFixedHeight(theme::kBarButton.height());
+    fit->setFixedHeight(theme::kCtl);
     connect(fit, &QToolButton::clicked, m_canvas, &Canvas::fitMedia);
     zoomControls->addWidget(fit);
-    auto *zoom = new QToolButton(viewControls);
+    auto *zoom = new theme::CapButton(viewControls);
     zoom->setObjectName(QStringLiteral("ZoomActual"));
     zoom->setToolTip(QStringLiteral("Actual size\t1"));
     zoom->setAccessibleName(QStringLiteral("Actual size"));
     zoom->setFocusPolicy(Qt::NoFocus);
     zoom->setCursor(Qt::PointingHandCursor);
-    zoom->setFixedSize(52, theme::kBarButton.height());
+    zoom->setFixedSize(52, theme::kCtl);
     connect(zoom, &QToolButton::clicked, m_canvas, &Canvas::resetZoom);
     const auto updateZoom = [this, zoom] {
         zoom->setText(QStringLiteral("%1%").arg(qRound(m_canvas->zoom() * 100)));
@@ -501,7 +503,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     if (isVideo()) {
         m_exportStatus = new QLabel(viewControls);
         m_exportStatus->setObjectName(QStringLiteral("VideoExportStatus"));
-        m_exportStatus->setFixedWidth(110);
+        m_exportStatus->setFixedWidth(112);   // "Cancelling…" at the caption size, so the bar never jumps
         m_exportStatus->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         m_exportStatus->setToolTip(tr("Video export status"));
         m_exportCancel = new QToolButton(viewControls);
@@ -511,11 +513,11 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_exportCancel->setAccessibleName(tr("Cancel video export"));
         m_exportCancel->setFocusPolicy(Qt::NoFocus);
         m_exportCancel->setCursor(Qt::PointingHandCursor);
-        m_exportCancel->setFixedHeight(theme::kBarButton.height());
+        m_exportCancel->setFixedHeight(theme::kCtl);
         m_exportCancel->hide();
         connect(m_exportCancel, &QToolButton::clicked, this, &EditorWindow::cancelVideoExport);
         auto *exportControls = new QHBoxLayout;
-        exportControls->setSpacing(2);
+        exportControls->setSpacing(theme::kS1);
         exportControls->addWidget(m_exportStatus);
         exportControls->addWidget(m_exportCancel);
         fl->addLayout(exportControls, 0, 0, Qt::AlignRight);
@@ -524,6 +526,8 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     lay->addWidget(viewControls, isVideo() ? 3 : 2, 0, 1, 2);
     m_canvas->setAnimationsEnabled(cfg.animations);
     m_tools->setAnimationsEnabled(cfg.animations);
+    Spring::setEnabled(cfg.animations);
+    HoverFills::install();
     // Sync the toolbar to the configured default explicitly: the earlier
     // m_tools->setTool() ran before this connect existed (its toolChanged was
     // dropped), and setTool only emits on a *change* — so a default of "arrow"
@@ -657,10 +661,9 @@ void EditorWindow::showEvent(QShowEvent *e) {
     if (isVideo()) { scheduleVideoLoad(); scheduleStripLoad(); }
     QTimer::singleShot(0, this, &EditorWindow::offerKeptEdit);
     if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
-    auto *a = new QPropertyAnimation(this, "windowOpacity", this);
-    a->setDuration(150); a->setStartValue(0.0); a->setEndValue(1.0);
-    a->setEasingCurve(QEasingCurve::OutCubic);
-    a->start(QAbstractAnimation::DeleteWhenStopped);
+    auto *fade = new Spring(motion::kBase, [this](qreal opacity) { setWindowOpacity(opacity); }, this);
+    fade->jumpTo(0);
+    fade->setTarget(1);
 }
 
 void EditorWindow::closeEvent(QCloseEvent *e) {

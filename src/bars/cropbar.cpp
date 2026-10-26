@@ -11,16 +11,16 @@ CropBar::CropBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("CropBar"));
     setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QGridLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(2);
+    layout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    layout->setSpacing(theme::kS1);
     auto button = [&](const QString &text, const QString &name, const QString &tip) {
         auto *b = new QToolButton(this);
         b->setObjectName(name);
         b->setText(text);
         b->setToolTip(tip);
-        b->setAccessibleName(tip);
+        b->setAccessibleName(theme::spokenName(tip));
         b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         layout->addWidget(b, 0, m_controls.size());
         m_controls.append(b);
         return b;

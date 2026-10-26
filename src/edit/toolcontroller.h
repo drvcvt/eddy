@@ -8,8 +8,9 @@
 #include <QList>
 #include "items/labels/textitem.h"
 #include "items/labels/stepitem.h"
-class QGraphicsScene; class QUndoStack; class QGraphicsItem; class QVariantAnimation;
+class QGraphicsScene; class QUndoStack; class QGraphicsItem;
 namespace eddy {
+class Spring;
 
 enum class ToolType { Move, Arrow, Pen, Rect, Ellipse, Highlight, Text, Step, Redact, Spotlight, Crop };
 
@@ -63,7 +64,7 @@ private:
     StepItem::Size m_stepSize = StepItem::Size::M;
     bool m_animations = true;
     QGraphicsItem *m_active = nullptr;
-    QPointer<QVariantAnimation> m_fadeAnim;   // the one in-flight commit fade
+    QPointer<Spring> m_fadeAnim;   // the one in-flight commit fade
     QGraphicsItem *m_fadingItem = nullptr;    // item that fade belongs to (raw: not a QObject)
     QPointF m_start;
     QList<QGraphicsItem *> m_moveItems;

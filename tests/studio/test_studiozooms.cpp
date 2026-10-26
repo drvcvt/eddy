@@ -92,7 +92,7 @@ private slots:
         QApplication::processEvents();
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *play = w.findChild<QToolButton *>(QStringLiteral("PlaybackPlay"));
-        QTRY_COMPARE(timeline->height(), 84);
+        QTRY_COMPARE(timeline->height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep);
         // The bar re-lays itself out a pass after the timeline grows.
         const auto lane = [&] { return QRect(timeline->mapTo(&w, QPoint()), timeline->size()); };
         const auto button = [&] { return QRect(play->mapTo(&w, QPoint()), play->size()); };

@@ -9,6 +9,11 @@
 #include <QFontDatabase>
 #include <QFontInfo>
 #include <QToolButton>
+#include <QStyleOptionToolButton>
+#include <QStylePainter>
+#include <QtMath>
+#include <algorithm>
+#include <cmath>
 
 // Force the AUTORCC static-library resources to register at start-up.
 // Without this call a static lib's qrc initialiser can be discarded by the
@@ -18,18 +23,58 @@ static const bool kResourcesInited = (initResources(), true);
 
 namespace eddy::theme {
 
+namespace {
+// OKLCH to sRGB (Björn Ottosson's OKLab matrices), clamped to the gamut.
+QColor oklch(qreal l, qreal c, qreal hueDegrees) {
+    const qreal h = qDegreesToRadians(hueDegrees);
+    const qreal a = c * std::cos(h), b = c * std::sin(h);
+    const qreal l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+    const qreal m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+    const qreal s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+    const qreal L = l_ * l_ * l_, M = m_ * m_ * m_, S = s_ * s_ * s_;
+    auto encode = [](qreal x) {
+        x = std::clamp<qreal>(x, 0, 1);
+        return x <= 0.0031308 ? 12.92 * x : 1.055 * std::pow(x, 1 / 2.4) - 0.055;
+    };
+    return QColor::fromRgbF(encode(4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S),
+                            encode(-1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S),
+                            encode(-0.0041960863 * L - 0.7034186147 * M + 1.7076147010 * S));
+}
+} // namespace
+
+// One hue and chroma for every surface; text carries half the chroma.
+QColor tone(Tone which, bool dark) {
+    // Light surfaces show a tint sooner: they carry less chroma.
+    constexpr qreal kHue = 255, kChromaDark = 0.008, kChromaLight = 0.005;
+    struct Step { qreal dark, light; };
+    static constexpr Step kSteps[] = {
+        {0.13, 0.93},    // Canvas
+        {0.205, 0.985},  // Bg
+        {0.235, 0.96},   // Raise1
+        {0.295, 0.935},  // Raise2
+        {0.335, 0.91},   // Raise3
+        {0.37, 1.0},     // SegmentOn
+        {0.50, 0.72},    // Faint
+        {0.72, 0.50},    // Sub
+        {0.95, 0.22},    // Fg
+        {0.235, 0.94},   // BarHover
+        {0.28, 0.915},   // BarActive
+    };
+    const Step step = kSteps[int(which)];
+    const bool text = which == Tone::Fg || which == Tone::Sub;
+    const qreal chroma = dark ? kChromaDark : kChromaLight;
+    return oklch(dark ? step.dark : step.light, text ? chroma / 2 : chroma, kHue);
+}
+
 QPalette darkPalette() {
     return palette(true);
 }
 
 QPalette palette(bool dark) {
     QPalette p;
-    const QColor bg(dark ? "#181818" : "#FAFAFA");
-    const QColor base(dark ? "#202020" : "#F1F1F1");
-    const QColor text(dark ? "#EEEEEE" : "#1A1A1A");
-    const QColor disabled(dark ? "#5C5C5C" : "#A6A6A6");
-    const QColor highlight(dark ? "#414141" : "#1A1A1A");
-    const QColor highlightedText(dark ? "#EEEEEE" : "#FAFAFA");
+    const QColor bg = tone(Tone::Bg, dark), base = tone(Tone::Raise1, dark), text = tone(Tone::Fg, dark);
+    const QColor disabled = tone(Tone::Faint, dark);
+    const QColor highlight = dark ? tone(Tone::Raise3, dark) : text;
     p.setColor(QPalette::Window, bg);
     p.setColor(QPalette::WindowText, text);
     p.setColor(QPalette::Base, base);
@@ -40,8 +85,8 @@ QPalette palette(bool dark) {
     p.setColor(QPalette::ToolTipBase, base);
     p.setColor(QPalette::ToolTipText, text);
     p.setColor(QPalette::Highlight, highlight);
-    p.setColor(QPalette::HighlightedText, highlightedText);
-    p.setColor(QPalette::PlaceholderText, QColor(dark ? "#999999" : "#6E6E6E"));
+    p.setColor(QPalette::HighlightedText, dark ? text : bg);
+    p.setColor(QPalette::PlaceholderText, tone(Tone::Sub, dark));
     p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
     p.setColor(QPalette::Disabled, QPalette::Text, disabled);
     p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
@@ -66,25 +111,24 @@ QString styleSheet(bool dark) {
     // Mono is the user's own fixed font, as the desktop (qt6ct, GNOME, KDE, Windows) reports it.
     qss.replace("@font-mono", QStringLiteral("\"%1\", monospace")
         .arg(QFontDatabase::systemFont(QFontDatabase::FixedFont).family()));
-    qss.replace("@fs-micro", QString::number(kFsMicro) + "px");
-    qss.replace("@fs-small", QString::number(kFsSmall) + "px");
-    qss.replace("@fs-body", QString::number(kFsBody) + "px");
+    const auto px = [](int v) { return QString::number(v) + QStringLiteral("px"); };
+    // Longest names first: @fs-ui must not eat the start of a longer token.
+    const QList<QPair<QString, QString>> sizes{
+        {"@fs-caption", px(kFsCaption)}, {"@fs-display", px(kFsDisplay)}, {"@fs-ui", px(kFsUi)},
+        {"@r-chip", px(kRChip)}, {"@r-bar", px(kRBar)}, {"@r-pop", px(kRPop)},
+        {"@ctl", px(kCtl)}, {"@s1", px(kS1)}, {"@s2", px(kS2)}, {"@s3", px(kS3)}, {"@s4", px(kS4)}};
+    for (const auto &[token, value] : sizes) qss.replace(token, value);
+    const auto hex = [dark](Tone which) { return tone(which, dark).name(); };
     // The dark bar is translucent, so its state fills are pre-blended: stacking
     // two translucent layers smears the rounded corners into mush.
-    const QList<QPair<QString, QString>> tokens = dark
-        ? QList<QPair<QString, QString>>{
-            {"@bar-active", "#2E2E2E"}, {"@bar-hover", "#212121"},
-            {"@bar", "rgba(0, 0, 0, 153)"}, {"@chip-on-fg", "#EEEEEE"}, {"@chip-on", "#414141"},
-            {"@raise3", "#414141"}, {"@raise2", "#353535"}, {"@segment-on", "#4A4A4A"},
-            {"@raise1", "#202020"}, {"@faint", "#5C5C5C"},
-            {"@sub", "#999999"}, {"@fg", "#EEEEEE"}, {"@bg", "#181818"}}
-        : QList<QPair<QString, QString>>{
-            {"@bar-active", "rgba(0, 0, 0, 24)"}, {"@bar-hover", "rgba(0, 0, 0, 14)"},
-            {"@bar", "#F1F1F1"}, {"@chip-on-fg", "#FAFAFA"}, {"@chip-on", "#1A1A1A"},
-            {"@raise3", "#E0E0E0"}, {"@raise2", "#E9E9E9"}, {"@segment-on", "#FFFFFF"},
-            {"@raise1", "#F1F1F1"}, {"@faint", "#A6A6A6"},
-            {"@sub", "#6E6E6E"}, {"@fg", "#1A1A1A"}, {"@bg", "#FAFAFA"}};
-    for (const auto &[token, color] : tokens) qss.replace(token, color);
+    const QList<QPair<QString, QString>> colors{
+        {"@bar-active", hex(Tone::BarActive)}, {"@bar-hover", hex(Tone::BarHover)},
+        {"@bar", dark ? QStringLiteral("rgba(0, 0, 0, 153)") : hex(Tone::Raise1)},
+        {"@chip-on-fg", dark ? hex(Tone::Fg) : hex(Tone::Bg)}, {"@chip-on", dark ? hex(Tone::Raise3) : hex(Tone::Fg)},
+        {"@raise3", hex(Tone::Raise3)}, {"@raise2", hex(Tone::Raise2)}, {"@segment-on", hex(Tone::SegmentOn)},
+        {"@raise1", hex(Tone::Raise1)}, {"@faint", hex(Tone::Faint)},
+        {"@sub", hex(Tone::Sub)}, {"@fg", hex(Tone::Fg)}, {"@bg", hex(Tone::Bg)}};
+    for (const auto &[token, color] : colors) qss.replace(token, color);
     return qss;
 }
 
@@ -145,10 +189,10 @@ QToolButton *floatButton(QWidget *parent, const QString &name, const QString &ti
     button->setAutoRaise(true);
     button->setFocusPolicy(Qt::NoFocus);
     button->setCursor(Qt::PointingHandCursor);
-    button->setFixedSize(kFloatButton);
+    button->setFixedSize(kControl);
     button->setIconSize(QSize(kFloatIcon, kFloatIcon));
     button->setToolTip(tip);
-    button->setAccessibleName(tip);
+    button->setAccessibleName(spokenName(tip));
     return button;
 }
 
@@ -169,6 +213,64 @@ void setMenuLabel(QToolButton *button, const QString &text) {
     button->setMaximumWidth(QWIDGETSIZE_MAX);
     button->setFixedWidth(button->sizeHint().width()
                           - 2 * button->fontMetrics().horizontalAdvance(QLatin1Char(' ')));
+}
+
+QRectF CapButton::inkRect(qreal dpr) const {
+    if (icon().isNull()) return {};
+    if (dpr != m_inkDpr) {
+        const QImage image = icon().pixmap(iconSize(), dpr).toImage().convertToFormat(QImage::Format_ARGB32);
+        int left = image.width(), top = image.height(), right = -1, bottom = -1;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (qAlpha(image.pixel(x, y)) > 64) {
+                    left = qMin(left, x); right = qMax(right, x);
+                    top = qMin(top, y); bottom = qMax(bottom, y);
+                }
+        m_ink = right < 0 ? QRectF() : QRectF(left / dpr, top / dpr, (right - left + 1) / dpr,
+                                              (bottom - top + 1) / dpr);
+        m_inkDpr = dpr;
+    }
+    return m_ink;
+}
+
+qreal CapButton::contentWidth() const {
+    const QRectF ink = inkRect(devicePixelRatioF());
+    const qreal gap = text().isEmpty() ? 0 : kS2;
+    return (ink.isNull() ? 0 : ink.width() + gap) + QFontMetricsF(font()).horizontalAdvance(text());
+}
+
+QSize CapButton::sizeHint() const {
+    return QSize(qCeil(2 * kS2 + contentWidth()), kCtl);
+}
+
+void CapButton::paintEvent(QPaintEvent *) {
+    QStylePainter p(this);
+    QStyleOptionToolButton option;
+    initStyleOption(&option);
+    option.text.clear();
+    option.icon = QIcon();
+    p.drawComplexControl(QStyle::CC_ToolButton, option);   // the stylesheet's fill, if any
+    const qreal dpr = devicePixelRatioF();
+    auto snap = [dpr](qreal v) { return std::round(v * dpr) / dpr; };
+    const QFontMetricsF metrics(font());
+    const qreal baseline = snap((height() + metrics.capHeight()) / 2);
+    const qreal capMiddle = baseline - metrics.capHeight() / 2;
+    // Centred as a whole when the button is wider than its content (a fixed width).
+    qreal x = snap((width() - contentWidth()) / 2);
+    const QRectF ink = inkRect(dpr);
+    if (!ink.isNull()) {
+        const QIcon::Mode mode = !isEnabled() ? QIcon::Disabled : underMouse() ? QIcon::Active : QIcon::Normal;
+        p.drawPixmap(QPointF(snap(x - ink.left()), snap(capMiddle - ink.center().y())),
+                     icon().pixmap(iconSize(), dpr, mode, isChecked() ? QIcon::On : QIcon::Off));
+        x += ink.width() + kS2;
+        if (text().isEmpty()) return;
+    }
+    p.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText));
+    p.drawText(QPointF(x, baseline), text());
+}
+
+QString spokenName(const QString &tip) {
+    return tip.section(QLatin1Char('\n'), 0, 0).section(QLatin1Char('\t'), 0, 0).trimmed();
 }
 
 QString tooltipHtml(const QString &tip) {

@@ -1,4 +1,5 @@
 #pragma once
+#include "app/theme.h"
 #include <QWidget>
 #include <QImage>
 #include <QPointer>
@@ -16,6 +17,15 @@ class VideoTimeline : public QWidget {
     Q_OBJECT
     enum class Drag { None, In, Out, Seek, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
 public:
+    // Geometry (docs/design.md): a caption-high ruler, the film strip, then each
+    // optional lane below it, all kS1 apart.
+    static constexpr qreal kInset = 6;                               // room for a trim grip
+    static constexpr qreal kRulerH = 16;                             // a 12 px caption and its line
+    static constexpr qreal kTrackTop = kRulerH + theme::kS1;
+    static constexpr qreal kTrackH = 32;
+    static constexpr qreal kLaneH = 28, kMaskH = 20;
+    static constexpr int kBaseH = int(kTrackTop + kTrackH) + theme::kS1;
+    static constexpr int kLaneStep = int(kLaneH) + theme::kS1, kMaskStep = int(kMaskH) + theme::kS1;
     explicit VideoTimeline(QWidget *parent = nullptr);
 
     void setDuration(qint64 durationMs);

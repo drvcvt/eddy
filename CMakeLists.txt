@@ -59,6 +59,8 @@ add_library(eddy_core STATIC
     src/output/compositor.cpp
     src/app/config.cpp
     src/app/theme.cpp
+    src/app/spring.cpp
+    src/app/fills.cpp
     src/project/boltsnapipc.cpp
     src/editor/editorwindow.cpp
     src/editor/editorwindow_playbackbar.cpp
@@ -214,10 +216,12 @@ eddy_test(chrome/test_toolbar)
 eddy_test(editor/test_editorwindow)
 eddy_test(editor/test_editorvideo)
 eddy_test(editor/test_editorvideoout)
+eddy_test(editor/test_uigates)
 eddy_test(studio/test_studiozooms)
 eddy_test(project/test_projects)
 eddy_test(timeline/test_fragmentsedit)
 eddy_test(app/test_theme)
+eddy_test(app/test_motion)
 eddy_test(canvas/test_selectionhandles)
 eddy_test(timeline/test_videotimeline)
 eddy_test(video/test_videopreviewprovider)

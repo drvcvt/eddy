@@ -90,7 +90,9 @@ private slots:
             QVERIFY(button->text().isEmpty());
             QVERIFY(!button->icon().isNull());
             QVERIFY(!button->toolTip().isEmpty());
-            QCOMPARE(button->accessibleName(), button->toolTip());
+            // Spoken without the shortcut column the tooltip shows.
+            QCOMPARE(button->accessibleName(), theme::spokenName(button->toolTip()));
+            QVERIFY(!button->accessibleName().contains(QLatin1Char('\t')));
         }
         L->click();
         QCOMPARE(spy.count(), 1);

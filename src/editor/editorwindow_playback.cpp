@@ -244,13 +244,13 @@ void EditorWindow::showVideoPreview() {
         : formatPreciseTime(m_hoverTime));
     m_videoPreview->adjustSize();
     QPoint pos = m_timeline->mapTo(this, m_hoverPoint);
-    pos.setX(qBound(4, pos.x() - m_videoPreview->width() / 2,
-                    qMax(4, width() - m_videoPreview->width() - 4)));
-    pos.setY(qMax(4, m_timeline->mapTo(this, QPoint()).y() - m_videoPreview->height() - 5));
+    pos.setX(qBound(theme::kS1, pos.x() - m_videoPreview->width() / 2,
+                    qMax(theme::kS1, width() - m_videoPreview->width() - theme::kS1)));
+    pos.setY(qMax(theme::kS1, m_timeline->mapTo(this, QPoint()).y() - m_videoPreview->height() - theme::kS1));
     m_videoPreview->move(pos);
     m_videoPreview->show();
     m_videoPreview->raise();
-    if (appearing && m_cfg.animations) m_previewFade->start();
+    if (appearing) { m_previewFade->jumpTo(0); m_previewFade->setTarget(1); }
     m_previewProvider->requestHover(m_hoverTime, QSize(256, 144) * devicePixelRatioF());
 }
 

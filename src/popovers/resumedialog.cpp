@@ -18,21 +18,21 @@ ResumeDialog::ResumeDialog(const RecoveryStore &store, QWidget *parent) : QDialo
     setObjectName(QStringLiteral("ResumeDialog"));
     setWindowTitle(tr("Resume editing"));
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(8);
+    layout->setContentsMargins(theme::kS3, theme::kS3, theme::kS3, theme::kS3);
+    layout->setSpacing(theme::kS2);
     m_list = new QListWidget(this);
     m_list->setAccessibleName(tr("Kept edits"));
     m_list->setMinimumSize(420, 240);
     layout->addWidget(m_list);
     auto *buttons = new QHBoxLayout;
-    buttons->setSpacing(4);
+    buttons->setSpacing(theme::kS1);
     auto button = [&](const QString &text, const QString &name) {
         auto *b = new QToolButton(this);
         b->setObjectName(name);
         b->setText(text);
         b->setAccessibleName(text);
         b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         buttons->addWidget(b);
         return b;
     };

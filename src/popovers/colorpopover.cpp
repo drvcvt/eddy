@@ -13,9 +13,9 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     setObjectName("ColorPopover");
     setAttribute(Qt::WA_StyledBackground, true);
     auto *grid = new QGridLayout(this);
-    grid->setContentsMargins(12, 12, 12, 12);
-    grid->setHorizontalSpacing(4);
-    grid->setVerticalSpacing(6);
+    grid->setContentsMargins(theme::kS3, theme::kS3, theme::kS3, theme::kS3);
+    grid->setHorizontalSpacing(theme::kS1);
+    grid->setVerticalSpacing(theme::kS1);
 
     auto *hex = new QLineEdit(current.name().toUpper(), this);
     hex->setObjectName("ColorHex");
@@ -23,7 +23,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     hex->setToolTip("Hex colour, Enter applies");
     hex->setValidator(new QRegularExpressionValidator(QRegularExpression("#[0-9a-fA-F]{6}"), hex));
     hex->setMaxLength(7);
-    hex->setFixedHeight(theme::kFloatButton.height());
+    hex->setFixedHeight(theme::kCtl);
     connect(hex, &QLineEdit::returnPressed, this, [this, hex] {
         if (!hex->hasAcceptableInput()) return;
         emit picked(QColor(hex->text()));
@@ -39,7 +39,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
         const QColor c(presets[i]);
         auto *b = new QToolButton(this);
         b->setObjectName("ColorPreset");
-        b->setFixedSize(theme::kFloatButton);
+        b->setFixedSize(theme::kControl);
         b->setCheckable(true);
         b->setChecked(c == current);
         b->setToolTip(c.name().toUpper());
@@ -69,7 +69,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     custom->setObjectName("Custom");
     custom->setText("More colours…");
     custom->setAccessibleName(custom->text());
-    custom->setFixedHeight(theme::kFloatButton.height());
+    custom->setFixedHeight(theme::kCtl);
     custom->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     custom->setCursor(Qt::PointingHandCursor);
     connect(custom, &QToolButton::clicked, this, [this, current]{
@@ -85,10 +85,10 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     pipette->setIcon(theme::tintedIcon(QStringLiteral(":/icons/eyedropper.svg"),
                                        QApplication::palette().color(QPalette::WindowText),
                                        QApplication::palette().color(QPalette::WindowText),
-                                       theme::kFsSmall));
-    pipette->setIconSize(QSize(theme::kFsSmall, theme::kFsSmall));
+                                       theme::kFsUi));
+    pipette->setIconSize(QSize(theme::kFsUi, theme::kFsUi));
     pipette->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    pipette->setFixedHeight(theme::kFloatButton.height());
+    pipette->setFixedHeight(theme::kCtl);
     pipette->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     pipette->setCursor(Qt::PointingHandCursor);
     connect(pipette, &QToolButton::clicked, this, [this]{

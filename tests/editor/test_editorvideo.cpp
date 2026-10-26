@@ -21,7 +21,8 @@ private slots:
         QVERIFY(play->text().isEmpty());
         QVERIFY(!play->icon().isNull());
         QVERIFY(!play->toolTip().isEmpty());
-        QCOMPARE(play->accessibleName(), play->toolTip());
+        QCOMPARE(play->accessibleName(), theme::spokenName(play->toolTip()));
+        QVERIFY(!play->accessibleName().contains(QLatin1Char('\t')));
         QVERIFY(w.findChild<VideoTimeline *>(QStringLiteral("VideoTimeline")) != nullptr);
         QVERIFY(w.findChild<QToolButton *>(QStringLiteral("TrimSetIn")) != nullptr);
         QVERIFY(w.findChild<QToolButton *>(QStringLiteral("TrimSetOut")) != nullptr);
@@ -30,7 +31,7 @@ private slots:
         QVERIFY(mute != nullptr);
         QVERIFY(mute->text().isEmpty());
         QVERIFY(!mute->icon().isNull());
-        QCOMPARE(mute->accessibleName(), mute->toolTip());
+        QCOMPARE(mute->accessibleName(), theme::spokenName(mute->toolTip()));
         auto *reset = w.findChild<QToolButton *>(QStringLiteral("TrimReset"));
         QVERIFY(reset != nullptr);
         QVERIFY(reset->text().isEmpty());

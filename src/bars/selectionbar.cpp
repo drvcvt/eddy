@@ -24,15 +24,15 @@ SelectionBar::SelectionBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("SelectionBar"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(2);
+    layout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    layout->setSpacing(theme::kS1);
     for (int i = 0; i < 6; ++i) {
         m_align[i] = theme::floatButton(this, QStringLiteral("AlignObjects"), tr(kAligns[i].tip));
         connect(m_align[i], &QToolButton::clicked, this, [this, a = kAligns[i].align] { emit alignChosen(a); });
         layout->addWidget(m_align[i]);
-        if (i == 2) layout->addSpacing(6);
+        if (i == 2) layout->addSpacing(theme::kS2);
     }
-    layout->addSpacing(6);
+    layout->addSpacing(theme::kS2);
     for (int i = 0; i < 2; ++i) {
         m_distribute[i] = theme::floatButton(this, QStringLiteral("DistributeObjects"), tr(kDistributeTips[i]));
         connect(m_distribute[i], &QToolButton::clicked, this, [this, i] {

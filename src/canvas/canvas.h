@@ -4,10 +4,10 @@
 #include <QImage>
 #include "edit/toolcontroller.h"
 #include "canvas/snapping.h"
-class QVariantAnimation;
 class QResizeEvent;
 class QKeyEvent;
 namespace eddy {
+class Spring;
 class Loupe;
 class CropController;
 class Canvas : public QGraphicsView {
@@ -107,7 +107,8 @@ private:
     bool m_duplicateDragging = false;
     Qt::MouseButton m_swallowRelease = Qt::NoButton;
     bool m_animations = true;
-    QVariantAnimation *m_zoomAnim = nullptr;
+    Spring *m_zoomSpring = nullptr;   // keyboard zoom; the wheel follows the hand unanimated
+    QPointF m_zoomHeld;              // the scene point keyboard zoom holds at the centre
     // The scene point a run of wheel steps at one spot holds still. Each step lands
     // it from the same exact point, so the scroll bars' whole pixels never add up.
     struct WheelAnchor { QPointF view, scene; QPoint scroll; double zoom = 0; } m_wheelAnchor;

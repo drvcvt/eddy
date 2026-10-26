@@ -56,6 +56,7 @@ protected:
     void keyPressEvent(QKeyEvent *e) override;
 
 private:
+    void reserveLabelWidth();
     void startDrag();
     std::function<QImage()> m_provider;
     std::function<FileDragPayload()> m_fileProvider;

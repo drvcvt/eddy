@@ -103,7 +103,7 @@ private slots:
         }
         for (auto *b : window.findChildren<QToolButton *>()) {
             const int px = QFontInfo(b->font()).pixelSize();
-            if (px != theme::kFsMicro && px != theme::kFsSmall && px != theme::kFsBody)
+            if (px != theme::kFsCaption && px != theme::kFsUi)
                 bad << QStringLiteral("%1: %2px text").arg(name(b)).arg(px);
             const bool labelled = !b->text().isEmpty() && !b->icon().isNull()
                 && b->toolButtonStyle() != Qt::ToolButtonIconOnly;
@@ -113,7 +113,7 @@ private slots:
         }
         for (auto *l : window.findChildren<QLabel *>()) {
             const int px = QFontInfo(l->font()).pixelSize();
-            if (!l->text().isEmpty() && px != theme::kFsMicro && px != theme::kFsSmall)
+            if (!l->text().isEmpty() && px != theme::kFsCaption && px != theme::kFsUi)
                 bad << QStringLiteral("%1: %2px text").arg(name(l)).arg(px);
         }
         bad.removeDuplicates();
@@ -244,7 +244,7 @@ private slots:
         QVERIFY(canvas);
         const QRect canvasRect(canvas->mapTo(&window, QPoint()), canvas->size());
         QVERIFY(window.width() - canvasRect.width() <= 60);
-        QVERIFY(window.height() - canvasRect.height() <= 64);
+        QVERIFY(window.height() - canvasRect.height() <= 2 * theme::kBar);   // top bar and footer only
         auto *drag = window.findChild<DragPill *>();
         QVERIFY(drag);
         const QRect dragRect(drag->mapTo(&window, QPoint()), drag->size());
@@ -492,11 +492,11 @@ private slots:
         QVERIFY(button);
 
         button->click();
-        QCOMPARE(QApplication::palette().color(QPalette::Window), QColor("#181818"));
+        QCOMPARE(QApplication::palette().color(QPalette::Window), theme::tone(theme::Tone::Bg, true));
         QSettings settings(cli.configPath, QSettings::IniFormat);
         QCOMPARE(settings.value(QStringLiteral("eddy/theme")).toString(), QStringLiteral("dark"));
         button->click();
-        QCOMPARE(QApplication::palette().color(QPalette::Window), QColor("#FAFAFA"));
+        QCOMPARE(QApplication::palette().color(QPalette::Window), theme::tone(theme::Tone::Bg, false));
 
         QApplication::setPalette(oldPalette);
         qApp->setStyleSheet(oldStyle);

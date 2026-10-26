@@ -49,20 +49,17 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
     setObjectName(QStringLiteral("StudioPopover"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(12, 12, 12, 12);
-    outer->setSpacing(12);
+    outer->setContentsMargins(theme::kS3, theme::kS3, theme::kS3, theme::kS3);
+    outer->setSpacing(theme::kS3);
     auto *stylePage = new QWidget(this);
     auto *grid = new QGridLayout(stylePage);
     grid->setContentsMargins(0, 0, 0, 0);
-    grid->setHorizontalSpacing(4);
-    grid->setVerticalSpacing(6);
+    grid->setHorizontalSpacing(theme::kS2);
+    grid->setVerticalSpacing(theme::kS2);
     int row = 0;
     auto section = [&](const QString &text) {
-        auto *label = new QLabel(text.toUpper(), stylePage);
+        auto *label = new QLabel(text, stylePage);
         label->setObjectName(QStringLiteral("StudioSection"));
-        QFont font = label->font();   // QSS has no letter-spacing
-        font.setLetterSpacing(QFont::AbsoluteSpacing, 1.5);
-        label->setFont(font);
         grid->addWidget(label, row++, 0, 1, 8);
     };
 
@@ -83,7 +80,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         auto *b = new QToolButton(stylePage);
         b->setObjectName(QStringLiteral("StudioBackground"));
         b->setCheckable(true);
-        b->setFixedSize(theme::kFloatButton);
+        b->setFixedSize(theme::kControl);
         b->setIcon(swatchIcon(choices[i], dpr));
         b->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
         b->setToolTip(names[i]);
@@ -106,7 +103,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
     image->setObjectName(QStringLiteral("StudioImage"));
     image->setText(tr("Image…"));
     image->setToolTip(tr("Use an image as background"));
-    image->setFixedHeight(theme::kFloatButton.height());
+    image->setFixedHeight(theme::kCtl);
     image->setCursor(Qt::PointingHandCursor);
     connect(image, &QToolButton::clicked, this, &StudioPopover::imageRequested);
     grid->addWidget(image, row++, choices.size());
@@ -118,7 +115,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         auto *s = new QSlider(Qt::Horizontal, stylePage);
         s->setRange(0, 100);
         s->setValue(qRound(value / max * 100));
-        s->setFixedHeight(theme::kFloatButton.height());
+        s->setFixedHeight(theme::kCtl);
         s->setAccessibleName(text);
         s->setCursor(Qt::PointingHandCursor);
         grid->addWidget(s, row++, 3, 1, choices.size() - 2);
@@ -132,21 +129,21 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
     m_radius = slider(tr("Corners"), m_style.radius, 6, [](StudioStyle &s, double v) { s.radius = v; });
     m_shadow = slider(tr("Shadow"), m_style.shadow, 100, [](StudioStyle &s, double v) { s.shadow = v; });
 
-    grid->setRowMinimumHeight(row++, 6);   // with the 6px row gap: a 12px section break
+    grid->setRowMinimumHeight(row++, theme::kS1);   // a section break of kS1 plus the row gaps
     section(tr("Ratio"));
     auto *ratios = new QButtonGroup(this);
     const QList<QPair<QString, QSize>> ratioChoices{
         {tr("Auto"), QSize()}, {QStringLiteral("16:9"), QSize(16, 9)}, {QStringLiteral("4:3"), QSize(4, 3)},
         {QStringLiteral("1:1"), QSize(1, 1)}, {QStringLiteral("9:16"), QSize(9, 16)}};
     auto *ratioRow = new QHBoxLayout;
-    ratioRow->setSpacing(4);
+    ratioRow->setSpacing(theme::kS1);
     for (const auto &[label, ratio] : ratioChoices) {
         auto *b = new QToolButton(stylePage);
         b->setObjectName(QStringLiteral("StudioRatio"));
         b->setText(label);
         b->setCheckable(true);
         b->setChecked(m_style.aspect == ratio);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         b->setAccessibleName(tr("Output ratio %1").arg(label));
         b->setCursor(Qt::PointingHandCursor);
         ratios->addButton(b);
@@ -164,13 +161,13 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
     outer->addWidget(stylePage);
     // The header: Style and Camera for videos, Presets on the right always.
     auto *tabs = new QHBoxLayout;
-    tabs->setSpacing(4);
+    tabs->setSpacing(theme::kS1);
     outer->insertLayout(0, tabs);
     m_presets = new QToolButton(this);
     m_presets->setObjectName(QStringLiteral("StudioPresets"));
     m_presets->setText(tr("Presets"));
     m_presets->setToolTip(tr("Saved styles to apply, save, import or share"));
-    m_presets->setFixedHeight(theme::kFloatButton.height());
+    m_presets->setFixedHeight(theme::kCtl);
     m_presets->setCursor(Qt::PointingHandCursor);
     m_presets->setPopupMode(QToolButton::InstantPopup);
     auto *presetMenu = new QMenu(m_presets);
@@ -188,7 +185,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             tab->setText(names[i]);
             tab->setCheckable(true);
             tab->setChecked(i == 0);
-            tab->setFixedHeight(theme::kFloatButton.height());
+            tab->setFixedHeight(theme::kCtl);
             tab->setCursor(Qt::PointingHandCursor);
             tabGroup->addButton(tab, i);
             tabs->addWidget(tab);
@@ -198,8 +195,8 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         auto *cameraPage = new QWidget(this);
         auto *rows = new QGridLayout(cameraPage);
         rows->setContentsMargins(0, 0, 0, 0);
-        rows->setHorizontalSpacing(4);
-        rows->setVerticalSpacing(6);
+        rows->setHorizontalSpacing(theme::kS2);
+        rows->setVerticalSpacing(theme::kS2);
         auto rowLabel = [&](const QString &text, int row) {
             auto *label = new QLabel(text, cameraPage);
             label->setObjectName(QStringLiteral("StudioLabel"));
@@ -215,11 +212,11 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             b->setObjectName(QStringLiteral("StudioMotion"));
             b->setText(motionName(motion));
             b->setIcon(motionIcon(motion, ink, 16));
-            b->setIconSize(QSize(16, 16));
+            b->setIconSize(QSize(theme::kFsUi, theme::kFsUi));   // as tall as the label beside it
             b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
             b->setCheckable(true);
             b->setChecked(camera.motion == motion);
-            b->setFixedHeight(theme::kFloatButton.height());
+            b->setFixedHeight(theme::kCtl);
             b->setCursor(Qt::PointingHandCursor);
             b->setToolTip(tr("Every zoom moves like this; new zooms too"));
             motions->addButton(b);
@@ -235,7 +232,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         m_keep->setText(tr("Keep zoomed in"));
         m_keep->setCheckable(true);
         m_keep->setChecked(camera.keepZoomedIn);
-        m_keep->setFixedHeight(theme::kFloatButton.height());
+        m_keep->setFixedHeight(theme::kCtl);
         m_keep->setCursor(Qt::PointingHandCursor);
         rows->addWidget(m_keep, 1, 1, 1, 3, Qt::AlignLeft);
         connect(m_keep, &QToolButton::toggled, this, &StudioPopover::keepZoomedInChanged);
@@ -244,7 +241,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             suggest->setObjectName(QStringLiteral("StudioSuggest"));
             suggest->setText(tr("Suggest zooms"));
             suggest->setToolTip(tr("Add zooms where the pointer clicks or rests"));
-            suggest->setFixedHeight(theme::kFloatButton.height());
+            suggest->setFixedHeight(theme::kCtl);
             suggest->setCursor(Qt::PointingHandCursor);
             rows->addWidget(suggest, 2, 1, 1, 3, Qt::AlignLeft);
             connect(suggest, &QToolButton::clicked, this, &StudioPopover::suggestRequested);
@@ -255,7 +252,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         blur->setObjectName(QStringLiteral("StudioMotionBlur"));
         blur->setRange(0, 100);
         blur->setValue(camera.motionBlur);
-        blur->setFixedHeight(theme::kFloatButton.height());
+        blur->setFixedHeight(theme::kCtl);
         blur->setAccessibleName(tr("Motion blur"));
         blur->setToolTip(tr("Blurs camera moves in the export; the preview stays sharp"));
         blur->setCursor(Qt::PointingHandCursor);

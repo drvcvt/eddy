@@ -5,8 +5,11 @@
 class QLabel;
 class QToolButton;
 class QTimer;
+class QGraphicsOpacityEffect;
 
 namespace eddy {
+
+class Spring;
 
 // A small transient message overlay, anchored at the bottom-centre of its parent.
 class Toast : public QWidget {
@@ -20,10 +23,13 @@ public:
 
 private:
     void present(const QString &text, int ms);
+    void dismiss();   // fades out; takes no clicks while it goes
     QLabel *m_label;
     QToolButton *m_action;
     std::function<void()> m_run;
     QTimer *m_timer;
+    QGraphicsOpacityEffect *m_opacity;
+    Spring *m_fade;
 };
 
 }

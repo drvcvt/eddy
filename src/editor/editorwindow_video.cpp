@@ -204,7 +204,8 @@ void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
         if (!field) continue;
         if (!field->hasFocus() || !field->isModified())
             field->setText(formatPreciseTime(field == m_trimInLabel ? inMs : outMs));
-        field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs)) + 16);
+        field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs))
+                            + 2 * theme::kS2 + 2 * 2);   // QSS padding plus QLineEdit's own 2 px margin
     }
     // The output's length: cuts left out, sped-up fragments shorter.
     if (m_trimDurationLabel)

@@ -10,6 +10,7 @@
 #include <QWidget>
 #include "app/config.h"
 #include "output/exporter.h"
+#include "app/spring.h"
 
 namespace eddy {
 

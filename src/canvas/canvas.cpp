@@ -11,7 +11,7 @@
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QGraphicsItem>
-#include <QVariantAnimation>
+#include "app/spring.h"
 #include <QPixmap>
 #include <QCursor>
 #include <QKeyEvent>
@@ -143,24 +143,20 @@ void Canvas::zoomBy(double factor) {
     const double next = qBound(0.05, m_targetZoom * factor, 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
     const QPointF centre(viewport()->width() / 2.0, viewport()->height() / 2.0);
-    const QPointF held = m_camera.isIdentity() ? sceneAt(centre) : m_viewCentre;
+    // A run of key presses keeps zooming about the scene point it started on.
+    if (!m_zoomSpring || m_zoomSpring->state() != QAbstractAnimation::Running)
+        m_zoomHeld = m_camera.isIdentity() ? sceneAt(centre) : m_viewCentre;
     m_targetZoom = next;
-    if (!m_animations) { zoomAt(next, centre, held); return; }
-    if (!m_zoomAnim) {
-        m_zoomAnim = new QVariantAnimation(this);
-        m_zoomAnim->setDuration(110);
-        m_zoomAnim->setEasingCurve(QEasingCurve::OutCubic);
+    if (!m_animations) { zoomAt(next, centre, m_zoomHeld); return; }
+    if (!m_zoomSpring) {
+        m_zoomSpring = new Spring(motion::kBase, [this](qreal zoom) {
+            const double target = m_targetZoom;
+            zoomAt(zoom, QPointF(viewport()->width() / 2.0, viewport()->height() / 2.0), m_zoomHeld);
+            m_targetZoom = target;
+        }, this);
     }
-    m_zoomAnim->stop();
-    m_zoomAnim->disconnect(this);
-    connect(m_zoomAnim, &QVariantAnimation::valueChanged, this, [this, centre, held](const QVariant &v) {
-        const double target = m_targetZoom;
-        zoomAt(v.toDouble(), centre, held);
-        m_targetZoom = target;
-    });
-    m_zoomAnim->setStartValue(m_zoom);
-    m_zoomAnim->setEndValue(next);
-    m_zoomAnim->start();
+    if (m_zoomSpring->state() != QAbstractAnimation::Running) m_zoomSpring->jumpTo(m_zoom);
+    m_zoomSpring->setTarget(next);
 }
 
 QPointF Canvas::sceneAt(QPointF viewPos) const {
@@ -183,7 +179,7 @@ void Canvas::zoomAt(double zoom, QPointF viewPos, QPointF scenePoint) {
 
 void Canvas::resetZoom() {
     m_fitted = false;
-    if (m_zoomAnim) m_zoomAnim->stop();
+    if (m_zoomSpring) m_zoomSpring->stop();
     withoutCamera([&] {
         resetTransform();
         m_zoom = m_targetZoom = 1.0;
@@ -193,7 +189,7 @@ void Canvas::resetZoom() {
 }
 
 void Canvas::fitMedia() {
-    if (m_zoomAnim) m_zoomAnim->stop();
+    if (m_zoomSpring) m_zoomSpring->stop();
     withoutCamera([&] {
         resetTransform();
         m_fitted = true;
@@ -248,7 +244,7 @@ void Canvas::setContentRect(QRectF rect) {
 }
 
 void Canvas::restoreView(const QTransform &transform, QPointF center, bool fitted) {
-    if (m_zoomAnim) m_zoomAnim->stop();
+    if (m_zoomSpring) m_zoomSpring->stop();
     withoutCamera([&] {
         setTransform(transform);
         m_zoom = m_targetZoom = transform.m11();
@@ -425,7 +421,7 @@ void Canvas::wheelEvent(QWheelEvent *e) {
     if (delta == 0) return;
     const double next = qBound(0.05, m_targetZoom * std::pow(1.15, delta / 120.0), 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
-    if (m_zoomAnim) m_zoomAnim->stop();
+    if (m_zoomSpring) m_zoomSpring->stop();
     // With a camera on, the user's own view is not what shows: hold its centre.
     const QPointF centre(viewport()->width() / 2.0, viewport()->height() / 2.0);
     const QPointF pos = m_camera.isIdentity() ? e->position() : centre;

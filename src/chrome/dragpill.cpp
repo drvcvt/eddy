@@ -159,19 +159,32 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setAttribute(Qt::WA_StyledBackground, true);
     setCursor(Qt::OpenHandCursor);
     auto *lay = new QHBoxLayout(this);
-    lay->setContentsMargins(6, 0, 6, 0);
-    setFixedHeight(theme::kBarButton.height());
-    lay->setSpacing(6);
+    lay->setContentsMargins(theme::kS2, 0, theme::kS2, 0);
+    setFixedHeight(theme::kCtl);
+    lay->setSpacing(theme::kS2);
     auto *icon = new QLabel(this);
     icon->setObjectName("DragPillIcon");
     icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"),
                                       QApplication::palette().color(QPalette::WindowText),
-                                      QApplication::palette().color(QPalette::WindowText), theme::kFsSmall)
-                        .pixmap(QSize(theme::kFsSmall, theme::kFsSmall)));   // Rounded grip, distinct from the Arrow annotation tool.
+                                      QApplication::palette().color(QPalette::WindowText), theme::kFsCaption)
+                        .pixmap(QSize(theme::kFsCaption, theme::kFsCaption)));   // Rounded grip, distinct from the Arrow annotation tool.
     lay->addWidget(icon);
-    auto *label = new QLabel(QStringLiteral("Drag out"), this);
+    auto *label = new QLabel(tr("Drag out"), this);
     label->setObjectName("DragPillText");
+    label->setAlignment(Qt::AlignCenter);
     lay->addWidget(label);
+    setAccessibleName(label->text());
+    setToolTip(tr("Drag into another app"));
+}
+
+// The label switches between two texts; it keeps the wider one's width so the
+// pill, centred in the footer, never shifts.
+void DragPill::reserveLabelWidth() {
+    auto *label = findChild<QLabel *>(QStringLiteral("DragPillText"));
+    label->ensurePolished();
+    const QFontMetrics metrics(label->font());
+    label->setMinimumWidth(qMax(metrics.horizontalAdvance(tr("Drag out")),
+                                metrics.horizontalAdvance(tr("Prepare drag"))));
 }
 
 DragPill::~DragPill() {
@@ -182,8 +195,8 @@ void DragPill::refreshTheme() {
     auto *icon = findChild<QLabel *>(QStringLiteral("DragPillIcon"));
     if (!icon) return;
     const QColor color = QApplication::palette().color(QPalette::WindowText);
-    icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"), color, color, theme::kFsSmall)
-                        .pixmap(QSize(theme::kFsSmall, theme::kFsSmall)));
+    icon->setPixmap(theme::tintedIcon(QStringLiteral(":/icons/dragout.svg"), color, color, theme::kFsCaption)
+                        .pixmap(QSize(theme::kFsCaption, theme::kFsCaption)));
 }
 
 void DragPill::setImageProvider(std::function<QImage()> provider) { m_provider = std::move(provider); }
@@ -197,6 +210,7 @@ void DragPill::setPreparationNeeded(bool needed) {
     setToolTip(needed ? tr("Prepare the edited video for dragging") : tr("Drag into another app"));
     setCursor(needed ? Qt::PointingHandCursor : Qt::OpenHandCursor);
     setFocusPolicy(needed ? Qt::StrongFocus : Qt::NoFocus);
+    reserveLabelWidth();
     setMinimumWidth(sizeHint().width());
 }
 

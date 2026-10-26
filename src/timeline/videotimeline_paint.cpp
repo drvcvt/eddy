@@ -36,7 +36,7 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
         p.fillRect(lane, ink(0.07));
         if (m_waveform->state() == AudioWaveformProvider::State::Failed) {
             QFont label = font();
-            label.setPixelSize(theme::kFsMicro);
+            label.setPixelSize(theme::kFsCaption);
             p.setFont(label);
             p.setPen(ink(0.45));
             p.drawText(lane, Qt::AlignCenter, tr("Waveform unavailable"));
@@ -167,9 +167,9 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             painter.fillPath(area, curve);
         }
         QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-        mono.setPixelSize(theme::kFsMicro);
+        mono.setPixelSize(theme::kFsCaption);
         QFont label = font();
-        label.setPixelSize(theme::kFsMicro);
+        label.setPixelSize(theme::kFsCaption);
         for (const ZoomSegment &z : std::as_const(m_zooms)) {
             const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
             if (x1 < lane.left() || x0 > lane.right()) continue;
@@ -217,7 +217,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.setClipPath(laneShape);
         painter.fillRect(lane, ink(0.07));
         QFont label = font();
-        label.setPixelSize(theme::kFsMicro);
+        label.setPixelSize(theme::kFsCaption);
         painter.setFont(label);
         for (const MaskBlock &mask : std::as_const(m_masks)) {
             const qreal x0 = xForTime(mask.fromMs), x1 = xForTime(mask.toMs);
@@ -272,13 +272,13 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     handle(inX, Drag::In);
     handle(outX, Drag::Out);
 
-    QFont boundaryFont = font(); boundaryFont.setPixelSize(theme::kFsMicro);
+    QFont boundaryFont = font(); boundaryFont.setPixelSize(theme::kFsCaption);
     const QFontMetricsF boundaryMetrics(boundaryFont);
     const QString start = tr("Start"), end = tr("End");
     auto labelRect = [&](qreal x, const QString &text, bool before) {
         if (x < track.left() || x > track.right()) return QRectF();
         const qreal w = boundaryMetrics.horizontalAdvance(text);
-        return QRectF(qBound(track.left(), before ? x - w - 4 : x + 4, track.right() - w), 0, w, 13);
+        return QRectF(qBound(track.left(), before ? x - w - 4 : x + 4, track.right() - w), 0, w, kRulerH);
     };
     QRectF startLabel = labelRect(inX, start, true);
     QRectF endLabel = labelRect(outX, end, false);
@@ -287,14 +287,14 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         startLabel.moveRight(qMin(startLabel.right(), endLabel.left() - 8));
     }
     painter.setPen(ink(0.6));
-    QFont ruler = font(); ruler.setPixelSize(theme::kFsMicro); painter.setFont(ruler);
+    QFont ruler = font(); ruler.setPixelSize(theme::kFsCaption); painter.setFont(ruler);
     const auto ticks = rulerTicks();
     const qint64 step = ticks.size() > 1 ? ticks[1].second - ticks[0].second : 1000;
     for (const auto &[x, t] : ticks) {
         const QString label = QStringLiteral("%1:%2").arg(t / 60000)
             .arg((t / 1000) % 60, 2, 10, QLatin1Char('0'))
             + (step < 1000 ? QStringLiteral(".%1").arg((t % 1000) / 100) : QString());
-        const QRectF tickLabel(x - 30, 0, 60, 13);
+        const QRectF tickLabel(x - 30, 0, 60, kRulerH);
         if ((!startLabel.isEmpty() && tickLabel.intersects(startLabel.adjusted(-4, 0, 4, 0)))
             || (!endLabel.isEmpty() && tickLabel.intersects(endLabel.adjusted(-4, 0, 4, 0)))) continue;
         painter.drawText(tickLabel, Qt::AlignCenter, label);
@@ -323,10 +323,10 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             const double ms = double(fragments::endOf(m_fragments, i, m_duration) - parts[i].startMs);
             const QString text = tr("Cut %1 s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
             QFont hint = font();
-            hint.setPixelSize(theme::kFsMicro);
+            hint.setPixelSize(theme::kFsCaption);
             painter.setFont(hint);
             const qreal w = QFontMetricsF(hint).horizontalAdvance(text) + 8;
-            const QRectF box(qBound(0.0, x + 6, width() - w), 0, w, 13);
+            const QRectF box(qBound(0.0, x + 6, width() - w), 0, w, kRulerH);
             painter.fillRect(box, background);
             painter.setPen(ink(0.9));
             painter.drawText(box, Qt::AlignCenter, text);

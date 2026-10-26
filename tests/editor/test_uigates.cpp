@@ -1,0 +1,190 @@
+// The ui skill's gates, measured on the real render in the dark theme: capitals
+// centred in their control, icons centred on the capitals beside them, one icon
+// axis down the tool rail, and nothing past the window at its narrowest.
+#include "editortest.h"
+#include <QPainter>
+
+namespace {
+
+// Ink edges of `region` against `background`, each edge interpolated by the
+// coverage of its outermost row or column (layout.md, optical geometry).
+struct Ink { qreal top = 0, bottom = 0, left = 0, right = 0; bool any = false; };
+
+qreal coverage(QColor pixel, QColor background, QColor ink) {
+    const auto d = [](QColor a, QColor b) {
+        return std::abs(a.redF() - b.redF()) + std::abs(a.greenF() - b.greenF()) + std::abs(a.blueF() - b.blueF());
+    };
+    const qreal full = d(ink, background);
+    return full <= 0 ? 0 : std::clamp(d(pixel, background) / full, 0.0, 1.0);
+}
+
+Ink inkOf(const QImage &image, QRect region, QColor background, QColor ink) {
+    region &= image.rect();
+    QVector<qreal> rows(region.height()), cols(region.width());
+    for (int y = 0; y < region.height(); ++y)
+        for (int x = 0; x < region.width(); ++x) {
+            const qreal c = coverage(image.pixelColor(region.x() + x, region.y() + y), background, ink);
+            rows[y] = std::max(rows[y], c);
+            cols[x] = std::max(cols[x], c);
+        }
+    Ink out;
+    const auto first = [](const QVector<qreal> &v) { for (int i = 0; i < v.size(); ++i) if (v[i] > 0.05) return i; return -1; };
+    const auto last = [](const QVector<qreal> &v) { for (int i = v.size() - 1; i >= 0; --i) if (v[i] > 0.05) return i; return -1; };
+    const int t = first(rows), b = last(rows), l = first(cols), r = last(cols);
+    if (t < 0 || l < 0) return out;
+    out.any = true;
+    out.top = region.y() + t + (1 - rows[t]);
+    out.bottom = region.y() + b + rows[b];
+    out.left = region.x() + l + (1 - cols[l]);
+    out.right = region.x() + r + cols[r];
+    return out;
+}
+
+QString path(const QObject *o) {
+    QStringList names;
+    for (; o; o = o->parent()) if (!o->objectName().isEmpty()) names.prepend(o->objectName());
+    return names.join(QLatin1Char('/'));
+}
+
+std::unique_ptr<EditorWindow> openVideo(const QString &file, QSize size) {
+    MediaDocument doc;
+    doc.kind = MediaKind::Video;
+    doc.path = file;
+    doc.video = {QSize(64, 48), 4000, 25.0};
+    Config cfg; cfg.animations = false;
+    auto window = std::make_unique<EditorWindow>(doc, cfg, CliOptions());
+    window->resize(size);
+    window->show();
+    return window;
+}
+
+}
+
+class TestUiGates : public QObject {
+    Q_OBJECT
+private slots:
+    void initTestCase() {
+        qApp->setPalette(theme::palette(true));
+        qApp->setStyleSheet(theme::styleSheet(true));
+    }
+
+    void capitalsSitInTheMiddleOfTheirControl() {
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("gates.mp4")), QSize(1000, 680));
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        QStringList off;
+        int measured = 0;
+        for (QToolButton *button : window->findChildren<QToolButton *>()) {
+            if (!button->isVisible() || button->text().isEmpty()) continue;
+            if (!button->icon().isNull() && button->toolButtonStyle() == Qt::ToolButtonIconOnly) continue;
+            // Capitals only, so no ascender or descender takes part (layout.md 6).
+            const QString text = button->text();
+            button->setText(text.toUpper());
+            const QImage shot = button->grab().toImage();
+            button->setText(text);
+            const QColor background = shot.pixelColor(1, 1);
+            const QColor ink = button->palette().color(QPalette::ButtonText);
+            // Text only: right of any icon, which LabelButton draws at the left.
+            const int textLeft = button->icon().isNull() ? 0 : button->iconSize().width() + theme::kS2;
+            const Ink caps = inkOf(shot, QRect(textLeft, 0, shot.width() - textLeft, shot.height()), background, ink);
+            if (!caps.any) continue;
+            ++measured;
+            const qreal delta = (caps.top + caps.bottom) / 2 - shot.height() / 2.0;
+            qInfo("centre %s \"%s\": %+.2f px", qPrintable(path(button)), qPrintable(text), delta);
+            if (std::abs(delta) > 0.5)
+                off << QStringLiteral("%1 \"%2\": %3 px").arg(path(button), text).arg(delta, 0, 'f', 2);
+        }
+        QVERIFY2(measured >= 4, qPrintable(QString::number(measured)));
+        QVERIFY2(off.isEmpty(), qPrintable(off.join(QStringLiteral("\n   "))));
+    }
+
+    void toolRailIconsShareOneAxis() {
+        QImage image(800, 500, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, CliOptions());
+        window.resize(1000, 680);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QWidget *rail = window.findChild<QWidget *>(QStringLiteral("ToolRail"));
+        QVERIFY(rail);
+        const QImage shot = rail->grab().toImage();
+        const QColor background = shot.pixelColor(1, 1);
+        QVector<qreal> centres;
+        for (QToolButton *button : rail->findChildren<QToolButton *>()) {
+            if (button->isChecked()) continue;   // the glide fill shifts its background
+            const QRect box(button->geometry().adjusted(2, 2, -2, -2));
+            const Ink ink = inkOf(shot, box, background, theme::tone(theme::Tone::Sub, true));
+            QVERIFY2(ink.any, qPrintable(button->objectName()));
+            centres << (ink.left + ink.right) / 2;
+            // Every rail button: the same distance to the rail's edge on all sides.
+            QCOMPARE(button->x(), theme::kBarPad);
+        }
+        QVERIFY(centres.size() >= 8);
+        const auto [lo, hi] = std::minmax_element(centres.begin(), centres.end());
+        // Drawn on one keyline grid, the glyphs' ink centres differ by their shape only.
+        QVERIFY2(*hi - *lo <= 1.0, qPrintable(QStringLiteral("icon centres spread %1 px").arg(*hi - *lo)));
+    }
+
+    void labelledIconSitsOnTheCapitals() {
+        QImage image(800, 500, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, CliOptions());
+        window.resize(1000, 680);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QStringList off;
+        for (const char *name : {"Studio", "SendToShelf"}) {
+            auto *button = window.findChild<QToolButton *>(QString::fromLatin1(name));
+            QVERIFY2(button, name);
+            const QString text = button->text();
+            button->setText(text.toUpper());
+            const QSize laidOut = button->size();
+            button->resize(button->sizeHint());   // capitals run wider; keep the content at its padding
+            const QImage shot = button->grab().toImage();
+            button->setText(text);
+            button->resize(laidOut);
+            const QColor background = shot.pixelColor(1, 1);
+            const QColor ink = button->palette().color(QPalette::ButtonText);
+            const int split = theme::kS2 + theme::iconInk(button->iconSize().width()) + theme::kS2 / 2;
+            const Ink icon = inkOf(shot, QRect(0, 0, split, shot.height()), background, ink);
+            const Ink caps = inkOf(shot, QRect(split, 0, shot.width() - split, shot.height()), background, ink);
+            QVERIFY2(icon.any && caps.any, name);
+            const qreal delta = (icon.top + icon.bottom) / 2 - (caps.top + caps.bottom) / 2;
+            if (std::abs(delta) > 0.5) off << QStringLiteral("%1: icon %2 px off the capitals").arg(name).arg(delta, 0, 'f', 2);
+            const qreal gap = caps.left - icon.right;
+            qInfo("%s: icon %+.2f px off the capitals, %.2f px to the text", name, delta, gap);
+            // The text origin is kS2 past the ink; a letter's own side bearing adds up to a pixel.
+            if (gap < theme::kS2 - 0.5 || gap > theme::kS2 + 1.5)
+                off << QStringLiteral("%1: icon to text %2 px").arg(name).arg(gap, 0, 'f', 2);
+        }
+        QVERIFY2(off.isEmpty(), qPrintable(off.join(QStringLiteral("\n   "))));
+    }
+
+    void narrowWindowKeepsEveryControlInside() {
+        QTemporaryDir dir;
+        // Stress: a long file name in the title and a long message in the toast.
+        const QString file = dir.filePath(QStringLiteral("a-very-long-screen-recording-name-from-a-long-afternoon-2026-10-26_23-59-59.mp4"));
+        auto window = openVideo(file, QSize(520, 620));
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        auto *toast = window->findChild<Toast *>();
+        QVERIFY(toast);
+        toast->showMessage(QStringLiteral("OCR failed: tesseract exited with code 1 while reading "
+                                          "/home/someone/Pictures/an/unusually/deep/folder/screenshot.png"));
+        QApplication::processEvents();
+        const QRect inside = window->rect();
+        QStringList outside;
+        for (QWidget *w : window->findChildren<QWidget *>()) {
+            if (!w->isVisible() || w->isWindow()) continue;
+            if (!qobject_cast<QAbstractButton *>(w) && !qobject_cast<QLabel *>(w) && w != toast) continue;
+            const QRect r(w->mapTo(window.get(), QPoint()), w->size());
+            if (!inside.contains(r))
+                outside << QStringLiteral("%1 at %2,%3 %4x%5").arg(path(w)).arg(r.x()).arg(r.y()).arg(r.width()).arg(r.height());
+        }
+        QVERIFY2(outside.isEmpty(), qPrintable(outside.join(QStringLiteral("\n   "))));
+    }
+};
+
+QTEST_MAIN(TestUiGates)
+#include "test_uigates.moc"

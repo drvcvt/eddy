@@ -60,14 +60,14 @@ private slots:
     }
     void zoomLaneGrowsTheTimelineUnderTheFilmStrip() {
         VideoTimeline timeline;
-        QCOMPARE(timeline.height(), 52);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH);
         QVERIFY(timeline.zoomLaneRect().isEmpty());
         timeline.setZoomLaneVisible(true);
-        QCOMPARE(timeline.height(), 84);
-        QCOMPARE(timeline.zoomLaneRect().top(), 52.0);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep);
+        QCOMPARE(timeline.zoomLaneRect().top(), qreal(VideoTimeline::kBaseH));
         QCOMPARE(timeline.zoomLaneRect().height(), 28.0);
         timeline.setZoomLaneVisible(false);
-        QCOMPARE(timeline.height(), 52);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH);
     }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;
@@ -167,7 +167,8 @@ private slots:
         timeline.setZooms({z}, [](qint64 t) { return t >= 3000 && t < 8000 ? 2.0 : 1.0; });
         const QImage shot = timeline.grab().toImage();
         // Zoomed in, the curve fills the block near its top; before the ramp it does not.
-        QVERIFY(qGray(shot.pixel(156, 58)) != qGray(shot.pixel(72, 58)));
+        const int nearTop = int(timeline.zoomLaneRect().top()) + 6;
+        QVERIFY(qGray(shot.pixel(156, nearTop)) != qGray(shot.pixel(72, nearTop)));
     }
     void fragmentsShapeTheTimeAxis() {
         VideoTimeline timeline;
@@ -220,8 +221,8 @@ private slots:
         timeline.setDuration(10000);
         QVERIFY(timeline.maskLaneRect().isEmpty());
         timeline.setMasks({{7, 2000, 4000, QStringLiteral("Blur"), false}});
-        QCOMPARE(timeline.height(), 76);
-        QCOMPARE(timeline.maskLaneRect().top(), 52.0);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kMaskStep);
+        QCOMPARE(timeline.maskLaneRect().top(), qreal(VideoTimeline::kBaseH));
         timeline.show();
         QSignalSpy selected(&timeline, &VideoTimeline::maskSelected);
         QSignalSpy edited(&timeline, &VideoTimeline::maskWindowEdited);
@@ -243,7 +244,7 @@ private slots:
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(160, y));
         QCOMPARE(edited.count(), 1);
         timeline.setMasks({});
-        QCOMPARE(timeline.height(), 52);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH);
     }
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;
@@ -331,10 +332,10 @@ private slots:
         QVERIFY(timeline.waveformRect().isEmpty());
         AudioWaveformProvider waveform(file, 3000, 0);
         timeline.setWaveform(&waveform);
-        QCOMPARE(timeline.height(), 52 + 32 + 32);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH + 2 * VideoTimeline::kLaneStep);
         const QRectF lane = timeline.waveformRect();
         QCOMPARE(lane.height(), 28.0);
-        QCOMPARE(lane.top(), 52.0);                          // right under the film strip
+        QCOMPARE(lane.top(), qreal(VideoTimeline::kBaseH));  // right under the film strip
         QCOMPARE(timeline.zoomLaneRect().top(), lane.bottom() + 4);
         QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
         auto xAt = [&](qint64 ms) { return int(lane.left() + lane.width() * ms / 3000.0); };
@@ -360,7 +361,7 @@ private slots:
         // Hidden, the lanes below move back up.
         timeline.setWaveformVisible(false);
         QCOMPARE(timeline.zoomLaneRect().top(), zoomTop);
-        QCOMPARE(timeline.height(), 52 + 32);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep);
     }
     void quietSoundStillShowsInTheWaveform() {
         // Screen recordings sit far below full scale; on a linear scale a tone

@@ -18,7 +18,7 @@ namespace eddy {
 
 VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("VideoTimeline"));
-    setFixedHeight(52);
+    setFixedHeight(kBaseH);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setCursor(Qt::PointingHandCursor);
     setMouseTracking(true);
@@ -219,8 +219,7 @@ void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
 }
 
 QRectF VideoTimeline::trackRect() const {
-    return QRectF(6, 18, qMax(1, width() - 12),
-                  height() - 22 - (waveformShown() ? 32 : 0) - (m_laneVisible ? 32 : 0) - (m_masks.isEmpty() ? 0 : 24));
+    return QRectF(kInset, kTrackTop, qMax<qreal>(1, width() - 2 * kInset), kTrackH);
 }
 
 void VideoTimeline::setWaveform(AudioWaveformProvider *waveform) {
@@ -247,7 +246,7 @@ void VideoTimeline::setWaveformVisible(bool visible) {
 QRectF VideoTimeline::waveformRect() const {
     if (!waveformShown()) return {};
     const QRectF track = trackRect();
-    return QRectF(track.left(), track.bottom() + 4, track.width(), 28);
+    return QRectF(track.left(), track.bottom() + theme::kS1, track.width(), kLaneH);
 }
 
 qreal VideoTimeline::belowWaveform() const {
@@ -278,7 +277,7 @@ void VideoTimeline::setSelectedZoom(quint32 id) {
 }
 
 void VideoTimeline::updateHeight() {
-    setFixedHeight(52 + (waveformShown() ? 32 : 0) + (m_laneVisible ? 32 : 0) + (m_masks.isEmpty() ? 0 : 24));
+    setFixedHeight(kBaseH + (waveformShown() ? kLaneStep : 0) + (m_laneVisible ? kLaneStep : 0) + (m_masks.isEmpty() ? 0 : kMaskStep));
 }
 
 bool VideoTimeline::inZoomLane(QPointF pos) const {
@@ -297,8 +296,8 @@ void VideoTimeline::setMasks(const QVector<MaskBlock> &masks) {
 QRectF VideoTimeline::maskLaneRect() const {
     if (m_masks.isEmpty()) return {};
     const QRectF track = trackRect();
-    const qreal top = (m_laneVisible ? zoomLaneRect().bottom() : belowWaveform()) + 4;
-    return QRectF(track.left(), top, track.width(), 20);
+    const qreal top = (m_laneVisible ? zoomLaneRect().bottom() : belowWaveform()) + theme::kS1;
+    return QRectF(track.left(), top, track.width(), kMaskH);
 }
 
 int VideoTimeline::maskAt(QPointF pos, Drag *part) const {
@@ -347,7 +346,7 @@ void VideoTimeline::moveMaskDrag(qreal x) {
 QRectF VideoTimeline::zoomLaneRect() const {
     if (!m_laneVisible) return {};
     const QRectF track = trackRect();
-    return QRectF(track.left(), belowWaveform() + 4, track.width(), 28);
+    return QRectF(track.left(), belowWaveform() + theme::kS1, track.width(), kLaneH);
 }
 
 quint32 VideoTimeline::zoomAt(QPointF pos, Drag *part) const {
@@ -557,7 +556,7 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
         m_position = time;
     }
     emit seekRequested(m_position);
-    if (trimming()) emit hoverRequested(m_position, QPoint(qRound(x), 18));
+    if (trimming()) emit hoverRequested(m_position, QPoint(qRound(x), int(kTrackTop)));
     update();
 }
 

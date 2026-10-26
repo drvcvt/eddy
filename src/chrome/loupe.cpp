@@ -22,8 +22,9 @@ QColor loupeSampleColor(const QImage &source, const QPoint &srcPos) {
 namespace {
 constexpr int kSquare = 116;   // magnified area, logical px
 constexpr int kLabelH = 22;    // hex readout strip
-constexpr int kPad    = 4;     // panel padding around the square
-constexpr int kRadius = 14;
+constexpr int kPad    = theme::kS1;     // panel padding around the square
+constexpr int kRadius = theme::kRPop;
+constexpr int kInner  = kRadius - kPad; // concentric with the panel
 }
 
 Loupe::Loupe(QWidget *parent) : QWidget(parent) {
@@ -62,16 +63,16 @@ void Loupe::paintEvent(QPaintEvent *) {
     // Panel.
     const QRectF panel(0.5, 0.5, width() - 1.0, height() - 1.0);
     p.setPen(Qt::NoPen);
-    p.setBrush(QColor("#1A1A1A"));
+    p.setBrush(palette().color(QPalette::Base));
     p.drawRoundedRect(panel, kRadius, kRadius);
 
     // Magnified pixel cells (nearest-neighbour grid), clipped to a squircle.
     const QRectF square(kPad, kPad, kSquare, kSquare);
     QPainterPath clip;
-    clip.addRoundedRect(square, kRadius - 3, kRadius - 3);
+    clip.addRoundedRect(square, kInner, kInner);
     p.save();
     p.setClipPath(clip);
-    p.fillRect(square, QColor("#121212"));
+    p.fillRect(square, palette().color(QPalette::Window));
     const int cells = kLoupeCells;
     const int half = cells / 2;
     const qreal cw = square.width()  / cells;
@@ -104,21 +105,16 @@ void Loupe::paintEvent(QPaintEvent *) {
     p.drawRect(centre);
     p.restore();
 
-    // Square keyline.
-    p.setPen(QPen(QColor(0, 0, 0, 120), 1));
-    p.setBrush(Qt::NoBrush);
-    p.drawRoundedRect(square, kRadius - 3, kRadius - 3);
-
     // Hex readout: a small colour chip + the value.
     const QRectF label(kPad, kPad + kSquare, kSquare, kLabelH);
-    const QRectF chip(label.left() + 2, label.center().y() - 6, 12, 12);
+    const QRectF chip(label.left() + 2, label.center().y() - 6, 12, 12);   // a caption-high colour sample
     p.setPen(QPen(QColor(0, 0, 0, 110), 1));
     p.setBrush(m_color);
     p.drawRoundedRect(chip, 3, 3);
-    p.setPen(QColor("#ECECEC"));
+    p.setPen(palette().color(QPalette::WindowText));
     QFont f = p.font();
-    f.setPixelSize(theme::kFsSmall);
-    f.setBold(true);
+    f.setPixelSize(theme::kFsCaption);
+    f.setWeight(QFont::DemiBold);
     p.setFont(f);
     p.drawText(label.adjusted(20, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft,
                m_color.name(QColor::HexRgb).toUpper());

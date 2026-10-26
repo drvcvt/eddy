@@ -4,8 +4,8 @@
 #include <QIcon>
 #include <QSize>
 #include <QString>
+#include <QToolButton>
 
-class QToolButton;
 class QWidget;
 
 namespace eddy {
@@ -14,12 +14,10 @@ enum class ThemeMode { System, Dark, Light };
 
 namespace theme {
 
-// Vis grayscale tokens. Annotation colours remain independent.
-inline constexpr const char *kAccent          = "#414141";
-inline constexpr const char *kBar             = "#202020";
-inline constexpr const char *kCanvas          = "#181818";
-inline constexpr const char *kIconRest        = "#999999";
-inline constexpr const char *kIconActive      = "#EEEEEE";
+// Neutral graphite from one OKLCH hue; only lightness changes (docs/design.md).
+// Annotation colours are content and stay independent.
+enum class Tone { Canvas, Bg, Raise1, Raise2, Raise3, SegmentOn, Faint, Sub, Fg, BarHover, BarActive };
+QColor tone(Tone tone, bool dark);
 inline constexpr const char *kStroke          = "#ff3b30";
 
 // A fully dark palette so native widgets (colour dialog, text caret/selection,
@@ -29,15 +27,21 @@ QPalette palette(bool dark);
 bool resolveDark(ThemeMode mode, const QPalette &systemPalette);
 QString styleSheet(bool dark);
 
-// Two control sizes carry the whole app: dense chrome (top bar, tool rail,
-// playback row) and the floating bars that sit over the canvas.
-inline constexpr QSize kBarButton{22, 22};
-inline constexpr QSize kFloatButton{24, 24};
-// The type scale: meta/labels and everything else. Painted text uses these too.
-inline constexpr int kFsMicro = 11;
-inline constexpr int kFsSmall = 13;
-inline constexpr int kFsBody = 15;    // a label beside a full-size chrome icon
-inline constexpr int kIconSize = 18;
+// Geometry on a 4 px grid (docs/design.md). Every text and icon control is kCtl
+// high; bars are kCtl plus kBarPad on each side.
+inline constexpr int kS1 = 4, kS2 = 8, kS3 = 12, kS4 = 16, kS6 = 24;
+inline constexpr int kCtl = 28;                      // ~1.9x kFsUi; kCtl - cap height is even
+inline constexpr QSize kControl{kCtl, kCtl};
+inline constexpr int kBarPad = 6;                    // (kBar - kCtl) / 2, the one value off the grid
+inline constexpr int kBar = kCtl + 2 * kBarPad;      // top bar, footer, tool rail width
+inline constexpr int kRChip = 6;                     // a control's fill
+inline constexpr int kRBar = kRChip + kS1;           // a floating bar or menu around kS1-inset chips
+inline constexpr int kRPop = 14;                     // popovers, toast; children take kRChip
+// The type scale: captions and technical values, then labels. Painted text uses these too.
+inline constexpr int kFsCaption = 12;
+inline constexpr int kFsUi = 15;
+inline constexpr int kFsDisplay = 18;
+inline constexpr int kIconSize = 18;                 // a free-standing chrome icon
 // tintedIcon insets the glyph by size/11 per side; this is the ink that remains.
 constexpr int iconInk(int size) { return size * 9 / 11; }
 // The floating bars sit right on the canvas with nothing else competing, so
@@ -59,10 +63,33 @@ QToolButton *floatButton(QWidget *parent, const QString &name, const QString &ti
 // lands between label and chevron, so menu buttons are sized without it.
 void setMenuLabel(QToolButton *button, const QString &text);
 
+// A tool button that draws its own label: the capitals centred on its height,
+// the baseline on a whole device pixel. Qt centres the line box instead, which
+// leaves the capitals up to a pixel low and cannot be fixed from the stylesheet.
+// An icon sits left of the text, its ink centred on the capitals and kS2 away.
+class CapButton : public QToolButton {
+public:
+    using QToolButton::QToolButton;
+    QSize sizeHint() const override;
+    QSize minimumSizeHint() const override { return sizeHint(); }
+protected:
+    void paintEvent(QPaintEvent *) override;
+private:
+    // The glyph's ink inside its pixmap, in logical pixels; measured, not
+    // derived from the SVG, so every glyph sits by what is actually drawn.
+    QRectF inkRect(qreal dpr) const;
+    qreal contentWidth() const;
+    mutable QRectF m_ink;
+    mutable qreal m_inkDpr = 0;
+};
+
 // Tooltips put a shortcut after a tab ("Save\tEnter") and further hints on
 // their own lines. The compact tooltip shows the shortcut as a quieter
 // right-hand column instead of a separator glyph.
 QString tooltipHtml(const QString &tip);
+// What a screen reader should say for a tooltip: its first line, without the
+// shortcut after the tab ("Undo\tCtrl+Z" reads "Undo").
+QString spokenName(const QString &tip);
 
 } // namespace theme
 } // namespace eddy

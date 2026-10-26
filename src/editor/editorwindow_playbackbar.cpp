@@ -109,15 +109,15 @@ QWidget *EditorWindow::createPlaybackBar() {
     bar->setObjectName("PlaybackBar");
     bar->setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QVBoxLayout(bar);
-    lay->setContentsMargins(12, 4, 12, 2);
-    lay->setSpacing(2);
+    lay->setContentsMargins(theme::kS2, theme::kS2, theme::kS2, theme::kS2);
+    lay->setSpacing(theme::kS2);
     auto *playback = new QHBoxLayout;
-    playback->setSpacing(6);
+    playback->setSpacing(theme::kS2);
     auto *trimControls = new QWidget(bar);
     trimControls->setObjectName(QStringLiteral("TrimControls"));
     auto *trim = new QHBoxLayout(trimControls);
     trim->setContentsMargins(0, 0, 0, 0);
-    trim->setSpacing(0);   // captions and values bring their own 6px padding
+    trim->setSpacing(0);   // captions and values bring their own kS2 padding
 
     m_playButton = new QToolButton(bar);
     const QColor iconColor = palette().color(QPalette::ButtonText);
@@ -126,10 +126,10 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setAutoRaise(true);
     m_playButton->setFocusPolicy(Qt::NoFocus);
     m_playButton->setCursor(Qt::PointingHandCursor);
-    m_playButton->setFixedSize(theme::kBarButton);
+    m_playButton->setFixedSize(theme::kControl);
     m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_playButton->setToolTip(QStringLiteral("Play / Pause\tSpace / K"));
-    m_playButton->setAccessibleName(m_playButton->toolTip());
+    m_playButton->setAccessibleName(theme::spokenName(m_playButton->toolTip()));
     m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
     m_timeLabel->ensurePolished();
@@ -142,26 +142,26 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setAutoRaise(true);
     m_muteButton->setFocusPolicy(Qt::NoFocus);
     m_muteButton->setCursor(Qt::PointingHandCursor);
-    m_muteButton->setFixedSize(theme::kBarButton);
+    m_muteButton->setFixedSize(theme::kControl);
     m_muteButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
-    m_muteButton->setAccessibleName(m_muteButton->toolTip());
+    m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
 
     m_volumeSlider = new QSlider(Qt::Horizontal, bar);
     m_volumeSlider->setObjectName("PlaybackVolume");
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(100);
-    m_volumeSlider->setFixedWidth(60);
+    m_volumeSlider->setFixedWidth(64);
     m_volumeSlider->setToolTip(QStringLiteral("Volume"));
     m_volumeSlider->setAccessibleName(QStringLiteral("Volume"));
     auto *audioMenu = new QMenu(m_muteButton);
     auto *audioWidget = new QWidget(audioMenu);
     auto *audioLayout = new QHBoxLayout(audioWidget);
-    audioLayout->setContentsMargins(8, 8, 8, 8);
+    audioLayout->setContentsMargins(theme::kS2, theme::kS2, theme::kS2, theme::kS2);
     auto *popupVolume = new QSlider(Qt::Horizontal, audioWidget);
     popupVolume->setRange(0, 100);
     popupVolume->setValue(100);
-    popupVolume->setFixedWidth(100);
+    popupVolume->setFixedWidth(96);
     popupVolume->setAccessibleName(tr("Volume"));
     audioLayout->addWidget(popupVolume);
     auto *audioAction = new QWidgetAction(audioMenu);
@@ -207,7 +207,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     for (auto *field : {m_trimInLabel, m_trimOutLabel}) {
         field->ensurePolished();
         field->setMaxLength(20);
-        field->setFixedHeight(theme::kBarButton.height());
+        field->setFixedHeight(theme::kCtl);
         field->setAccessibleName(field == m_trimInLabel ? tr("Trim start") : tr("Trim end"));
         field->setToolTip(field == m_trimInLabel
             ? tr("Start of the exported clip\nApply\tEnter\nCancel\tEsc")
@@ -216,39 +216,39 @@ QWidget *EditorWindow::createPlaybackBar() {
     }
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
     auto makeTrimButton = [bar](const QString &text, const QString &name) {
-        auto *button = new QToolButton(bar);
+        auto *button = new theme::CapButton(bar);
         button->setText(text);
         button->setObjectName(name);
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
         button->setCursor(Qt::PointingHandCursor);
-        button->setFixedHeight(theme::kBarButton.height());
+        button->setFixedHeight(theme::kCtl);
         return button;
     };
     auto *setIn = makeTrimButton(tr("Start"), QStringLiteral("TrimSetIn"));
     auto *setOut = makeTrimButton(tr("End"), QStringLiteral("TrimSetOut"));
     auto *reset = makeTrimButton({}, QStringLiteral("TrimReset"));
     reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
-    reset->setFixedWidth(theme::kBarButton.width());
+    reset->setFixedWidth(theme::kCtl);
     reset->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     setIn->setToolTip(tr("Set start to playhead\tI"));
     setOut->setToolTip(tr("Set end to playhead\tO"));
-    setIn->setAccessibleName(setIn->toolTip());
-    setOut->setAccessibleName(setOut->toolTip());
+    setIn->setAccessibleName(theme::spokenName(setIn->toolTip()));
+    setOut->setAccessibleName(theme::spokenName(setOut->toolTip()));
     reset->setToolTip(tr("Reset trim to the complete clip"));
-    reset->setAccessibleName(reset->toolTip());
+    reset->setAccessibleName(theme::spokenName(reset->toolTip()));
 
     trim->addWidget(setIn);
     trim->addWidget(m_trimInLabel);
-    trim->addSpacing(12);
+    trim->addSpacing(theme::kS3);
     trim->addWidget(setOut);
     trim->addWidget(m_trimOutLabel);
-    trim->addSpacing(12);
+    trim->addSpacing(theme::kS3);
     auto *durationCaption = new QLabel(tr("Duration"), trimControls);
     durationCaption->setObjectName(QStringLiteral("TrimDurationCaption"));
     trim->addWidget(durationCaption);
     trim->addWidget(m_trimDurationLabel);
-    trim->addSpacing(6);
+    trim->addSpacing(theme::kS2);
     trim->addWidget(reset);
     trim->addStretch(1);
     playback->addWidget(trimControls);
@@ -259,15 +259,15 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_loopButton->setAutoRaise(true);
     m_loopButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/loop.svg"), iconColor, iconColor));
     m_loopButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_loopButton->setFixedSize(theme::kBarButton);
+    m_loopButton->setFixedSize(theme::kControl);
     m_loopButton->setToolTip(tr("Loop the selected range"));
-    m_loopButton->setAccessibleName(m_loopButton->toolTip());
+    m_loopButton->setAccessibleName(theme::spokenName(m_loopButton->toolTip()));
     m_speedButton = new QToolButton(bar);
     m_speedButton->setObjectName(QStringLiteral("PlaybackSpeed"));
     m_speedButton->setText(QStringLiteral("1×"));
-    m_speedButton->setFixedHeight(theme::kBarButton.height());
+    m_speedButton->setFixedHeight(theme::kCtl);
     m_speedButton->setToolTip(tr("Preview speed"));
-    m_speedButton->setAccessibleName(m_speedButton->toolTip());
+    m_speedButton->setAccessibleName(theme::spokenName(m_speedButton->toolTip()));
     m_speedButton->setPopupMode(QToolButton::InstantPopup);
     auto *rates = new QMenu(m_speedButton);
     rates->setObjectName(QStringLiteral("PlaybackRateMenu"));
@@ -306,8 +306,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_videoPreview->setAttribute(Qt::WA_StyledBackground);
     m_videoPreview->setAttribute(Qt::WA_TransparentForMouseEvents);
     auto *previewLayout = new QVBoxLayout(m_videoPreview);
-    previewLayout->setContentsMargins(4, 4, 4, 4);
-    previewLayout->setSpacing(2);
+    previewLayout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    previewLayout->setSpacing(theme::kS1);
     m_previewImage = new QLabel(m_videoPreview);
     m_previewImage->setFixedSize(192, 108);
     m_previewImage->setAlignment(Qt::AlignCenter);
@@ -320,10 +320,9 @@ QWidget *EditorWindow::createPlaybackBar() {
     auto *previewOpacity = new QGraphicsOpacityEffect(m_videoPreview);
     previewOpacity->setOpacity(1);
     m_videoPreview->setGraphicsEffect(previewOpacity);
-    m_previewFade = new QPropertyAnimation(previewOpacity, "opacity", m_videoPreview);
-    m_previewFade->setDuration(100);
-    m_previewFade->setStartValue(0.0);
-    m_previewFade->setEndValue(1.0);
+    m_previewFade = new Spring(motion::kFast, [previewOpacity](qreal opacity) {
+        previewOpacity->setOpacity(opacity);
+    }, m_videoPreview);
     m_previewTimer = new QTimer(this);
     m_previewTimer->setSingleShot(true);
     m_previewTimer->setInterval(150);
@@ -377,7 +376,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
             palette().color(QPalette::ButtonText), palette().color(QPalette::ButtonText)));
         m_muteButton->setToolTip(muted ? tr("Unmute audio\nHold for volume") : tr("Mute audio\nHold for volume"));
-        m_muteButton->setAccessibleName(m_muteButton->toolTip());
+        m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
     });
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value){
         ensureVideoPlayer();
@@ -388,7 +387,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             const QColor color = palette().color(QPalette::ButtonText);
             m_muteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/volume.svg"), color, color));
             m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
-            m_muteButton->setAccessibleName(m_muteButton->toolTip());
+            m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
         }
     });
     m_seekTimer = new QTimer(this);
@@ -487,7 +486,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         const QColor ink = palette().color(QPalette::WindowText);
         for (auto motion : {ZoomSegment::Motion::Focused, ZoomSegment::Motion::Smooth,
                             ZoomSegment::Motion::Instant}) {
-            QAction *action = menu.addAction(motionIcon(motion, ink, theme::kFsSmall), motionName(motion));
+            QAction *action = menu.addAction(motionIcon(motion, ink, theme::kFsUi), motionName(motion));
             connect(action, &QAction::triggered, this, [this, id, motion] {
                 editZoom(id, [motion](ZoomSegment &z) { z.motion = motion; });
             });

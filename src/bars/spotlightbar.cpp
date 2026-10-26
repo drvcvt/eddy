@@ -12,7 +12,7 @@ static QToolButton *button(QWidget *parent, const char *label) {
     result->setCheckable(true);
     result->setAutoRaise(true);
     result->setFocusPolicy(Qt::NoFocus);
-    result->setFixedHeight(theme::kFloatButton.height());
+    result->setFixedHeight(theme::kCtl);
     return result;
 }
 
@@ -20,8 +20,8 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("SpotlightBar"));
     setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(2);
+    layout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    layout->setSpacing(theme::kS1);
 
     auto *shapeGroup = new QButtonGroup(this);
     shapeGroup->setExclusive(true);
@@ -57,7 +57,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
         b->setAutoRaise(true);
         b->setFocusPolicy(Qt::NoFocus);
         b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         b->hide();
         scopes->addButton(b, i);
         layout->addWidget(b);

@@ -17,14 +17,11 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("ExportPanel"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto *grid = new QGridLayout(this);
-    grid->setContentsMargins(12, 12, 12, 12);
-    grid->setHorizontalSpacing(12);
-    grid->setVerticalSpacing(6);
-    auto *title = new QLabel(tr("EXPORT"), this);
+    grid->setContentsMargins(theme::kS3, theme::kS3, theme::kS3, theme::kS3);
+    grid->setHorizontalSpacing(theme::kS3);
+    grid->setVerticalSpacing(theme::kS2);
+    auto *title = new QLabel(tr("Export"), this);
     title->setObjectName(QStringLiteral("ExportSection"));
-    QFont font = title->font();
-    font.setLetterSpacing(QFont::AbsoluteSpacing, 1.5);
-    title->setFont(font);
     grid->addWidget(title, m_row++, 0, 1, 2);
 
     m_preset = addRow(tr("Preset"), {tr("Original"), tr("Web"), tr("Small"), tr("GIF")});
@@ -57,7 +54,7 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     });
 
     auto *footer = new QHBoxLayout;
-    footer->setSpacing(8);
+    footer->setSpacing(theme::kS2);
     m_summary = new QLabel(this);
     m_summary->setObjectName(QStringLiteral("ExportSummary"));
     m_summary->setToolTip(tr("Output size and duration"));
@@ -66,14 +63,14 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     m_save = new QToolButton(this);
     m_save->setObjectName(QStringLiteral("ExportSave"));
     m_save->setCursor(Qt::PointingHandCursor);
-    m_save->setFixedHeight(theme::kFloatButton.height());
+    m_save->setFixedHeight(theme::kCtl);
     connect(m_save, &QToolButton::clicked, this, &ExportPanel::saveRequested);
     footer->addWidget(m_save);
-    grid->setRowMinimumHeight(m_row++, 2);
+    grid->setRowMinimumHeight(m_row++, theme::kS1);
     grid->addLayout(footer, m_row++, 0, 1, 2);
     // Projects keep the original and every layer editable (21.09. plan 5).
     auto *projects = new QHBoxLayout;
-    projects->setSpacing(4);
+    projects->setSpacing(theme::kS1);
     auto projectButton = [&](const QString &text, const QString &name, const QString &tip) {
         auto *b = new QToolButton(this);
         b->setObjectName(name);
@@ -81,7 +78,7 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
         b->setToolTip(tip);
         b->setAccessibleName(text);
         b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         projects->addWidget(b);
         return b;
     };
@@ -108,7 +105,7 @@ QButtonGroup *ExportPanel::addRow(const QString &label, const QStringList &choic
     groove->setObjectName(QStringLiteral("ExportSegments"));
     groove->setAttribute(Qt::WA_StyledBackground, true);
     auto *row = new QHBoxLayout(groove);
-    row->setContentsMargins(2, 2, 2, 2);
+    row->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);   // kRChip segments in a kRBar groove
     row->setSpacing(0);
     auto *group = new QButtonGroup(this);
     for (int i = 0; i < choices.size(); ++i) {
@@ -116,7 +113,7 @@ QButtonGroup *ExportPanel::addRow(const QString &label, const QStringList &choic
         b->setObjectName(QStringLiteral("ExportSegment"));
         b->setText(choices[i]);
         b->setCheckable(true);
-        b->setFixedHeight(20);
+        b->setFixedHeight(theme::kCtl);
         b->setCursor(Qt::PointingHandCursor);
         b->setAccessibleName(label + QLatin1Char(' ') + choices[i]);
         group->addButton(b, i);

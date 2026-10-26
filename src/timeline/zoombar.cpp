@@ -21,15 +21,15 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("ZoomBar"));
     setAttribute(Qt::WA_StyledBackground);
     auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(2);
+    layout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
+    layout->setSpacing(theme::kS1);
     auto button = [&](const QString &name, const QString &tip) {
         auto *b = new QToolButton(this);
         b->setObjectName(name);
         b->setToolTip(tip);
-        b->setAccessibleName(tip);
+        b->setAccessibleName(theme::spokenName(tip));
         b->setCursor(Qt::PointingHandCursor);
-        b->setFixedHeight(theme::kFloatButton.height());
+        b->setFixedHeight(theme::kCtl);
         layout->addWidget(b);
         return b;
     };
@@ -90,7 +90,7 @@ void ZoomBar::refreshTheme() {
     theme::setMenuArrow(m_motion);
     const QColor ink = QApplication::palette().color(QPalette::WindowText);
     for (QAction *a : m_motion->menu()->actions())
-        a->setIcon(motionIcon(a->data().value<ZoomSegment::Motion>(), ink, theme::kFsSmall));
+        a->setIcon(motionIcon(a->data().value<ZoomSegment::Motion>(), ink, theme::kFsUi));
 }
 
 }
