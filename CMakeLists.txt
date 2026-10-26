@@ -160,6 +160,7 @@ function(eddy_test path)
 endfunction()
 
 eddy_test(canvas/test_canvas)
+eddy_test(canvas/test_canvaszoom)
 eddy_test(canvas/test_previewitems)
 eddy_test(chrome/test_loupe)
 eddy_test(popovers/test_colorpopover)

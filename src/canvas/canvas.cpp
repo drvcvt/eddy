@@ -26,7 +26,9 @@ Canvas::Canvas(QGraphicsScene *scene, ToolController *tools, QWidget *parent)
     : QGraphicsView(scene, parent), m_tools(tools) {
     setRenderHint(QPainter::Antialiasing, true);
     setViewportUpdateMode(QGraphicsView::SmartViewportUpdate);
-    setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+    // Zoom anchors itself (zoomAt): Qt's AnchorUnderMouse uses the last pointer move the
+    // base view saw, which pans, drags and drawing never pass on.
+    setTransformationAnchor(QGraphicsView::NoAnchor);
     setDragMode(QGraphicsView::NoDrag);
     setFrameShape(QFrame::NoFrame);
     // Clean look: no scrollbars; pan via middle-drag, navigate via zoom.
@@ -140,31 +142,43 @@ void Canvas::cancelCameraDrag() {
 void Canvas::zoomBy(double factor) {
     const double next = qBound(0.05, m_targetZoom * factor, 32.0);
     if (qFuzzyCompare(next, m_targetZoom)) return;
-    m_fitted = false;
+    const QPointF centre(viewport()->width() / 2.0, viewport()->height() / 2.0);
+    const QPointF held = m_camera.isIdentity() ? sceneAt(centre) : m_viewCentre;
     m_targetZoom = next;
-    if (!m_animations) {
-        const double inc = m_targetZoom / m_zoom;
-        m_zoom = m_targetZoom;
-        withoutCamera([&] { scale(inc, inc); updateNavigationBounds(); });
-        emit viewChanged();
-        return;
-    }
+    if (!m_animations) { zoomAt(next, centre, held); return; }
     if (!m_zoomAnim) {
         m_zoomAnim = new QVariantAnimation(this);
         m_zoomAnim->setDuration(110);
         m_zoomAnim->setEasingCurve(QEasingCurve::OutCubic);
-        connect(m_zoomAnim, &QVariantAnimation::valueChanged, this, [this](const QVariant &v){
-            const double target = v.toDouble();
-            const double inc = target / m_zoom;
-            m_zoom = target;
-            withoutCamera([&] { scale(inc, inc); updateNavigationBounds(); });
-            emit viewChanged();
-        });
     }
     m_zoomAnim->stop();
+    m_zoomAnim->disconnect(this);
+    connect(m_zoomAnim, &QVariantAnimation::valueChanged, this, [this, centre, held](const QVariant &v) {
+        const double target = m_targetZoom;
+        zoomAt(v.toDouble(), centre, held);
+        m_targetZoom = target;
+    });
     m_zoomAnim->setStartValue(m_zoom);
-    m_zoomAnim->setEndValue(m_targetZoom);
+    m_zoomAnim->setEndValue(next);
     m_zoomAnim->start();
+}
+
+QPointF Canvas::sceneAt(QPointF viewPos) const {
+    return viewportTransform().inverted().map(viewPos);
+}
+
+void Canvas::zoomAt(double zoom, QPointF viewPos, QPointF scenePoint) {
+    m_fitted = false;
+    withoutCamera([&] {
+        scale(zoom / m_zoom, zoom / m_zoom);
+        m_zoom = m_targetZoom = zoom;
+        updateNavigationBounds();
+        // Whole scroll-bar pixels: round the remaining offset once, from the exact point.
+        const QPointF off = viewportTransform().map(scenePoint) - viewPos;
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() + qRound(off.x()));
+        verticalScrollBar()->setValue(verticalScrollBar()->value() + qRound(off.y()));
+    });
+    emit viewChanged();
 }
 
 void Canvas::resetZoom() {
@@ -403,10 +417,24 @@ void Canvas::keyReleaseEvent(QKeyEvent *e) {
 }
 
 void Canvas::wheelEvent(QWheelEvent *e) {
-    if (m_eyedropper) { e->accept(); return; }   // don't zoom under a frozen snapshot
-    const double step = e->angleDelta().y() > 0 ? 1.15 : 1.0/1.15;
-    zoomBy(step);
     e->accept();
+    if (m_eyedropper) return;   // don't zoom under a frozen snapshot
+    // 120 is one notch; high-resolution wheels and touchpads send fractions of
+    // one, sideways scrolling sends none. Unanimated: each step follows the hand.
+    const int delta = e->angleDelta().y();
+    if (delta == 0) return;
+    const double next = qBound(0.05, m_targetZoom * std::pow(1.15, delta / 120.0), 32.0);
+    if (qFuzzyCompare(next, m_targetZoom)) return;
+    if (m_zoomAnim) m_zoomAnim->stop();
+    // With a camera on, the user's own view is not what shows: hold its centre.
+    const QPointF centre(viewport()->width() / 2.0, viewport()->height() / 2.0);
+    const QPointF pos = m_camera.isIdentity() ? e->position() : centre;
+    const QPoint scroll(horizontalScrollBar()->value(), verticalScrollBar()->value());
+    if (pos != m_wheelAnchor.view || scroll != m_wheelAnchor.scroll || m_zoom != m_wheelAnchor.zoom)
+        m_wheelAnchor = {pos, m_camera.isIdentity() ? sceneAt(pos) : m_viewCentre, {}, 0};
+    zoomAt(next, pos, m_wheelAnchor.scene);
+    m_wheelAnchor.scroll = {horizontalScrollBar()->value(), verticalScrollBar()->value()};
+    m_wheelAnchor.zoom = m_zoom;
 }
 
 void Canvas::mousePressEvent(QMouseEvent *e) {
