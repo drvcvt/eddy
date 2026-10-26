@@ -10,3 +10,7 @@
 /docs/handoffs/
 /docs/superpowers/
 OCR_CHANGES.md
+
+# Plans, specs, handoffs and design notes stay local; the public repo carries the product.
+/docs/
+.clangd
