@@ -234,6 +234,32 @@ private slots:
         QCOMPARE(field->text(), QStringLiteral("0:00.000"));
         QCOMPARE(window.findChild<Toast *>()->text(), QStringLiteral("Keep at least part of the clip"));
     }
+    void changingTheRateWhilePausedLeavesThePlayheadAlone() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("rate.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "color=blue:s=96x64:r=25:d=3",
+            "-c:v", "libx264", "-g", "10", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(96, 64), 3000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        QTRY_VERIFY(player->isSeekable());
+        StudioDocument studio = window.studioDocument();
+        studio.fragments = {{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}};
+        window.setStudioDocument(studio);
+        player->setPosition(1500);   // paused, inside the cut
+        QTRY_VERIFY(qAbs(player->position() - 1500) <= 40);
+        auto *speed = window.findChild<QToolButton *>(QStringLiteral("PlaybackSpeed"));
+        for (auto *action : speed->menu()->actions())
+            if (action->data().toDouble() == 2.0) action->trigger();
+        QTest::qWait(300);
+        QVERIFY2(qAbs(player->position() - 1500) <= 40, qPrintable(QString::number(player->position())));
+        QVERIFY(player->playbackState() != QMediaPlayer::PlayingState);
+    }
     void playAfterATrailingCutStartsOver() {
         // The last second is cut: playback ends at 2 s, and Play then starts from the top
         // instead of parking in the cut and stopping again at once.

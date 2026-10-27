@@ -294,7 +294,10 @@ QWidget *EditorWindow::createPlaybackBar() {
             for (auto *other : m_speedButton->menu()->actions())
                 other->setChecked(qFuzzyCompare(other->data().toDouble(), rate));
             if (m_player) m_player->setPlaybackRate(rate);
-            if (m_player) followPlaybackPieces(m_player->position());
+            // Paused, a new rate is only remembered: following the pieces would seek out of
+            // a cut, or end playback in a trailing one and start the loop.
+            if (m_player && m_player->playbackState() == QMediaPlayer::PlayingState)
+                followPlaybackPieces(m_player->position());
         });
     }
     m_speedButton->setMenu(rates);
