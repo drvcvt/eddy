@@ -151,7 +151,8 @@ void PreviewVideoItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *
         } else if (!m_refreshQueued) {
             // Too soon after the last one: show that, and come back for the newest.
             m_refreshQueued = true;
-            QTimer::singleShot(interval - since, this, [this] {
+            // since may exceed interval here (up to 4x); Qt warns on a negative timeout.
+            QTimer::singleShot(qMax<qint64>(0, interval - since), this, [this] {
                 m_refreshQueued = false;
                 update();
             });
