@@ -171,11 +171,11 @@ private slots:
             return w ? QRect(w->mapTo(window.get(), QPoint()), w->size()) : QRect();
         };
         const QRect timeline = rect("VideoTimeline"), play = rect("PlaybackPlay"), fit = rect("ZoomFit");
-        const QRect volume = rect("PlaybackVolume"), status = rect("VideoExportStatus");
+        const QRect mute = rect("PlaybackMute"), status = rect("VideoExportStatus");
         const QRect trim = rect("TrimControls"), pill = rect("DragPill");
         // One left and one right edge for the whole bottom, the tool rail's.
         for (const QRect &r : {timeline, play, fit}) QCOMPARE(r.left(), theme::kBarPad);
-        for (const QRect &r : {timeline, volume, status}) QCOMPARE(window->width() - 1 - r.right(), theme::kBarPad);
+        for (const QRect &r : {timeline, mute, status}) QCOMPARE(window->width() - 1 - r.right(), theme::kBarPad);
         // The trim group and the drag pill on the window's middle.
         QVERIFY2(qAbs(trim.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(trim.center().x())));
         QVERIFY2(qAbs(pill.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(pill.center().x())));
@@ -186,7 +186,7 @@ private slots:
         QCOMPARE(trim.top() - strip, theme::kS2);
         QCOMPARE(fit.top() - (trim.bottom() + 1), theme::kS3);
         // The row's controls share its middle.
-        for (const QRect &r : {play, volume}) QCOMPARE(r.center().y(), trim.center().y());
+        for (const QRect &r : {play, mute}) QCOMPARE(r.center().y(), trim.center().y());
     }
 
     void narrowWindowKeepsEveryControlInside() {

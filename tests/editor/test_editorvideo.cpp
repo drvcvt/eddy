@@ -471,8 +471,10 @@ private slots:
             // the first trim. All digits must fit using the styled font.
             QVERIFY2(end - start >= field->fontMetrics().horizontalAdvance(field->text()) - 1, name);
         }
+        // Wide, the row shows the same controls: volume stays in the speaker's hold menu.
         window.resize(1200, 680);
-        QTRY_VERIFY_WITH_TIMEOUT(window.findChild<QSlider *>("PlaybackVolume")->isVisible(), 1000);
+        QTRY_COMPARE_WITH_TIMEOUT(window.width(), 1200, 1000);
+        QVERIFY(!window.findChild<QSlider *>("PlaybackVolume")->isVisible());
     }
     void videoMenusOpenFromKeyboardWithoutRunningPrimaryAction() {
         MediaDocument doc; doc.kind = MediaKind::Video;

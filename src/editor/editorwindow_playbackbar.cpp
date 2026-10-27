@@ -157,23 +157,19 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
     m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
 
-    m_volumeSlider = new QSlider(Qt::Horizontal, bar);
-    m_volumeSlider->setObjectName("PlaybackVolume");
-    m_volumeSlider->setRange(0, 100);
-    m_volumeSlider->setValue(100);
-    m_volumeSlider->setFixedSize(64, theme::kCtl);   // on the row's middle, like its neighbours
-    m_volumeSlider->setToolTip(QStringLiteral("Volume"));
-    m_volumeSlider->setAccessibleName(QStringLiteral("Volume"));
+    // Volume lives in the speaker's hold menu only: one control for it, and a row
+    // that shows the same controls at every width.
     auto *audioMenu = new QMenu(m_muteButton);
     auto *audioWidget = new QWidget(audioMenu);
     auto *audioLayout = new QHBoxLayout(audioWidget);
     audioLayout->setContentsMargins(theme::kS2, theme::kS2, theme::kS2, theme::kS2);
-    auto *popupVolume = new QSlider(Qt::Horizontal, audioWidget);
-    popupVolume->setRange(0, 100);
-    popupVolume->setValue(100);
-    popupVolume->setFixedWidth(96);
-    popupVolume->setAccessibleName(tr("Volume"));
-    audioLayout->addWidget(popupVolume);
+    m_volumeSlider = new QSlider(Qt::Horizontal, audioWidget);
+    m_volumeSlider->setObjectName(QStringLiteral("PlaybackVolume"));
+    m_volumeSlider->setRange(0, 100);
+    m_volumeSlider->setValue(100);
+    m_volumeSlider->setFixedWidth(96);
+    m_volumeSlider->setAccessibleName(tr("Volume"));
+    audioLayout->addWidget(m_volumeSlider);
     auto *audioAction = new QWidgetAction(audioMenu);
     audioAction->setDefaultWidget(audioWidget);
     audioMenu->addAction(audioAction);
@@ -193,8 +189,6 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setMenu(audioMenu);
     m_muteButton->setPopupMode(QToolButton::DelayedPopup);
     m_muteButton->setFocusPolicy(Qt::StrongFocus);
-    connect(popupVolume, &QSlider::valueChanged, m_volumeSlider, &QSlider::setValue);
-    connect(m_volumeSlider, &QSlider::valueChanged, popupVolume, &QSlider::setValue);
 
     leftGroup->addWidget(m_playButton);
     leftGroup->addWidget(m_timeLabel);
@@ -307,7 +301,6 @@ QWidget *EditorWindow::createPlaybackBar() {
     rightGroup->addWidget(m_speedButton);
     rightGroup->addWidget(m_noAudio);
     rightGroup->addWidget(m_muteButton);
-    rightGroup->addWidget(m_volumeSlider);
     playback->addLayout(rightGroup, 0, 2, Qt::AlignRight | Qt::AlignVCenter);
     lay->addWidget(m_timeline);
     lay->addLayout(playback);
@@ -515,7 +508,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
     });
     bar->stack = lay; bar->transport = playback; bar->left = leftGroup; bar->right = rightGroup;
-    bar->trim = trimControls; bar->volume = m_volumeSlider;
+    bar->trim = trimControls;
     bar->adapt();
     return bar;
 }

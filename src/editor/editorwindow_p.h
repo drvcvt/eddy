@@ -46,13 +46,11 @@ public:
     QGridLayout *transport = nullptr;
     QHBoxLayout *left = nullptr, *right = nullptr;
     QWidget *trim = nullptr;
-    QWidget *volume = nullptr;
     QSize minimumSizeHint() const override { return {0, QWidget::minimumSizeHint().height()}; }
     void adapt() {
         if (!trim || m_adapting) return;
         m_adapting = true;
-        const int volumeWidth = volume->sizeHint().width() + right->spacing();
-        const int side = qMax(left->minimumSize().width(), right->minimumSize().width() + (volume->isVisible() ? 0 : volumeWidth));
+        const int side = qMax(left->minimumSize().width(), right->minimumSize().width());
         const int needed = trim->minimumSizeHint().width() + 2 * side + 2 * transport->horizontalSpacing()
                            + contentsMargins().left() + contentsMargins().right();
         const bool wide = width() >= needed;
@@ -60,10 +58,9 @@ public:
             m_wide = wide;
             if (wide) { stack->removeWidget(trim); transport->addWidget(trim, 0, 1, Qt::AlignCenter); }
             else { transport->removeWidget(trim); stack->addWidget(trim); }
-            volume->setVisible(wide);
             updateGeometry();
         }
-        const int balanced = wide ? qMax(left->minimumSize().width(), right->minimumSize().width()) : 0;
+        const int balanced = wide ? side : 0;
         transport->setColumnMinimumWidth(0, balanced);
         transport->setColumnMinimumWidth(2, balanced);
         m_adapting = false;
