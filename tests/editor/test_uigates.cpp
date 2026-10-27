@@ -179,9 +179,12 @@ private slots:
         // The trim group and the drag pill on the window's middle.
         QVERIFY2(qAbs(trim.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(trim.center().x())));
         QVERIFY2(qAbs(pill.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(pill.center().x())));
-        // Rows kS2 apart: strip to the transport row (its tallest part, the trim field), and on to the footer.
-        QCOMPARE(trim.top() - (timeline.bottom() + 1), theme::kS2);
-        QCOMPARE(fit.top() - (trim.bottom() + 1), theme::kS2);
+        // The transport row (its tallest part, the trim field) kS2 under the film strip it drives,
+        // the footer kS3 under it: the row belongs to the timeline, not to the footer.
+        const int strip = timeline.top() + int(VideoTimeline::kTrackTop + VideoTimeline::kTrackH);
+        QCOMPARE(timeline.bottom() + 1, strip);   // nothing empty under the last lane
+        QCOMPARE(trim.top() - strip, theme::kS2);
+        QCOMPARE(fit.top() - (trim.bottom() + 1), theme::kS3);
         // The row's controls share its middle.
         for (const QRect &r : {play, volume}) QCOMPARE(r.center().y(), trim.center().y());
     }

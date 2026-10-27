@@ -80,8 +80,9 @@ private slots:
         QVERIFY(timeline.zoomLaneRect().isEmpty());
         timeline.setZoomLaneVisible(true);
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep);
-        QCOMPARE(timeline.zoomLaneRect().top(), qreal(VideoTimeline::kBaseH));
+        QCOMPARE(timeline.zoomLaneRect().top(), qreal(VideoTimeline::kBaseH + theme::kS1));
         QCOMPARE(timeline.zoomLaneRect().height(), 28.0);
+        QCOMPARE(timeline.zoomLaneRect().bottom(), qreal(timeline.height()));   // nothing empty under it
         timeline.setZoomLaneVisible(false);
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH);
     }
@@ -238,7 +239,7 @@ private slots:
         QVERIFY(timeline.maskLaneRect().isEmpty());
         timeline.setMasks({{7, 2000, 4000, QStringLiteral("Blur"), false}});
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kMaskStep);
-        QCOMPARE(timeline.maskLaneRect().top(), qreal(VideoTimeline::kBaseH));
+        QCOMPARE(timeline.maskLaneRect().top(), qreal(VideoTimeline::kBaseH + theme::kS1));
         timeline.show();
         QSignalSpy selected(&timeline, &VideoTimeline::maskSelected);
         QSignalSpy edited(&timeline, &VideoTimeline::maskWindowEdited);
@@ -351,7 +352,7 @@ private slots:
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH + 2 * VideoTimeline::kLaneStep);
         const QRectF lane = timeline.waveformRect();
         QCOMPARE(lane.height(), 28.0);
-        QCOMPARE(lane.top(), qreal(VideoTimeline::kBaseH));  // right under the film strip
+        QCOMPARE(lane.top(), qreal(VideoTimeline::kBaseH + theme::kS1));  // right under the film strip
         QCOMPARE(timeline.zoomLaneRect().top(), lane.bottom() + 4);
         QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
         auto xAt = [&](qint64 ms) { return int(lane.left() + lane.width() * ms / 3000.0); };

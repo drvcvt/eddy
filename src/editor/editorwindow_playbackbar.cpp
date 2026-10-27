@@ -109,9 +109,10 @@ QWidget *EditorWindow::createPlaybackBar() {
     bar->setObjectName("PlaybackBar");
     bar->setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QVBoxLayout(bar);
-    // One left and right edge with the tool rail and footer (kBarPad from the window);
-    // rows kS2 apart, the footer's own kBarPad completing the last gap.
-    lay->setContentsMargins(theme::kBarPad, theme::kS2, theme::kBarPad, theme::kS2 - theme::kBarPad);
+    // One left and right edge with the tool rail and footer (kBarPad from the window).
+    // The transport row sits kS2 under the strip it drives and kS3 above the footer,
+    // whose own kBarPad completes that gap: it reads as the timeline's, not the footer's.
+    lay->setContentsMargins(theme::kBarPad, theme::kS2, theme::kBarPad, theme::kS3 - theme::kBarPad);
     lay->setSpacing(theme::kS2);
     auto *playback = new QGridLayout;
     playback->setContentsMargins(0, 0, 0, 0);

@@ -25,8 +25,9 @@ public:
     static constexpr qreal kTrackTop = kRulerH + theme::kS1;
     static constexpr qreal kTrackH = 32;
     static constexpr qreal kLaneH = 28, kMaskH = 20;
-    static constexpr int kBaseH = int(kTrackTop + kTrackH) + theme::kS1;
-    static constexpr int kLaneStep = int(kLaneH) + theme::kS1, kMaskStep = int(kMaskH) + theme::kS1;
+    // Each lane brings the kS1 above it; nothing empty stays under the last one.
+    static constexpr int kBaseH = int(kTrackTop + kTrackH);
+    static constexpr int kLaneStep = theme::kS1 + int(kLaneH), kMaskStep = theme::kS1 + int(kMaskH);
     explicit VideoTimeline(QWidget *parent = nullptr);
 
     void setDuration(qint64 durationMs);
