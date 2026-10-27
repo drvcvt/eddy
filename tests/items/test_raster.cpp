@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QImage>
+#include <QPainter>
 #include "items/regions/rasteritem.h"
 
 using namespace eddy;
@@ -15,9 +16,17 @@ class TestRaster : public QObject {
     Q_OBJECT
 private slots:
     void redactBlurObscuresSharpDetail() {
+        // What the viewer and an image export see: the small image stretched back over
+        // the region with smooth sampling, the way RedactItem paints it.
         QImage src = checker(48, 48);
-        QImage out = redactBlur(src);
-        QCOMPARE(out.size(), src.size());
+        QImage small = redactBlur(src);
+        QCOMPARE(small.size(), QSize(4, 4));
+        QImage out(src.size(), QImage::Format_ARGB32_Premultiplied);
+        out.fill(Qt::transparent);
+        QPainter painter(&out);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        painter.drawImage(QRectF(out.rect()), small);
+        painter.end();
         QVERIFY(out.pixelColor(24, 24) != src.pixelColor(24, 24));   // not a no-op
         // Heavy blur: a center pixel is no longer pure black/white...
         QColor c = out.pixelColor(24, 24);
@@ -30,8 +39,8 @@ private slots:
         QImage tiny(3, 3, QImage::Format_ARGB32);
         tiny.fill(Qt::red);
         QImage out = redactBlur(tiny);
-        QCOMPARE(out.size(), tiny.size());
-        QVERIFY(!out.isNull());
+        QCOMPARE(out.size(), QSize(1, 1));   // never empty
+        QCOMPARE(out.pixelColor(0, 0), QColor(Qt::red));
     }
 };
 

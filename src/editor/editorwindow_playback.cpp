@@ -324,10 +324,17 @@ void EditorWindow::ensureVideoPlayer() {
             if (!frame.isValid()) return;
             m_lastVideoFrame = frame;
             m_videoBackgroundCurrent = false;
+            // Pixels only where something reads them: a blur samples the frame, OCR reads it,
+            // the Redact tool draws from it. A blacken cover needs none (700 ms of every 3 s
+            // of 1080p playback went to converting frames for one).
             bool needsPixels = m_tools->tool() == ToolType::Redact;
             if (!needsPixels)
                 for (QGraphicsItem *item : m_scene->items())
-                    if (dynamic_cast<RedactItem *>(item)) { needsPixels = true; break; }
+                    if (auto *redact = dynamic_cast<RedactItem *>(item);
+                        redact && (RedactItem::isBlur(redact->mode()) || RedactItem::isOcr(redact->mode()))) {
+                        needsPixels = true;
+                        break;
+                    }
             if (needsPixels) updateVideoBackground();
             if (m_player->playbackState() == QMediaPlayer::PlayingState)
                 m_videoStill->hide();

@@ -46,7 +46,7 @@ private:
     QRectF m_region;
     QVector<QRectF> m_textRects;
     bool m_detecting = false;
-    QImage m_cache;         // blurred crop of the region (blur modes only)
+    QImage m_cache;         // the region shrunk to 1/12, drawn stretched over it (blur modes only)
     QRect m_cacheRect;      // integer scene rect the cache covers
 };
 

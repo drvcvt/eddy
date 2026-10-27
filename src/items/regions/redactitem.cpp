@@ -96,7 +96,8 @@ void RedactItem::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *)
         for (const QRectF &r : rects) {
             p->save();
             p->setClipRect(r);
-            p->drawImage(mapFromScene(QPointF(m_cacheRect.topLeft())), m_cache);
+            p->setRenderHint(QPainter::SmoothPixmapTransform);
+            p->drawImage(QRectF(mapFromScene(QPointF(m_cacheRect.topLeft())), QSizeF(m_cacheRect.size())), m_cache);
             p->restore();
         }
     } else {
