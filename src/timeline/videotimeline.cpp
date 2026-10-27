@@ -35,8 +35,8 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(QStringLiteral("Video timeline"));
-    setToolTip(QStringLiteral("Drag to seek or pull the ends to trim\nMark a range to cut\tShift+drag\n"
-                              "Fine trim\tShift on an end\nZoom\tWheel\nPan\tShift+wheel"));
+    // The tooltip follows the area under the pointer (hintAt); over the strip the frame
+    // preview is the hint and there is none.
     m_edgePan.setInterval(33);
     connect(&m_edgePan, &QTimer::timeout, this, [this] {
         if (!interacting()) return;
@@ -538,7 +538,23 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     event->accept();
 }
 
+// What the area under the pointer does, for the tooltip: the gestures it takes.
+QString VideoTimeline::hintAt(QPointF pos) const {
+    if (pos.y() < kRulerH)
+        return tr("Zoom\tWheel\nPan\tShift+wheel\nFit clip\t0\nMark a range to cut\tShift+drag below");
+    Drag part = Drag::None;
+    if (inZoomLane(pos))
+        return zoomAt(pos, &part) ? tr("Drag to move, pull an end to resize\nRemove\tDelete")
+                                  : tr("Add a zoom here\tClick or Z");
+    if (maskAt(pos, &part) >= 0) return tr("Drag to move, pull an end to resize");
+    const qreal inDistance = qAbs(pos.x() - (xForTime(m_in) - kInset / 2));
+    const qreal outDistance = qAbs(pos.x() - (xForTime(m_out) + kInset / 2));
+    if (qMin(inDistance, outDistance) <= kGripReach) return tr("Pull to trim\nFine trim\tShift");
+    return {};
+}
+
 void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
+    if (m_drag == Drag::None) setToolTip(hintAt(event->position()));
     if (m_drag == Drag::None) {
         const int cut = cutAt(event->position());
         if (cut != m_hoverCut) {

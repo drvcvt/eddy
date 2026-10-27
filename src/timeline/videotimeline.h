@@ -191,6 +191,7 @@ private:
     // lit notches, the fragments stepping back. Aimed while painting, read for the inks.
     SpringLevels *m_states = nullptr;
     void syncStates();
+    QString hintAt(QPointF pos) const;
     // Keys for the eased states: one space per kind, the item's own id below.
     static constexpr quint64 kGripIn = 1, kGripOut = 2, kFocus = 3;
     static constexpr quint64 kZoom = 1, kMask = 2, kNotch = 3, kDim = 4;

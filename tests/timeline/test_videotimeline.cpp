@@ -298,6 +298,19 @@ private slots:
         QApplication::sendEvent(&timeline, &wheel);
         QVERIFY(qAbs(timeline.visibleEnd() - timeline.visibleStart() - 4167) <= 1);   // at once
     }
+    void theTooltipNamesWhatTheAreaDoes() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setTrimRange(3000, 10000);
+        timeline.setZoomLaneVisible(true);
+        timeline.show();
+        const auto hintAt = [&](QPoint at) { QTest::mouseMove(&timeline, at); return timeline.toolTip(); };
+        QVERIFY(hintAt(QPoint(156, 8)).contains(QStringLiteral("Wheel")));         // the ruler
+        QVERIFY(hintAt(QPoint(156, 36)).isEmpty());                                // the strip: its frame preview
+        QVERIFY(hintAt(QPoint(93, 36)).startsWith(QStringLiteral("Pull to trim")));  // the In grip
+        QVERIFY(hintAt(QPoint(200, 66)).startsWith(QStringLiteral("Add a zoom")));   // the empty zoom lane
+    }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;
         timeline.resize(312, 84);

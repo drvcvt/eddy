@@ -218,7 +218,6 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
         }
     }
     if (event->type() == QEvent::ToolTip && !widget->toolTip().isEmpty()) {
-        if (widget == m_timeline) return true; // The timeline has its own image/time hint.
         const auto *help = static_cast<QHelpEvent *>(event);
         m_tooltip->setText(theme::tooltipHtml(widget->toolTip()));
         m_tooltip->adjustSize();
