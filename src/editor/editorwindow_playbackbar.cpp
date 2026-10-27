@@ -140,11 +140,13 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_playButton->setToolTip(QStringLiteral("Play / Pause\tSpace / K"));
     m_playButton->setAccessibleName(theme::spokenName(m_playButton->toolTip()));
-    m_timeLabel = new QLabel(playbackTime(0, m_media.video.durationMs), bar);
+    // The position only, to the millisecond like the trim fields; the length is End and
+    // the ruler's. Wide enough for the last moment, so it never changes width.
+    m_timeLabel = new QLabel(formatPreciseTime(0), bar);
     m_timeLabel->setObjectName("PlaybackTime");
     m_timeLabel->ensurePolished();
     m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(
-        playbackTime(m_media.video.durationMs, m_media.video.durationMs)));
+        formatPreciseTime(m_media.video.durationMs)));
 
     m_muteButton = new QToolButton(bar);
     m_muteButton->setObjectName("PlaybackMute");

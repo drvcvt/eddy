@@ -78,10 +78,6 @@ private:
 #ifdef Q_OS_WIN
 void applyWindowsTitleBarTheme(QWidget *window, bool dark);
 #endif
-// The playback readout: position and length to the millisecond, like the trim fields.
-inline QString playbackTime(qint64 position, qint64 duration) {
-    return formatPreciseTime(position) + QStringLiteral(" / ") + formatPreciseTime(duration);
-}
 
 // Above the item if there is room, else below, else wherever it covers less of it.
 QPoint contextBarPosition(const QRect &item, const QSize &bar, const QSize &viewport);

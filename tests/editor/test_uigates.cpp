@@ -189,6 +189,17 @@ private slots:
         for (const QRect &r : {play, mute}) QCOMPARE(r.center().y(), trim.center().y());
     }
 
+    void readoutShowsThePositionOnly() {
+        // The length is End's and the ruler's; the readout keeps one width for every position.
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("readout.mp4")), QSize(1080, 700));
+        auto *time = window->findChild<QLabel *>(QStringLiteral("PlaybackTime"));
+        QVERIFY(time);
+        QVERIFY2(!time->text().contains(QLatin1Char('/')), qPrintable(time->text()));
+        QCOMPARE(time->minimumWidth(), time->maximumWidth());
+        QCOMPARE(time->width(), time->fontMetrics().horizontalAdvance(formatPreciseTime(4000)));
+    }
+
     void narrowWindowKeepsEveryControlInside() {
         QTemporaryDir dir;
         // Stress: a long file name in the title and a long message in the toast.

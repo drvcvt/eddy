@@ -464,15 +464,17 @@ void EditorWindow::ensureVideoPlayer() {
         m_trimOutMs = m_timeline->trimOut();
         updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
         rebuildCamera();
-        if (m_timeLabel)
-            m_timeLabel->setText(playbackTime(m_player->position(), duration));
+        if (m_timeLabel) {
+            m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(formatPreciseTime(duration)));
+            m_timeLabel->setText(formatPreciseTime(m_player->position()));
+        }
     });
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos){
         if (m_timelineActive || m_seekSettling) return;
         if (m_timeline && (m_presentedStart < 0 || m_player->playbackState() != QMediaPlayer::PlayingState))
             m_timeline->setPosition(pos);
         if (m_timeLabel)
-            m_timeLabel->setText(playbackTime(pos, m_player->duration()));
+            m_timeLabel->setText(formatPreciseTime(pos));
         if (m_player->playbackState() == QMediaPlayer::PlayingState) followPlaybackPieces(pos);
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
             handlePlaybackEnd();
