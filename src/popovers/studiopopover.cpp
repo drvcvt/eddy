@@ -178,6 +178,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
     presetMenu->setWindowFlag(Qt::FramelessWindowHint);
     presetMenu->setAttribute(Qt::WA_TranslucentBackground);
     m_presets->setMenu(presetMenu);
+    theme::setMenuArrow(m_presets);   // a menu, like every other menu button
     setPresets({});
     if (camera.available) {
         auto *tabGroup = new QButtonGroup(this);

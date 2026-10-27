@@ -227,7 +227,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
 
     auto *shelf = mkBtn(false, false, new theme::CapButton); shelf->setObjectName("SendToShelf");
     // Same icon box as Save and Copy so the row's glyphs start and end on one
-    // line; the label takes the body step so the 15px ink is not larger than it.
+    // line; its ink stays below the label's capitals.
     shelf->setIcon(theme::tintedIcon(QStringLiteral(":/icons/shelf.svg"),
                                      iconRest, iconHover));
     shelf->setIconSize(QSize(theme::kLabelIcon, theme::kLabelIcon));
@@ -236,6 +236,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     shelf->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     connect(shelf, &QToolButton::clicked, this, [this]{ emit sendToShelfRequested(); });
     lay->addWidget(shelf);
+    lay->addSpacing(theme::kS3);   // the theme is a view setting, not an output action
 
     m_themeBtn = mkBtn(false, true);
     m_themeBtn->setObjectName(QStringLiteral("Theme"));

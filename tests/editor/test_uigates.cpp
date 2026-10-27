@@ -125,6 +125,31 @@ private slots:
         QVERIFY(std::abs(gripMiddle - capsMiddle) <= 0.5);
     }
 
+    void contextBarsSeparateTheirGroups() {
+        // Buttons kS1 apart, groups kS2: sizes | bold | alignment | fill.
+        TextBar text;
+        text.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&text));
+        const auto gap = [](QWidget *bar, const char *a, const char *b) {
+            const QWidget *left = bar->findChild<QWidget *>(QString::fromLatin1(a));
+            const QWidget *right = bar->findChild<QWidget *>(QString::fromLatin1(b));
+            return right->geometry().left() - left->geometry().right() - 1;
+        };
+        QCOMPARE(gap(&text, "TextSize14", "TextSize20"), theme::kS1);
+        QCOMPARE(gap(&text, "TextSize28", "TextBold"), theme::kS2);
+        QCOMPARE(gap(&text, "TextBold", "TextAlignLeft"), theme::kS2);
+        QCOMPARE(gap(&text, "TextAlignRight", "TextFill"), theme::kS2);
+        // Without the video's time scopes the bar keeps even padding: no gap left over.
+        RedactBar redact;
+        redact.setTimeScope(false, false);
+        redact.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&redact));
+        int right = 0;
+        for (auto *b : redact.findChildren<QToolButton *>())
+            if (b->isVisible()) right = std::max(right, b->geometry().right());
+        QCOMPARE(redact.width() - 1 - right, theme::kS1);
+    }
+
     void toolRailIconsShareOneAxis() {
         QImage image(800, 500, QImage::Format_ARGB32_Premultiplied);
         image.fill(Qt::white);

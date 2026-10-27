@@ -36,6 +36,13 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
         lay->addWidget(b);
     }
     new SelectionGlide(group, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
+    // Groups kS2 apart, buttons kS1: an empty widget adds the second kS1 and goes
+    // with the scopes, so an image's bar keeps even padding.
+    auto *gap = new QWidget(this);
+    gap->setObjectName(QStringLiteral("ScopeGap"));
+    gap->setFixedSize(0, 0);
+    gap->hide();
+    lay->addWidget(gap);
     // Videos: the whole clip or from the playhead on (studio plan 6.7, E5).
     auto *scopes = new QButtonGroup(this);
     for (int i = 0; i < 2; ++i) {
@@ -59,6 +66,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
 }
 
 void RedactBar::setTimeScope(bool video, bool timed) {
+    findChild<QWidget *>(QStringLiteral("ScopeGap"))->setVisible(video);
     for (int i = 0; i < 2; ++i) {
         m_scopes[i]->setVisible(video);
         m_scopes[i]->setChecked(timed == (i == 1));

@@ -36,6 +36,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
         });
     }
     new SelectionGlide(shapeGroup, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
+    layout->addSpacing(theme::kS2 - theme::kS1);   // groups kS2 apart, buttons kS1
 
     auto *levelGroup = new QButtonGroup(this);
     levelGroup->setExclusive(true);
@@ -48,6 +49,12 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
         });
     }
     new SelectionGlide(levelGroup, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
+    // The second kS1 before the scopes goes with them (see RedactBar).
+    auto *gap = new QWidget(this);
+    gap->setObjectName(QStringLiteral("ScopeGap"));
+    gap->setFixedSize(0, 0);
+    gap->hide();
+    layout->addWidget(gap);
     // Videos: the whole clip or from the playhead on (studio plan 6.7, E5).
     auto *scopes = new QButtonGroup(this);
     for (int i = 0; i < 2; ++i) {
@@ -71,6 +78,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
 }
 
 void SpotlightBar::setTimeScope(bool video, bool timed) {
+    findChild<QWidget *>(QStringLiteral("ScopeGap"))->setVisible(video);
     for (int i = 0; i < 2; ++i) {
         m_scopes[i]->setVisible(video);
         m_scopes[i]->setChecked(timed == (i == 1));

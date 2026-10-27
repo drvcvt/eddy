@@ -37,6 +37,7 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         connect(m_sizes[i], &QToolButton::clicked, this, [this, size=points[i]]{ emit sizeChosen(size); });
     }
     new SelectionGlide(sizes, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
+    layout->addSpacing(theme::kS2 - theme::kS1);   // groups kS2 apart, buttons kS1
     m_bold = textButton(this, QString());
     m_bold->setObjectName(QStringLiteral("TextBold"));
     m_bold->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
@@ -45,6 +46,7 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
     easeToggle(m_bold);
     connect(m_bold, &QToolButton::toggled, this, &TextBar::boldChosen);
     layout->addWidget(m_bold);
+    layout->addSpacing(theme::kS2 - theme::kS1);
 
     auto *alignments = new QButtonGroup(this); alignments->setExclusive(true);
     const Qt::Alignment values[] = {Qt::AlignLeft, Qt::AlignHCenter, Qt::AlignRight};
@@ -59,6 +61,7 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         connect(m_align[i], &QToolButton::clicked, this, [this, value=values[i]]{ emit alignmentChosen(value); });
     }
     new SelectionGlide(alignments, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
+    layout->addSpacing(theme::kS2 - theme::kS1);
     m_filled = textButton(this, QString());
     m_filled->setObjectName(QStringLiteral("TextFill"));
     m_filled->setToolTip(QStringLiteral("Filled label background"));
