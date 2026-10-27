@@ -4,8 +4,8 @@
 class QToolButton;
 namespace eddy {
 
-// The selected fragment's floating bar (studio plan 6.6): speed, cut or
-// restore, and join with the fragment before it.
+// The chosen piece's floating bar (studio plan 6.6): its speed, and join with the piece
+// before it. Deleting is the transport row's Delete (K).
 class FragmentBar : public QWidget {
     Q_OBJECT
 public:
@@ -14,11 +14,9 @@ public:
     void refreshTheme();
 signals:
     void speedChosen(double speed);
-    void cutToggled();
     void joinRequested();
 private:
     QToolButton *m_speed = nullptr;
-    QToolButton *m_cut = nullptr;
     QToolButton *m_join = nullptr;
 };
 

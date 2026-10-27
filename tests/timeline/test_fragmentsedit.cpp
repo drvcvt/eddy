@@ -151,7 +151,7 @@ private slots:
             auto *widget = w.findChild<QWidget *>(QString::fromLatin1(name));
             return QRect(widget->mapTo(&w, QPoint()), widget->size());
         };
-        const QRect mute = at("PlaybackMute"), loop = at("PlaybackLoop"), pill = at("DragPill"), trim = at("TrimControls");
+        const QRect mute = at("PlaybackMute"), loop = at("PlaybackLoop"), pill = at("DragPill"), trim = at("ClipControls");
         QAction *include = nullptr;
         for (QAction *a : w.findChildren<QAction *>())
             if (a->text() == QStringLiteral("Include audio in output")) include = a;
@@ -164,7 +164,7 @@ private slots:
         QCOMPARE(at("PlaybackMute"), mute);
         QCOMPARE(at("PlaybackLoop"), loop);
         QCOMPARE(at("DragPill"), pill);
-        QCOMPARE(at("TrimControls"), trim);
+        QCOMPARE(at("ClipControls"), trim);
     }
     void aSlowedClipsDurationStillFits() {
         // Duration shows the output: at 0.25x a 2:40 clip runs 10:40, a digit longer than its source.
@@ -177,7 +177,7 @@ private slots:
         slow.speed = 0.25;
         doc.fragments = {slow};
         w.setStudioDocument(doc);
-        auto *duration = w.findChild<QLineEdit *>(QStringLiteral("TrimDuration"));
+        auto *duration = w.findChild<QLabel *>(QStringLiteral("ClipDuration"));
         QCOMPARE(duration->text(), QStringLiteral("10:40.000"));
         QVERIFY2(duration->contentsRect().width() >= duration->fontMetrics().horizontalAdvance(duration->text()),
                  qPrintable(QString::number(duration->contentsRect().width())));
@@ -266,9 +266,10 @@ private slots:
         timeline->setPosition(3000);
         emit timeline->stripClicked(3000);
         QTRY_VERIFY(bar->isVisible());
-        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Cut"));
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // a chosen piece can go
     }
-    void deleteTogglesACutAndTheNotchRestores() {
+    void deleteTakesAPieceOutAndTheNotchBringsItBack() {
+        // K: Delete leaves the chosen piece out and the gap closes; the notch restores it.
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
         EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
@@ -277,21 +278,35 @@ private slots:
         auto *bar = w.findChild<FragmentBar *>();
         auto *undo = w.findChild<QUndoStack *>();
         timeline->setPosition(1000);
-        QTest::keyClick(&w, Qt::Key_S);   // the part after the split is selected
+        QTest::keyClick(&w, Qt::Key_S);
+        timeline->setPosition(2000);
+        QTest::keyClick(&w, Qt::Key_S);   // 0-1, 1-2 and 2-4 s
+        emit timeline->stripClicked(1500);
+        QTRY_VERIFY(bar->isVisible());
         const int steps = undo->count();
         QTest::keyClick(&w, Qt::Key_Delete);
         QVERIFY(w.studioDocument().fragments[1].removed);
-        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Restore"));
-        QTest::keyClick(&w, Qt::Key_Delete);   // used to be swallowed on a cut piece
-        QVERIFY(w.studioDocument().fragments.isEmpty());
+        QCOMPARE(timeline->pieceRects().size(), 2);
+        QCOMPARE(timeline->position(), 2000);   // where the next piece now starts
         QTRY_VERIFY(!bar->isVisible());
-        QCOMPARE(undo->count(), steps + 2);
-        undo->undo();
-        QVERIFY(w.studioDocument().fragments[1].removed);
+        QCOMPARE(undo->count(), steps + 1);
+        QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // nothing chosen
         emit timeline->cutClicked(1);   // the notch: restore, as its hint says
-        QVERIFY(w.studioDocument().fragments.isEmpty());
+        const auto parts = w.studioDocument().fragments;
+        QVERIFY(std::none_of(parts.cbegin(), parts.cend(), [](const Fragment &f) { return f.removed; }));
         QCOMPARE(undo->count(), steps + 2);
-        QVERIFY(!bar->isVisible());
+        // The last piece goes by its trim: the end moves onto the piece before.
+        timeline->setPosition(3000);
+        QTest::keyClick(&w, Qt::Key_S);
+        QTest::keyClick(&w, Qt::Key_Delete);
+        QCOMPARE(timeline->trimOut(), 3000);
+        // And the only piece stays.
+        for (int i = 0; i < 6; ++i) {
+            emit timeline->stripClicked(timeline->trimIn());
+            QTest::keyClick(&w, Qt::Key_Delete);
+        }
+        QCOMPARE(timeline->pieceRects().size(), 1);
+        QCOMPARE(w.findChild<Toast *>()->text(), QStringLiteral("Keep at least part of the clip"));
     }
     void markingARangeAndDeleteCutsItInOneStep() {
         QTemporaryDir dir;
@@ -306,7 +321,7 @@ private slots:
         timeline->setMark(1000, 2000);
         QTest::keyClick(&w, Qt::Key_Delete);
         QCOMPARE(w.studioDocument().fragments, (QVector<Fragment>{f(0, false), f(1000, true), f(2000, false)}));
-        QCOMPARE(w.findChild<QLineEdit *>(QStringLiteral("TrimDuration"))->text(), QStringLiteral("0:03.000"));
+        QCOMPARE(w.findChild<QLabel *>(QStringLiteral("ClipDuration"))->text(), QStringLiteral("0:03.000"));
         QCOMPARE(undo->count(), steps + 1);
         QVERIFY(!timeline->hasMark());
         QCOMPARE(timeline->position(), 2000);   // the first kept frame after the cut
@@ -346,12 +361,11 @@ private slots:
         QTest::keyClick(&w, Qt::Key_S);
         QTRY_VERIFY(bar->isVisible());
         const int kept = bar->width();
-        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isEnabled());
-        QTest::keyClick(&w, Qt::Key_Delete);   // cut: Restore, no speed, no join
-        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Restore"));
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentJoin"))->isEnabled());
+        emit timeline->stripClicked(500);   // the first piece: nothing before it to join
         QCOMPARE(bar->width(), kept);
-        QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isEnabled());
-        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isVisible());
+        QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("FragmentJoin"))->isEnabled());
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentJoin"))->isVisible());
     }
     void cutPausesFindsTheSilenceWhileThePointerRests() {
         if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
@@ -402,7 +416,7 @@ private slots:
         QVERIFY(cut[0].removed);   // from the clip's start: no breath kept there
         QVERIFY2(qAbs(cut[1].startMs - 2800) <= 150, qPrintable(QString::number(cut[1].startMs)));
     }
-    void splitSpeedCutAndJoinAreUndoSteps() {
+    void splitSpeedDeleteAndJoinAreUndoSteps() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
         EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
@@ -410,32 +424,35 @@ private slots:
         w.show();
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *undo = w.findChild<QUndoStack *>();
-        auto *duration = w.findChild<QLineEdit *>(QStringLiteral("TrimDuration"));
+        auto *duration = w.findChild<QLabel *>(QStringLiteral("ClipDuration"));
         timeline->setPosition(1000);
-        QTest::keyClick(&w, Qt::Key_S);
+        w.findChild<QToolButton *>(QStringLiteral("ClipSplit"))->click();   // the button, as S
         QCOMPARE(w.studioDocument().fragments.size(), 2);
         QCOMPARE(w.studioDocument().fragments[1].startMs, 1000);
         auto *bar = w.findChild<FragmentBar *>();
-        QTRY_VERIFY(bar->isVisible());                     // the part after the split is selected
+        QTRY_VERIFY(bar->isVisible());                     // the part after the split is chosen
         const int steps = undo->count();
         w.findChild<QMenu *>(QStringLiteral("FragmentSpeedMenu"))->actions().at(4)->trigger();   // 2x
         QCOMPARE(w.studioDocument().fragments[1].speed, 2.0);
         QCOMPARE(duration->text(), QStringLiteral("0:02.500"));   // 1 s + 3 s at 2x
-        // Esc lets go of the fragment before it would close the window; a click picks it again.
+        // Esc lets go of the piece before it would close the window; a click picks it again.
         QTest::keyClick(&w, Qt::Key_Escape);
         QTRY_VERIFY(!bar->isVisible());
         QVERIFY(w.isVisible());
         emit timeline->stripClicked(2000);
         QTRY_VERIFY(bar->isVisible());
-        w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->click();
-        QVERIFY(w.studioDocument().fragments[1].removed);
+        w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->click();
+        QCOMPARE(timeline->trimOut(), 1000);   // the last piece: the trim takes it
         QCOMPARE(duration->text(), QStringLiteral("0:01.000"));
-        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Restore"));
-        w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->click();
-        QVERIFY(!w.studioDocument().fragments[1].removed);
-        QCOMPARE(undo->count(), steps + 3);
-        QTRY_VERIFY(!bar->isVisible());   // restored, it may melt into its neighbour: nothing stays selected
+        QCOMPARE(undo->count(), steps + 2);
         undo->undo();
+        QCOMPARE(timeline->trimOut(), 4000);
+        QCOMPARE(duration->text(), QStringLiteral("0:02.500"));
+        emit timeline->stripClicked(2000);
+        w.findChild<QToolButton *>(QStringLiteral("FragmentJoin"))->click();
+        QVERIFY(w.studioDocument().fragments.isEmpty());   // joined, it plays at the first one's 1x
+        QCOMPARE(duration->text(), QStringLiteral("0:04.000"));
+        QCOMPARE(undo->count(), steps + 2);
         undo->undo();
         undo->undo();
         undo->undo();

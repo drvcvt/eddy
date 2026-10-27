@@ -91,10 +91,10 @@ QPainterPath chromeMark(const QRectF &button) {
                                                       : theme::squircleRect(mark, mark.height() / 2);
 }
 
+// B: squircle corners like every other eddy surface (and Boltsnap's controls): the
+// curve flows into the edge instead of meeting it at a circular arc.
 QPainterPath chip(const QRectF &button) {
-    QPainterPath path;
-    path.addRoundedRect(button, theme::kRChip, theme::kRChip);
-    return path;
+    return theme::squircleRect(button, theme::kRChip);
 }
 
 // A checked toggle: the step its surface uses for a choice.

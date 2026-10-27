@@ -124,11 +124,12 @@ QWidget *EditorWindow::createPlaybackBar() {
     leftGroup->setSpacing(theme::kS2);
     auto *rightGroup = new QHBoxLayout;
     rightGroup->setSpacing(theme::kS2);
-    auto *trimControls = new TrimField(bar);
-    trimControls->setObjectName(QStringLiteral("TrimControls"));
-    auto *trim = new QHBoxLayout(trimControls);
-    trim->setContentsMargins(theme::kS1, TrimField::kInset, theme::kS1, TrimField::kInset);
-    trim->setSpacing(0);   // captions and values bring their own kS2 padding
+    // K: the clip's edits in the middle, Split and Delete, then what comes out.
+    auto *clipControls = new QWidget(bar);
+    clipControls->setObjectName(QStringLiteral("ClipControls"));
+    auto *clipRow = new QHBoxLayout(clipControls);
+    clipRow->setContentsMargins(0, 0, 0, 0);
+    clipRow->setSpacing(theme::kS2);
 
     m_playButton = new QToolButton(bar);
     const QColor iconColor = palette().color(QPalette::ButtonText);
@@ -208,69 +209,41 @@ QWidget *EditorWindow::createPlaybackBar() {
     if (m_media.video.hasAudio && !m_media.path.isEmpty())
         m_timeline->setWaveform(new AudioWaveformProvider(m_media.path, m_media.video.durationMs,
                                                           m_media.video.audioOffsetMs, m_timeline));
-    m_trimInLabel = new QLineEdit(formatPreciseTime(m_trimInMs), bar);
-    m_trimInLabel->setObjectName(QStringLiteral("TrimInTime"));
-    m_trimOutLabel = new QLineEdit(formatPreciseTime(m_trimOutMs), bar);
-    m_trimOutLabel->setObjectName(QStringLiteral("TrimOutTime"));
-    m_trimDurationLabel = new QLineEdit(bar);
-    m_trimDurationLabel->setObjectName(QStringLiteral("TrimDuration"));
-    // Times on the ruler's clock (C4): cuts folded, speed applied, from the clip's first frame.
-    for (auto *field : {m_trimInLabel, m_trimOutLabel, m_trimDurationLabel}) {
-        field->ensurePolished();
-        field->setMaxLength(20);
-        field->setFixedHeight(theme::kCtl);
-        field->setAccessibleName(field == m_trimInLabel ? tr("Trim start")
-                                 : field == m_trimOutLabel ? tr("Trim end") : tr("Exported length"));
-        field->setToolTip(field == m_trimInLabel
-            ? tr("Start of the exported clip\nStep a frame\t↑ ↓\nApply\tEnter\nCancel\tEsc")
-            : field == m_trimOutLabel ? tr("End of the exported clip\nStep a frame\t↑ ↓\nApply\tEnter\nCancel\tEsc")
-            : tr("Length of the exported clip\nStep a frame\t↑ ↓\nApply\tEnter\nCancel\tEsc"));
-        connect(field, &QLineEdit::editingFinished, this, [this, field] { commitTrimTime(field); });
-    }
-    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
-    auto makeTrimButton = [bar](const QString &text, const QString &name) {
+    const QColor labelColor = palette().color(QPalette::WindowText);
+    auto makeClipButton = [bar, labelColor](const QString &text, const QString &name, const QString &icon) {
         auto *button = new theme::CapButton(bar);
         button->setText(text);
         button->setObjectName(name);
+        button->setIcon(theme::tintedIcon(icon, labelColor, labelColor, theme::kLabelIcon));
+        button->setIconSize(QSize(theme::kLabelIcon, theme::kLabelIcon));
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         button->setAutoRaise(true);
         button->setFocusPolicy(Qt::NoFocus);
         button->setCursor(Qt::PointingHandCursor);
         button->setFixedHeight(theme::kCtl);
+        button->setSidePadding(theme::kS3);   // on its own fill: as much room as Boltsnap's controls
         return button;
     };
-    auto *setIn = makeTrimButton(tr("Start"), QStringLiteral("TrimSetIn"));
-    auto *setOut = makeTrimButton(tr("End"), QStringLiteral("TrimSetOut"));
-    auto *reset = makeTrimButton({}, QStringLiteral("TrimReset"));
-    reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), iconColor, iconColor));
-    reset->setFixedWidth(theme::kCtl);
-    reset->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    setIn->setToolTip(tr("Set start to playhead\tI"));
-    setOut->setToolTip(tr("Set end to playhead\tO"));
-    setIn->setAccessibleName(theme::spokenName(setIn->toolTip()));
-    setOut->setAccessibleName(theme::spokenName(setOut->toolTip()));
-    reset->setToolTip(tr("Reset trim to the complete clip"));
-    reset->setAccessibleName(theme::spokenName(reset->toolTip()));
-
-    trim->addWidget(setIn);
-    trim->addWidget(m_trimInLabel);
-    trim->addSpacing(theme::kS3);
-    trim->addWidget(setOut);
-    trim->addWidget(m_trimOutLabel);
-    trim->addSpacing(theme::kS3);
-    // Duration reads like the pairs before it: a caption boxed like Start and End, its
-    // value a time field like theirs (updateTrimTimeLabels sets the width of all three).
-    auto *durationCaption = new QLabel(tr("Duration"), trimControls);
-    durationCaption->setObjectName(QStringLiteral("TrimDurationCaption"));
-    durationCaption->ensurePolished();
-    durationCaption->setContentsMargins(theme::kS2, 0, theme::kS2, 0);
-    durationCaption->setFixedWidth(durationCaption->fontMetrics().horizontalAdvance(durationCaption->text())
-                                   + 2 * theme::kS2);
-    trim->addWidget(durationCaption);
-    trim->addWidget(m_trimDurationLabel);
-    // Reset's ink sits (kCtl - ink) / 2 in, a caption's kS2: the pairs' kS3 makes up the rest.
-    trim->addSpacing(theme::kS3 + theme::kS2 - (theme::kCtl - theme::iconInk(theme::kIconSize)) / 2);
-    trim->addWidget(reset);
-    playback->addWidget(trimControls, 0, 1, Qt::AlignCenter);
+    m_splitButton = makeClipButton(tr("Split"), QStringLiteral("ClipSplit"), QStringLiteral(":/icons/scissors.svg"));
+    m_splitButton->setToolTip(tr("Split at the playhead\tS"));
+    m_splitButton->setAccessibleName(theme::spokenName(m_splitButton->toolTip()));
+    m_deleteButton = makeClipButton(tr("Delete"), QStringLiteral("ClipDelete"), QStringLiteral(":/icons/trash.svg"));
+    m_deleteButton->setToolTip(tr("Delete the chosen piece or the marked range\tDelete"));
+    m_deleteButton->setAccessibleName(theme::spokenName(m_deleteButton->toolTip()));
+    auto *durationCaption = new QLabel(tr("Duration"), clipControls);
+    durationCaption->setObjectName(QStringLiteral("ClipDurationCaption"));
+    m_clipDuration = new QLabel(clipControls);
+    m_clipDuration->setObjectName(QStringLiteral("ClipDuration"));
+    m_clipDuration->setToolTip(tr("Length of the exported clip"));
+    m_clipDuration->ensurePolished();
+    m_clipDuration->setFixedWidth(m_clipDuration->fontMetrics().horizontalAdvance(widestTime()));   // never changes width
+    clipRow->addWidget(m_splitButton);
+    clipRow->addWidget(m_deleteButton);
+    clipRow->addSpacing(theme::kS3 - theme::kS2);   // the readout stands a step apart from the actions
+    clipRow->addWidget(durationCaption);
+    clipRow->addWidget(m_clipDuration);
+    playback->addWidget(clipControls, 0, 1, Qt::AlignCenter);
+    updateClipControls();
     m_loopButton = new QToolButton(bar);
     m_loopButton->setObjectName(QStringLiteral("PlaybackLoop"));
     m_loopButton->setCheckable(true);
@@ -457,21 +430,20 @@ QWidget *EditorWindow::createPlaybackBar() {
         flushVideoSeek();
         if (hasVideoEdits() && m_cachedVideoRevision != m_videoRevision) scheduleVideoExportCache();
     });
-    connect(m_timeline, &VideoTimeline::trimCommitted,
-            this, [this](qint64 in, qint64 out) { applyTrimRange(in, out); });
-    connect(m_timeline, &VideoTimeline::trimPreviewed,
-            this, &EditorWindow::updateTrimTimeLabels);
+    connect(m_timeline, &VideoTimeline::clipEdited, this,
+            [this](const fragments::Clip &, const fragments::Clip &after, int piece) { applyClip(after, piece); });
     connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);
     connect(m_timeline, &VideoTimeline::zoomSelected, this, &EditorWindow::selectZoom);
     // A click (not a scrub) on the strip selects the fragment under it; a scrub leaves the
     // selection and its bar alone. The cut notch restores, as its hint says.
     connect(m_timeline, &VideoTimeline::stripClicked, this, [this](qint64 at) {
-        if (m_studio.fragments.size() > 1) selectFragment(fragments::indexAt(m_studio.fragments, at));
+        selectFragment(fragments::indexAt(m_studio.fragments, at));
     });
     connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::restoreCut);
     connect(m_timeline, &VideoTimeline::pausesRequested, this, &EditorWindow::findPauses);
     // One target at a time: a mark lets go of annotations, a zoom and a fragment.
     connect(m_timeline, &VideoTimeline::markChanged, this, [this] {
+        updateClipControls();
         if (!m_timeline->hasMark() && !m_timeline->marking()) return;
         m_scene->clearSelection();
         if (m_selectedZoom) selectZoom(0);
@@ -541,14 +513,10 @@ QWidget *EditorWindow::createPlaybackBar() {
                 [this, id] { removeZoom(id); });
         menu.exec(global);
     });
-    connect(setIn, &QToolButton::clicked, this, &EditorWindow::setTrimStartAtPlayhead);
-    connect(setOut, &QToolButton::clicked, this, &EditorWindow::setTrimEndAtPlayhead);
-    connect(reset, &QToolButton::clicked, this, [this]{
-        m_timeline->setTrimRange(0, m_timeline->duration());
-        applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
-    });
+    connect(m_splitButton, &QToolButton::clicked, this, &EditorWindow::splitAtPlayhead);
+    connect(m_deleteButton, &QToolButton::clicked, this, &EditorWindow::deleteChosen);
     bar->stack = lay; bar->transport = playback; bar->left = leftGroup; bar->right = rightGroup;
-    bar->trim = trimControls;
+    bar->trim = clipControls;
     bar->adapt();
     return bar;
 }

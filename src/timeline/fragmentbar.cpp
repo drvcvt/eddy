@@ -22,7 +22,7 @@ FragmentBar::FragmentBar(QWidget *parent) : QWidget(parent) {
         layout->addWidget(b);
         return b;
     };
-    m_speed = button(QStringLiteral("FragmentSpeed"), tr("Speed of this fragment"));
+    m_speed = button(QStringLiteral("FragmentSpeed"), tr("Speed of this piece"));
     m_speed->setPopupMode(QToolButton::InstantPopup);
     auto *speeds = new QMenu(m_speed);
     speeds->setObjectName(QStringLiteral("FragmentSpeedMenu"));
@@ -35,13 +35,7 @@ FragmentBar::FragmentBar(QWidget *parent) : QWidget(parent) {
         connect(action, &QAction::triggered, this, [this, s] { emit speedChosen(s); });
     }
     m_speed->setMenu(speeds);
-    m_cut = button(QStringLiteral("FragmentCut"), tr("Leave this fragment out\tDelete"));
-    // As wide as its longer label, so Cut and Restore never move what is beside them.
-    m_cut->setText(tr("Restore"));
-    m_cut->ensurePolished();
-    m_cut->setFixedWidth(m_cut->sizeHint().width());
-    connect(m_cut, &QToolButton::clicked, this, &FragmentBar::cutToggled);
-    m_join = button(QStringLiteral("FragmentJoin"), tr("Join with the fragment before"));
+    m_join = button(QStringLiteral("FragmentJoin"), tr("Join with the piece before"));
     m_join->setText(tr("Join"));
     connect(m_join, &QToolButton::clicked, this, &FragmentBar::joinRequested);
     refreshTheme();
@@ -53,12 +47,10 @@ void FragmentBar::setFragment(const Fragment &fragment, bool canJoin) {
     // Every control keeps its slot; what does not apply is disabled, not hidden, so the
     // bar keeps one width from one fragment to the next.
     m_speed->setEnabled(!fragment.removed);
-    m_speed->setToolTip(fragment.removed ? tr("A cut fragment has no speed") : tr("Speed of this fragment"));
-    m_cut->setText(fragment.removed ? tr("Restore") : tr("Cut"));
-    m_cut->setToolTip(fragment.removed ? tr("Bring this fragment back\tDelete") : tr("Leave this fragment out\tDelete"));
+    m_speed->setToolTip(fragment.removed ? tr("A cut piece has no speed") : tr("Speed of this piece"));
     m_join->setEnabled(canJoin && !fragment.removed);
-    m_join->setToolTip(canJoin && !fragment.removed ? tr("Join with the fragment before")
-                                                   : tr("Joins only with a kept fragment before it"));
+    m_join->setToolTip(canJoin && !fragment.removed ? tr("Join with the piece before")
+                                                   : tr("Joins only with a piece right before it"));
     adjustSize();
 }
 

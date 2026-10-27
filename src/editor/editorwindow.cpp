@@ -632,7 +632,6 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             const int i = m_selectedFragment;
             editStudio([i, speed](StudioDocument &d) { fragments::setSpeed(d.fragments, i, speed); });
         });
-        connect(m_fragmentBar, &FragmentBar::cutToggled, this, [this] { toggleFragmentCut(m_selectedFragment); });
         connect(m_fragmentBar, &FragmentBar::joinRequested, this, [this] {
             const int i = m_selectedFragment;
             QVector<Fragment> list = m_studio.fragments;

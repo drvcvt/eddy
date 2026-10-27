@@ -154,8 +154,8 @@ int main(int argc, char **argv) {
         }
         if (mode.contains(QStringLiteral("trim"))) {
             auto *timeline = window->findChild<eddy::VideoTimeline*>();
-            timeline->setTrimRange(timeline->duration() / 5, timeline->duration() * 4 / 5);
-            timeline->trimPreviewed(timeline->trimIn(), timeline->trimOut());
+            const qint64 d = timeline->duration();
+            emit timeline->clipEdited(timeline->clip(), {d / 5, d * 4 / 5, {}}, 0);
         }
         if (mode.contains(QStringLiteral("busy"))) {   // C8: an export running in the pill
             auto *pill = window->findChild<eddy::DragPill *>();
@@ -308,13 +308,13 @@ int main(int argc, char **argv) {
         }
     }
     if (mode.contains(QStringLiteral("fragments"))) {
-        // A cut and a 2x fragment; the cut is selected, so its bar says Restore.
+        // K: three blocks, a cut between the first two, the middle one 2x and chosen.
         eddy::StudioDocument doc = window->studioDocument();
         auto *timeline = window->findChild<eddy::VideoTimeline *>();
         const qint64 d = timeline->duration();
         doc.fragments = {{0, 1.0, false}, {d * 3 / 10, 1.0, true}, {d / 2, 2.0, false}, {d * 8 / 10, 1.0, false}};
         window->setStudioDocument(doc);
-        emit timeline->cutClicked(1);
+        emit timeline->stripClicked(d * 6 / 10);
         QEventLoop settle;
         QTimer::singleShot(200, &settle, &QEventLoop::quit);
         settle.exec();

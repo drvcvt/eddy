@@ -128,6 +128,106 @@ bool applySpans(QVector<Fragment> &list, const QVector<std::pair<qint64, qint64>
     return true;
 }
 
+namespace {
+
+// Neighbouring cuts become one fragment.
+QVector<Fragment> meltCuts(const QVector<Fragment> &parts) {
+    QVector<Fragment> melted;
+    for (const Fragment &f : parts)
+        if (melted.isEmpty() || !(melted.last().removed && f.removed)) melted.append(f);
+    return melted;
+}
+
+// A seam at `at`, copying the fragment it falls in; its index.
+int seamAt(QVector<Fragment> &parts, qint64 at) {
+    const int i = indexAt(parts, at);
+    if (parts[i].startMs == at) return i;
+    Fragment next = parts[i];
+    next.startMs = at;
+    parts.insert(i + 1, next);
+    return i + 1;
+}
+
+}
+
+std::pair<qint64, qint64> startRange(const Clip &clip, int piece, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size()) return {0, 0};
+    const qint64 lo = piece > 0 ? qint64(pieces[piece - 1].srcEnd) : 0;
+    return {lo, std::max(lo, qint64(pieces[piece].srcEnd) - kMinFragmentMs)};
+}
+
+std::pair<qint64, qint64> endRange(const Clip &clip, int piece, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size()) return {0, 0};
+    const qint64 hi = piece + 1 < pieces.size() ? qint64(pieces[piece + 1].srcStart) : durationMs;
+    return {std::min(hi, qint64(pieces[piece].srcStart) + kMinFragmentMs), hi};
+}
+
+Clip moveStart(Clip clip, int piece, qint64 sourceMs, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size()) return clip;
+    const auto [lo, hi] = startRange(clip, piece, durationMs);
+    const qint64 to = std::clamp(sourceMs, lo, hi), from = qint64(pieces[piece].srcStart);
+    if (to == from) return clip;
+    QVector<Fragment> parts = expanded(clip.list);
+    const int own = indexAt(parts, from);   // the fragment the piece plays
+    if (to < from) {
+        // Taken back: the piece's fragment starts at `to`, swallowing what lay between.
+        const int before = parts.size();
+        const int first = seamAt(parts, to);
+        const int f = own + int(parts.size() - before);   // a new seam sits before the piece's fragment
+        Fragment kept = parts[f];
+        kept.startMs = to;
+        parts.remove(first, f - first + 1);
+        parts.insert(first, kept);
+    } else if (piece > 0) {
+        // Given up: [from, to) is cut and melts with a cut before it.
+        const int at = seamAt(parts, to);
+        parts[at - 1].removed = true;
+    }
+    if (piece == 0) clip.inMs = to;
+    clip.list = simplified(meltCuts(parts));
+    return clip;
+}
+
+Clip moveEnd(Clip clip, int piece, qint64 sourceMs, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size()) return clip;
+    const auto [lo, hi] = endRange(clip, piece, durationMs);
+    const qint64 to = std::clamp(sourceMs, lo, hi), from = qint64(pieces[piece].srcEnd);
+    if (to == from) return clip;
+    QVector<Fragment> parts = expanded(clip.list);
+    const int own = indexAt(parts, qint64(pieces[piece].srcStart));
+    const bool last = piece + 1 == pieces.size();
+    if (to > from) {
+        // Taken back: every seam between the piece and `to` goes, so its fragment runs on.
+        const int stop = to < durationMs ? seamAt(parts, to) : parts.size();
+        parts.remove(own + 1, stop - own - 1);
+    } else if (!last) {
+        // Given up: [to, from) is cut and melts with the cut after it.
+        parts[seamAt(parts, to)].removed = true;
+    }
+    if (last) clip.outMs = to;
+    clip.list = simplified(meltCuts(parts));
+    return clip;
+}
+
+std::optional<Clip> removePiece(Clip clip, int piece, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size() || pieces.size() < 2) return std::nullopt;
+    if (piece == 0) {
+        clip.inMs = qint64(pieces[1].srcStart);
+    } else if (piece + 1 == pieces.size()) {
+        clip.outMs = qint64(pieces[piece - 1].srcEnd);
+    } else {
+        QVector<Fragment> parts = expanded(clip.list);
+        parts[indexAt(parts, qint64(pieces[piece].srcStart))].removed = true;
+        clip.list = simplified(meltCuts(parts));
+    }
+    return clip;
+}
+
 bool join(QVector<Fragment> &list, int index) {
     QVector<Fragment> parts = expanded(list);
     // Only two kept fragments join; joining into a cut would cut what was kept.

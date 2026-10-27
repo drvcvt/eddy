@@ -157,7 +157,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
     }
     if (m_selectedFragment >= 0 && !m_selectedZoom && m_scene->selectedItems().isEmpty()
         && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
-        toggleFragmentCut(m_selectedFragment);   // cut, and on a cut piece restore
+        deleteChosen();   // the piece goes, the gap closes (K)
         e->accept();
         return;
     }
@@ -347,8 +347,8 @@ void EditorWindow::toggleShortcutSheet() {
     m_shortcutSheet = sheet;
 }
 
-TimeMap EditorWindow::clipMap() const {
-    return TimeMap(m_media.video.durationMs, 0, m_media.video.durationMs, m_studio.fragments);
+TimeMap EditorWindow::clipMap() const {   // K: the output, trim included, as the ruler shows it
+    return TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments);
 }
 
 // Where Up and Down stop: the clip's ends, Start and End, every seam between pieces, and

@@ -57,6 +57,7 @@ add_library(eddy_core STATIC
     src/bars/spotlightbar.cpp
     src/timeline/videotimeline.cpp
     src/timeline/videotimeline_paint.cpp
+    src/timeline/videotimeline_clips.cpp
     src/video/videopreviewprovider.cpp
     src/chrome/toast.cpp
     src/chrome/dragpill.cpp
@@ -197,6 +198,7 @@ eddy_test(video/test_timemap)
 eddy_test(studio/test_camerapath)
 eddy_test(timeline/test_zoomlane)
 eddy_test(video/test_fragments)
+eddy_test(video/test_clip)
 eddy_test(studio/test_zoomsuggest)
 eddy_test(timeline/test_audiowaveform)
 eddy_test(items/test_stepitem)
@@ -233,6 +235,7 @@ eddy_test(app/test_theme)
 eddy_test(app/test_motion)
 eddy_test(canvas/test_selectionhandles)
 eddy_test(timeline/test_videotimeline)
+eddy_test(timeline/test_clips)
 eddy_test(video/test_videopreviewprovider)
 
 eddy_test(edit/test_crop)

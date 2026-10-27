@@ -342,14 +342,14 @@ private slots:
         };
         const QRect timeline = rect("VideoTimeline"), play = rect("PlaybackPlay"), fit = rect("ZoomFit");
         const QRect mute = rect("PlaybackMute"), status = rect("VideoExportStatus");
-        const QRect trim = rect("TrimControls"), pill = rect("DragPill");
+        const QRect trim = rect("ClipControls"), pill = rect("DragPill");
         // One left and one right edge for the whole bottom, the tool rail's.
         for (const QRect &r : {timeline, play, fit}) QCOMPARE(r.left(), theme::kBarPad);
         for (const QRect &r : {timeline, mute, status}) QCOMPARE(window->width() - 1 - r.right(), theme::kBarPad);
-        // The trim group and the drag pill on the window's middle.
+        // The clip's controls and the drag pill on the window's middle.
         QVERIFY2(qAbs(trim.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(trim.center().x())));
         QVERIFY2(qAbs(pill.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(pill.center().x())));
-        // The transport row (its tallest part, the trim field) kS2 under the film strip it drives,
+        // The transport row kS2 under the film strip it drives,
         // the footer kS3 under it: the row belongs to the timeline, not to the footer.
         const int strip = timeline.top() + int(VideoTimeline::kTrackTop + VideoTimeline::kTrackH);
         QCOMPARE(timeline.bottom() + 1, strip);   // nothing empty under the last lane
@@ -359,34 +359,55 @@ private slots:
         for (const QRect &r : {play, mute}) QCOMPARE(r.center().y(), trim.center().y());
     }
 
-    void trimFieldKeepsOneRhythm() {
-        // Caption to value the same for Start, End and Duration; pair to pair the same,
-        // reset included. Measured on the ink, so padding and side bearings count.
+    void clipButtonsReadAsControls() {
+        // K and B: Split and Delete stand on a raised fill at rest (Boltsnap's lesson), one
+        // height, kS2 apart; capitals and icon ink on the fill's middle, measured on the ink.
         QTemporaryDir dir;
-        auto window = openVideo(dir.filePath(QStringLiteral("rhythm.mp4")), QSize(1080, 700));
+        auto window = openVideo(dir.filePath(QStringLiteral("clip.mp4")), QSize(1080, 700));
         QVERIFY(QTest::qWaitForWindowExposed(window.get()));
-        auto *field = window->findChild<QWidget *>(QStringLiteral("TrimControls"));
-        const QImage shot = field->grab().toImage();
-        const QColor well = shot.pixelColor(shot.width() / 2, 1);
-        const QColor ink = field->palette().color(QPalette::WindowText);
-        QVector<Ink> parts;
-        for (const char *name : {"TrimSetIn", "TrimInTime", "TrimSetOut", "TrimOutTime",
-                                 "TrimDurationCaption", "TrimDuration", "TrimReset"}) {
-            auto *w = field->findChild<QWidget *>(QString::fromLatin1(name));
-            QVERIFY2(w, name);
-            parts << inkOf(shot, QRect(w->mapTo(field, QPoint()), w->size()), well, ink);
-            QVERIFY2(parts.last().any, name);
+        auto *split = window->findChild<QToolButton *>(QStringLiteral("ClipSplit"));
+        auto *remove = window->findChild<QToolButton *>(QStringLiteral("ClipDelete"));
+        QVERIFY(split && remove);
+        QCOMPARE(split->height(), theme::kCtl);
+        QCOMPARE(remove->height(), theme::kCtl);
+        QCOMPARE(remove->geometry().left() - split->geometry().right() - 1, theme::kS2);
+        QCOMPARE(split->geometry().center().y(), remove->geometry().center().y());
+        auto *bar = window->findChild<QWidget *>(QStringLiteral("PlaybackBar"));
+        const QImage row = bar->grab().toImage();
+        const QPoint inside = split->mapTo(bar, QPoint(4, split->height() / 2));
+        const QPoint between = split->mapTo(bar, QPoint(split->width() + theme::kS2 / 2, split->height() / 2));
+        QVERIFY2(row.pixelColor(inside) != row.pixelColor(between),
+                 qPrintable(row.pixelColor(inside).name() + " on " + row.pixelColor(between).name()));
+        emit window->findChild<VideoTimeline *>()->stripClicked(1000);   // a chosen piece: Delete at rest, not disabled
+        QVERIFY(remove->isEnabled());
+        for (QToolButton *button : {split, remove}) {
+            // Side room on the label as it is: icon ink to the left edge, text ink to the right.
+            const QImage plain = button->grab().toImage();
+            const QColor plainFill = plain.pixelColor(4, plain.height() / 2);
+            const QColor plainInk = button->palette().color(QPalette::ButtonText);
+            const Ink all = inkOf(plain, plain.rect().adjusted(2, 0, -2, 0), plainFill, plainInk);
+            const qreal left = all.left, right = plain.width() - all.right;
+            qInfo("%s: side room %.1f / %.1f px", qPrintable(button->text()), left, right);
+            QVERIFY2(std::abs(left - right) <= 1 && std::abs(left - theme::kS3) <= 1.5,
+                     qPrintable(QStringLiteral("%1 / %2").arg(left).arg(right)));
+            const QString text = button->text();
+            button->setText(text.toUpper());
+            const QImage shot = button->grab().toImage();
+            button->setText(text);
+            const QColor fill = shot.pixelColor(4, shot.height() / 2);
+            const QColor ink = button->palette().color(QPalette::ButtonText);
+            const int textLeft = theme::kS3 + button->iconSize().width() + theme::kS2 - 2;
+            const Ink caps = inkOf(shot, QRect(textLeft, 0, shot.width() - textLeft, shot.height()), fill, ink);
+            const Ink icon = inkOf(shot, QRect(theme::kS3 - 2, 0, button->iconSize().width() + 4, shot.height()), fill, ink);
+            QVERIFY2(caps.any && icon.any, qPrintable(text));
+            const qreal capsMiddle = (caps.top + caps.bottom) / 2, iconMiddle = (icon.top + icon.bottom) / 2;
+            qInfo("%s: capitals %+.2f px off the middle, icon %+.2f px off the capitals",
+                  qPrintable(text), capsMiddle - shot.height() / 2.0, iconMiddle - capsMiddle);
+            QVERIFY(std::abs(capsMiddle - shot.height() / 2.0) <= 0.5);
+            QVERIFY(std::abs(iconMiddle - capsMiddle) <= 0.5);
+            QVERIFY(icon.bottom - icon.top <= theme::kFsUi);   // no taller than the text beside it
         }
-        const auto gap = [&](int a, int b) { return parts[b].left - parts[a].right; };
-        const qreal captions[] = {gap(0, 1), gap(2, 3), gap(4, 5)};
-        const qreal pairs[] = {gap(1, 2), gap(3, 4), gap(5, 6)};
-        qInfo("caption to value %.1f %.1f %.1f, pair to pair %.1f %.1f %.1f",
-              captions[0], captions[1], captions[2], pairs[0], pairs[1], pairs[2]);
-        for (const qreal g : captions) QVERIFY2(qAbs(g - captions[0]) <= 1, "caption to value differs");
-        for (const qreal g : pairs) QVERIFY2(qAbs(g - pairs[0]) <= 1, "pair to pair differs");
-        QVERIFY(pairs[0] > captions[0] + theme::kS1);   // pairs read as pairs
     }
-
     void choosingARateMovesNothing() {
         QTemporaryDir dir;
         auto window = openVideo(dir.filePath(QStringLiteral("rates.mp4")), QSize(1080, 700));
@@ -424,9 +445,9 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(window.get()));
         QVERIFY(window->findChild<VideoTimeline *>()->waveformShown());
         QCOMPARE(window->size(), QSize(520, 620));   // the bottom never pushes the window taller
-        // Folded onto its own line, the trim field keeps its size and the window's middle,
+        // Folded onto its own line, the clip's controls keep their size and the window's middle,
         // so its gaps match the wide row.
-        auto *trim = window->findChild<QWidget *>(QStringLiteral("TrimControls"));
+        auto *trim = window->findChild<QWidget *>(QStringLiteral("ClipControls"));
         QCOMPARE(trim->width(), trim->sizeHint().width());
         const int middle = trim->mapTo(window.get(), trim->rect().center()).x();
         QVERIFY2(qAbs(middle - window->width() / 2) <= 1, qPrintable(QString::number(middle)));

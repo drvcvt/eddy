@@ -23,6 +23,8 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     m_markFade = new Spring(motion::kFast, [this](qreal) { update(); }, this);   // a cleared mark goes on `fast`
     m_markFade->jumpTo(0);
     m_states = new SpringLevels(motion::kFast, [this] { update(); }, this);
+    m_rippleGlide = new Spring(motion::kBase, [this](qreal) { update(); }, this);
+    m_rippleGlide->jumpTo(0);
     m_glide = new Spring(motion::kBase, [this](qreal t) {
         m_gliding = true;
         setViewRange(qRound64(m_glideFrom.first + (m_glideTo.first - m_glideFrom.first) * t),
@@ -82,40 +84,22 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     });
 }
 
+// The axis is the output (K): what is trimmed or cut is not on it.
 double VideoTimeline::edited(qint64 sourceMs) const {
-    return m_fragments.isEmpty() ? double(sourceMs) : m_axis.toOutputAfter(double(sourceMs));
+    return m_axis.pieces().isEmpty() ? double(sourceMs) : m_axis.toOutputAfter(double(sourceMs));
 }
 
 qint64 VideoTimeline::source(double editedMs) const {
-    return m_fragments.isEmpty() ? qRound64(editedMs) : qRound64(m_axis.toSource(editedMs));
+    return m_axis.pieces().isEmpty() ? qRound64(editedMs) : qRound64(m_axis.toSource(editedMs));
 }
 
 qint64 VideoTimeline::editedDuration() const {
-    return m_fragments.isEmpty() ? m_duration : qRound64(m_axis.outputDurationMs());
+    return m_axis.pieces().isEmpty() ? m_duration : qRound64(m_axis.outputDurationMs());
 }
 
 void VideoTimeline::rebuildAxis() {
     ++m_waveRevision;
-    m_axis = TimeMap(m_duration, 0, m_duration, m_fragments);
-}
-
-void VideoTimeline::setFragments(const QVector<Fragment> &fragments) {
-    if (fragments == m_fragments) return;
-    const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
-    // The view keeps showing the same stretch of the source.
-    const qint64 sourceStart = source(m_viewStart), sourceEnd = source(m_viewEnd);
-    m_fragments = fragments;
-    rebuildAxis();
-    // Any edit of the pieces ends a mark: it was drawn against the old ones.
-    m_markAnchor = m_markHead = -1;
-    m_markOpen = false;
-    m_markFade->jumpTo(0);
-    if (m_selectedFragment >= fragments::expanded(m_fragments).size()) m_selectedFragment = -1;
-    m_hoverCut = -1;
-    if (fullView) fitClip();
-    else setViewRange(qRound64(edited(sourceStart)), qRound64(edited(sourceEnd)));
-    emit viewRangeChanged();
-    update();
+    m_axis = TimeMap(m_duration, m_in, m_out, m_fragments);
 }
 
 void VideoTimeline::setSelectedFragment(int index) {
@@ -136,7 +120,7 @@ int VideoTimeline::cutAt(QPointF pos) const {
     if (pos.y() > track.top() + 4) return -1;
     const QVector<Fragment> parts = fragments::expanded(m_fragments);
     for (int i = 0; i < parts.size(); ++i)
-        if (parts[i].removed && qAbs(pos.x() - xForTime(parts[i].startMs)) <= 6) return i;
+        if (parts[i].removed && notchShown(i) && qAbs(pos.x() - xForTime(parts[i].startMs)) <= 6) return i;
     return -1;
 }
 
@@ -202,13 +186,13 @@ QImage VideoTimeline::thumbnailNear(qint64 time, qint64 *sampleTime) const {
 void VideoTimeline::setDuration(qint64 durationMs) {
     const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
     m_duration = qMax<qint64>(0, durationMs);
-    rebuildAxis();
     m_markAnchor = m_markHead = -1;
     m_markOpen = false;
     m_markFade->jumpTo(0);
     m_position = qBound<qint64>(0, m_position, m_duration);
     if (m_out == 0 || m_out > m_duration) m_out = m_duration;
     setTrimRange(m_in, m_out);
+    rebuildAxis();   // setTrimRange skips an unchanged range, and the duration under it changed
     if (fullView) fitClip();
     else setViewRange(m_viewStart, m_viewEnd);
 }
@@ -237,18 +221,6 @@ void VideoTimeline::setPosition(qint64 positionMs) {
         update(QRectF(x - 5, 0, 10, height()).toAlignedRect());
     }
     m_position = position;
-}
-
-void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) {
-    if (m_duration <= 0) {
-        m_in = m_out = 0;
-        update();
-        return;
-    }
-    const qint64 gap = qMin(m_minimumRange, m_duration);
-    m_in = qBound<qint64>(0, inMs, m_duration - gap);
-    m_out = qBound<qint64>(m_in + gap, outMs, m_duration);
-    update();
 }
 
 QRectF VideoTimeline::trackRect() const {
@@ -518,13 +490,18 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
         return;
     }
     const qreal x = event->position().x();
-    const qreal inDistance = edited(m_in) < m_viewStart || edited(m_in) > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_in) - kInset / 2));
-    const qreal outDistance = edited(m_out) < m_viewStart || edited(m_out) > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_out) + kInset / 2));
-    if (qMin(inDistance, outDistance) <= kGripReach)
-        m_drag = inDistance <= outDistance ? Drag::In : Drag::Out;   // Shift there stays fine trim
-    else
-        m_drag = event->modifiers().testFlag(Qt::ShiftModifier) ? Drag::Mark : Drag::Seek;
-    m_beforeIn = m_in; m_beforeOut = m_out; m_beforePosition = m_position;
+    int piece = -1;
+    bool end = false;
+    if (edgeAt(event->position(), &piece, &end)) {   // Shift there pulls finely
+        beginEdgeDrag(piece, end, x, event->modifiers());
+        emit interactionStarted(true);
+        m_edgePan.start();
+        mouseMoveEvent(event);
+        event->accept();
+        return;
+    }
+    m_drag = event->modifiers().testFlag(Qt::ShiftModifier) ? Drag::Mark : Drag::Seek;
+    m_beforePosition = m_position;
     m_dragX = m_pressX = x;
     m_pressMoved = false;
     if (m_drag == Drag::Mark) {
@@ -536,9 +513,7 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     } else if (m_drag == Drag::Seek) {
         clearMark();
     }
-    m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
-    m_fine = event->modifiers().testFlag(Qt::ShiftModifier);
-    emit interactionStarted(trimming());
+    emit interactionStarted(false);
     m_edgePan.start();
     mouseMoveEvent(event);
     event->accept();
@@ -553,9 +528,9 @@ QString VideoTimeline::hintAt(QPointF pos) const {
         return zoomAt(pos, &part) ? tr("Drag to move, pull an end to resize\nRemove\tDelete")
                                   : tr("Add a zoom here\tClick or Z");
     if (maskAt(pos, &part) >= 0) return tr("Drag to move, pull an end to resize");
-    const qreal inDistance = qAbs(pos.x() - (xForTime(m_in) - kInset / 2));
-    const qreal outDistance = qAbs(pos.x() - (xForTime(m_out) + kInset / 2));
-    if (qMin(inDistance, outDistance) <= kGripReach) return tr("Pull to trim\nFine trim\tShift");
+    int piece = -1;
+    bool end = false;
+    if (edgeAt(pos, &piece, &end)) return tr("Pull to trim this piece\nFine\tShift");
     return {};
 }
 
@@ -585,20 +560,19 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
             zoomAt(event->position(), &part);
             setCursor(part == Drag::ZoomStart || part == Drag::ZoomEnd ? Qt::SizeHorCursor
                                                                      : Qt::PointingHandCursor);
-            if (m_hover != Drag::None) { m_hover = Drag::None; update(); }
+            if (m_hoverEdge >= 0) { m_hoverEdge = -1; update(); }
             emit hoverLeft();
             return;
         }
         const qreal x = event->position().x();
-        const qreal inDistance = edited(m_in) < m_viewStart || edited(m_in) > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_in) - kInset / 2));
-        const qreal outDistance = edited(m_out) < m_viewStart || edited(m_out) > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_out) + kInset / 2));
-        const Drag hover = m_duration > 0 && qMin(inDistance, outDistance) <= kGripReach
-            ? (inDistance <= outDistance ? Drag::In : Drag::Out) : Drag::None;
-        if (hover != m_hover) {
-            m_hover = hover;
+        int piece = -1;
+        bool end = false;
+        const int hover = edgeAt(event->position(), &piece, &end) ? piece * 2 + int(end) : -1;
+        if (hover != m_hoverEdge) {
+            m_hoverEdge = hover;
             update();
         }
-        setCursor(hover != Drag::None ? Qt::SizeHorCursor
+        setCursor(hover >= 0 ? Qt::SizeHorCursor
                   : event->modifiers().testFlag(Qt::ShiftModifier) ? Qt::IBeamCursor : Qt::PointingHandCursor);
         emit hoverRequested(timeForX(x), event->pos());
         return;
@@ -612,6 +586,7 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     m_modifiers = modifiers;
     if (zoomDragging()) { moveZoomDrag(x); return; }
     if (maskDragging()) { moveMaskDrag(x); return; }
+    if (m_drag == Drag::Edge) { moveEdgeDrag(x); return; }
     if (qAbs(x - m_pressX) >= 3) m_pressMoved = true;
     if (m_drag == Drag::ZoomAdd) return;
     if (m_drag == Drag::Mark) {
@@ -624,28 +599,8 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
         update();
         return;
     }
-    const bool fine = modifiers.testFlag(Qt::ShiftModifier);
-    if (fine != m_fine) {
-        m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
-        m_dragX = x;
-        m_fine = fine;
-    }
-    const qint64 time = m_drag == Drag::Seek ? timeForX(x)
-        : source(m_dragTime + (x - m_dragX) * (m_viewEnd - m_viewStart)
-                                / trackRect().width() * (m_fine ? 0.1 : 1.0));
-    if (m_drag == Drag::In) {
-        m_in = qBound<qint64>(0, time, m_out - qMin(m_minimumRange, m_duration));
-        emit trimPreviewed(m_in, m_out);
-        m_position = m_in;
-    } else if (m_drag == Drag::Out) {
-        m_out = qBound<qint64>(m_in + qMin(m_minimumRange, m_duration), time, m_duration);
-        emit trimPreviewed(m_in, m_out);
-        m_position = qMax(m_in, m_out - 1);
-    } else {
-        m_position = time;
-    }
+    m_position = timeForX(x);
     emit seekRequested(m_position);
-    if (trimming()) emit hoverRequested(m_position, QPoint(qRound(x), int(kTrackTop)));
     update();
 }
 
@@ -698,11 +653,16 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
         return;
     }
     moveDrag(event->position().x(), event->modifiers());
-    const bool trimmed = m_drag == Drag::In || m_drag == Drag::Out;
     const bool clicked = m_drag == Drag::Seek && !m_pressMoved;
+    if (m_drag == Drag::Edge && m_clipPreview != m_clipBefore) {
+        // The edit lands while the pulled edge still shows: the blocks glide on from there.
+        const fragments::Clip before = m_clipBefore, after = m_clipPreview;
+        setClip(after.inMs, after.outMs, after.list);
+        m_drag = Drag::None;
+        emit clipEdited(before, after, m_edgePiece);
+    }
     m_drag = Drag::None;
     m_edgePan.stop();
-    if (trimmed && (m_in != m_beforeIn || m_out != m_beforeOut)) emit trimCommitted(m_in, m_out);
     if (clicked) emit stripClicked(m_position);
     emit interactionFinished(false);
     emit hoverLeft();
@@ -726,17 +686,18 @@ void VideoTimeline::glideView(const std::function<void()> &change) {
 }
 
 void VideoTimeline::syncStates() {
-    m_states->aim(kGripIn, m_drag == Drag::In || m_hover == Drag::In);
-    m_states->aim(kGripOut, m_drag == Drag::Out || m_hover == Drag::Out);
     m_states->aim(kFocus, hasFocus());
     for (const ZoomSegment &z : std::as_const(m_zooms)) m_states->aim(stateKey(kZoom, z.id), z.id == m_selectedZoom);
     for (const MaskBlock &mask : std::as_const(m_masks)) m_states->aim(stateKey(kMask, mask.key), mask.selected);
     const QVector<Fragment> parts = fragments::expanded(m_fragments);
-    const bool pickedKept = m_selectedFragment >= 0 && m_selectedFragment < parts.size()
-        && !parts[m_selectedFragment].removed;
-    for (int i = 0; i < parts.size(); ++i) {
-        m_states->aim(stateKey(kNotch, quint64(i)), i == m_hoverCut || i == m_selectedFragment);
-        m_states->aim(stateKey(kDim, quint64(i)), pickedKept && i != m_selectedFragment);
+    for (int i = 0; i < parts.size(); ++i)
+        m_states->aim(stateKey(kNotch, quint64(i)), i == m_hoverCut);
+    const int picked = selectedPiece();
+    for (int i = 0; i < m_axis.pieces().size(); ++i) {
+        m_states->aim(stateKey(kPicked, quint64(i)), i == picked);
+        for (const int edge : {i * 2, i * 2 + 1})
+            m_states->aim(stateKey(kEdge, quint64(edge)), edge == m_hoverEdge
+                          || (m_drag == Drag::Edge && edge == m_edgePiece * 2 + int(m_edgeEnd)));
     }
 }
 
@@ -807,7 +768,7 @@ qint64 VideoTimeline::snapMark(qint64 timeMs) const {
 }
 
 void VideoTimeline::leaveEvent(QEvent *event) {
-    m_hover = Drag::None;
+    m_hoverEdge = -1;
     m_hoverCut = -1;
     if (!interacting()) emit hoverLeft();
     setCursor(Qt::PointingHandCursor);
@@ -841,10 +802,9 @@ void VideoTimeline::cancelInteraction() {
         if (hasMark()) showMark(); else m_markFade->jumpTo(0);
         emit markChanged();
     }
-    m_drag = Drag::None;
+    m_drag = Drag::None;   // a pulled edge goes back: nothing was applied yet
     m_edgePan.stop();
-    m_in = m_beforeIn; m_out = m_beforeOut; m_position = m_beforePosition;
-    emit trimPreviewed(m_in, m_out);
+    m_position = m_beforePosition;
     emit seekRequested(m_position);
     emit interactionFinished(true);
     emit hoverLeft();

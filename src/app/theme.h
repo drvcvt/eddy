@@ -103,9 +103,12 @@ public:
     using QToolButton::QToolButton;
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override { return sizeHint(); }
+    // Room either side of the content: kS2 for a label alone, kS3 for one on its own fill.
+    void setSidePadding(int padding) { m_side = padding; updateGeometry(); }
 protected:
     void paintEvent(QPaintEvent *) override;
 private:
+    int m_side = kS2;
     // The glyph's ink inside its pixmap, in logical pixels; measured, not
     // derived from the SVG, so every glyph sits by what is actually drawn.
     QRectF inkRect(qreal dpr) const;

@@ -238,7 +238,7 @@ qreal CapButton::contentWidth() const {
 }
 
 QSize CapButton::sizeHint() const {
-    return QSize(qCeil(2 * kS2 + contentWidth()), kCtl);
+    return QSize(qCeil(2 * m_side + contentWidth()), kCtl);
 }
 
 void CapButton::paintEvent(QPaintEvent *) {

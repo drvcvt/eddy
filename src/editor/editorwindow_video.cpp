@@ -192,7 +192,6 @@ void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs, int mergeKey) {
     // A range that holds only cut pieces would play and export nothing: keep the old one.
     if (TimeMap(m_media.video.durationMs, inMs, outMs, m_studio.fragments).pieces().isEmpty()) {
         m_timeline->setTrimRange(m_trimInMs, m_trimOutMs);
-        updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
         m_toast->showMessage(tr("Keep at least part of the clip"));
         return;
     }
@@ -213,37 +212,11 @@ QString EditorWindow::widestTime() const {
     return formatPreciseTime(qRound64(m_media.video.durationMs / fragments::kMinSpeed));
 }
 
-// ↑/↓ in Start, End or Duration: a frame (Shift: a second as it plays), applied at once
-// and shown at the bound; the steps of one focus in one field are one undo step.
-void EditorWindow::stepTrimField(QLineEdit *field, int direction, bool second) {
-    const TimeMap clip = clipMap();
-    const qint64 duration = m_media.video.durationMs;
-    const auto step = [&](qint64 from) {
-        return second ? stepOutput(clip, duration, m_media.video.fps, from, direction * 1000.0)
-                      : stepFrames(clip, duration, m_media.video.fps, from, direction);
-    };
-    const bool start = field == m_trimInLabel;
-    qint64 in = m_trimInMs, out = m_trimOutMs;
-    if (start) in = qBound<qint64>(0, step(in), out - 1);
-    else out = qBound<qint64>(in + 1, out >= duration && direction > 0 ? duration : step(out), duration);
-    field->setModified(false);
-    applyTrimRange(in, out, 0x20000 + m_trimStepSession * 4 + (start ? 1 : field == m_trimOutLabel ? 2 : 3));
-    // The frame at the bound, as a grip drag shows it.
-    const qint64 at = start ? m_trimInMs : qMax(m_trimInMs, stepFrames(clip, duration, m_media.video.fps, m_trimOutMs, -1));
-    ensureVideoPlayer();
-    if (m_player) m_player->pause();
-    m_resumeAfterSeek = false;
-    m_timeline->setPosition(at);
-    requestVideoSeek(at);
-    flushVideoSeek();
-}
-
 void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
     if (!m_timeline) return;
     m_timeline->setTrimRange(inMs, outMs);
     m_trimInMs = m_timeline->trimIn();
     m_trimOutMs = m_timeline->trimOut();
-    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
     rebuildCamera();
     if (m_player && !m_timelineActive) {
         m_player->pause();
@@ -254,48 +227,6 @@ void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
             flushVideoSeek();
         }
     }
-}
-
-void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
-    // On the ruler's clock (C4). One box for all three: the widest reading plus kS2
-    // padding and QLineEdit's own 2 px margin. Duration = End - Start of the shown
-    // values, so the three always add up; it is the output's length.
-    const qint64 start = editedMs(inMs), end = editedMs(outMs);
-    const QString widest = widestTime();
-    for (QLineEdit *field : {m_trimInLabel, m_trimOutLabel, m_trimDurationLabel}) {
-        if (!field) continue;
-        field->setFixedWidth(field->fontMetrics().horizontalAdvance(widest) + 2 * theme::kS2 + 2 * 2);
-        if (field->hasFocus() && field->isModified()) continue;   // the user is typing
-        field->setText(formatPreciseTime(field == m_trimInLabel ? start : field == m_trimOutLabel ? end : end - start));
-    }
-}
-
-void EditorWindow::commitTrimTime(QLineEdit *field) {
-    if (!field->isModified()) return;
-    qint64 typed = 0;
-    const qint64 gap = m_media.video.fps > 0 ? qMax<qint64>(1, qRound64(1000 / m_media.video.fps)) : 1;
-    const bool parsed = parseVideoTime(field->text(), &typed);
-    field->setModified(false);
-    if (field == m_trimDurationLabel) {
-        // A length sets End: that much output after Start.
-        const qint64 from = editedMs(m_trimInMs), clipEnd = editedMs(m_media.video.durationMs);
-        if (parsed && typed >= gap && from + typed <= clipEnd)
-            applyTrimRange(m_trimInMs, from + typed >= clipEnd ? m_media.video.durationMs : sourceFromEdited(from + typed));
-        else if (m_toast) m_toast->showMessage(tr("Enter a length that fits after Start"));
-        updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
-        return;
-    }
-    // Typed on the ruler's clock; checked and stored in the source's.
-    // End typed at or past the clock's end means the clip's end, cut or not.
-    const qint64 time = field == m_trimOutLabel && typed >= editedMs(m_media.video.durationMs)
-        ? m_media.video.durationMs : sourceFromEdited(typed);
-    const bool valid = parsed
-        && (field == m_trimInLabel ? time >= 0 && time <= m_trimOutMs - gap
-                                  : time >= m_trimInMs + gap && time <= m_media.video.durationMs);
-    if (valid) applyTrimRange(field == m_trimInLabel ? time : m_trimInMs,
-                              field == m_trimOutLabel ? time : m_trimOutMs);
-    else if (m_toast) m_toast->showMessage(tr("Enter a time inside the clip, with Start before End"));
-    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
 }
 
 void EditorWindow::requestVideoSeek(qint64 position) {

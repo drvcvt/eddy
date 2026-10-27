@@ -1,6 +1,8 @@
 #pragma once
 #include <QVector>
+#include <optional>
 #include "studio/studiodocument.h"
+#include "video/timemap.h"
 
 // Editing the source's fragments (studio plan 6.6): pure functions over the
 // partition, so the timeline and the bar only forward gestures. An empty list
@@ -32,5 +34,26 @@ bool applySpans(QVector<Fragment> &list, const QVector<std::pair<qint64, qint64>
 // Merges kept fragment `index` into the kept one before it, which keeps its
 // speed. Restoring a cut merges it with equal neighbours on its own.
 bool join(QVector<Fragment> &list, int index);
+
+// The clip model (K): the trim and the fragments are one edit. Its pieces are the kept
+// stretches inside the trim (TimeMap::pieces), shown as blocks; every block edge moves.
+struct Clip {
+    qint64 inMs = 0, outMs = 0;
+    QVector<Fragment> list;
+    bool operator==(const Clip &) const = default;
+    QVector<TimePiece> pieces(qint64 durationMs) const { return TimeMap(durationMs, inMs, outMs, list).pieces(); }
+};
+// Where piece `piece`'s start or end may go: out to the material there is (the kept piece
+// before or after it in the source, or the file's ends), in to kMinFragmentMs long.
+std::pair<qint64, qint64> startRange(const Clip &clip, int piece, qint64 durationMs);
+std::pair<qint64, qint64> endRange(const Clip &clip, int piece, qint64 durationMs);
+// Moves an edge, clamped to its range. The outer edges move the trim; inner ones cut the
+// source they leave or keep the source they take in, at the piece's speed. A split stays
+// a split: taking source back never melts the piece into its neighbour.
+Clip moveStart(Clip clip, int piece, qint64 sourceMs, qint64 durationMs);
+Clip moveEnd(Clip clip, int piece, qint64 sourceMs, qint64 durationMs);
+// Leaves piece `piece` out; the first or last moves the trim onto its neighbour. Empty
+// when it is the only piece: the output never goes empty.
+std::optional<Clip> removePiece(Clip clip, int piece, qint64 durationMs);
 
 }

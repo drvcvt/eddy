@@ -4,6 +4,8 @@
     <file>fonts/Outfit.ttf</file>
     <file>icons/undo.svg</file>
     <file>icons/keyboard.svg</file>
+    <file>icons/scissors.svg</file>
+    <file>icons/trash.svg</file>
     <file>icons/redo.svg</file>
     <file>icons/move.svg</file>
     <file>icons/crop.svg</file>

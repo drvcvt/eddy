@@ -430,8 +430,11 @@ void EditorWindow::toggleTheme() {
         m_muteButton->setIcon(theme::tintedIcon(
             muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
             color, color));
-        if (auto *reset = findChild<QToolButton *>(QStringLiteral("TrimReset")))
-            reset->setIcon(theme::tintedIcon(QStringLiteral(":/icons/reset.svg"), color, color));
+        const QColor label = palette().color(QPalette::WindowText);
+        if (m_splitButton)
+            m_splitButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/scissors.svg"), label, label, theme::kLabelIcon));
+        if (m_deleteButton)
+            m_deleteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/trash.svg"), label, label, theme::kLabelIcon));
         if (m_loopButton)
             m_loopButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/loop.svg"), color, color));
         if (m_speedButton) theme::setMenuArrow(m_speedButton);

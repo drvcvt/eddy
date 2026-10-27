@@ -146,6 +146,15 @@ QWidget#PlaybackBar QToolButton#PlaybackPlay,
 QWidget#PlaybackBar QToolButton#PlaybackMute,
 QWidget#PlaybackBar QToolButton#TrimReset,
 QWidget#PlaybackBar QToolButton#PlaybackLoop { padding: 0; }
+/* The clip's edits (K, B): controls that read as controls at rest, as in Boltsnap's
+   settings: a raised fill one step over the bar, the label in fg, s3 of side room. */
+QWidget#PlaybackBar QToolButton#ClipSplit, QWidget#PlaybackBar QToolButton#ClipDelete {
+    background-color: @raise1;
+    color: @fg;
+    font-size: @fs-ui;   /* the side room is CapButton's own, s3 */
+}
+QWidget#PlaybackBar QToolButton#ClipSplit:hover, QWidget#PlaybackBar QToolButton#ClipDelete:hover { background-color: @raise2; }
+QWidget#PlaybackBar QToolButton#ClipDelete:disabled { color: @faint; }
 QWidget#PlaybackBar QToolButton#PlaybackSpeed { font-family: @font-mono; font-weight: 400; }
 QWidget#PlaybackBar QLabel {
     color: @sub;
@@ -154,22 +163,10 @@ QWidget#PlaybackBar QLabel {
     font-weight: 400;
 }
 QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
-/* Start, End and Duration read as three equal caption/value pairs. */
-/* Their boxes are set in code to match the Start/End buttons and the time fields. */
-QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: @font-ui; font-weight: 500; padding: 0; }
+QWidget#PlaybackBar QLabel#ClipDurationCaption { font-family: @font-ui; font-weight: 500; }
+QWidget#PlaybackBar QLabel#ClipDuration { color: @fg; }
 QLabel#VideoExportStatus { color: @sub; font-size: @fs-caption; padding: 0 @s2; }
 QWidget#ViewControls QLabel#NoAudio { color: @sub; font-family: @font-ui; font-size: @fs-caption; font-weight: 500; }
-QWidget#PlaybackBar QLineEdit {
-    background: transparent;
-    color: @fg;
-    border: none;
-    border-radius: @r-chip;
-    padding: 0 @s2;
-    font-family: @font-mono;
-    font-size: @fs-caption;
-}
-QWidget#PlaybackBar QLineEdit:hover { background: @bar-hover; }
-QWidget#PlaybackBar QLineEdit:focus { background: @bar-active; color: @fg; }
 QWidget#VideoPreview { background: @raise1; border: none; border-radius: @r-bar; }
 QWidget#VideoPreview QLabel { color: @fg; font-family: @font-mono; font-size: @fs-caption; }
 QSlider::groove:horizontal {

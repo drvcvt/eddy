@@ -9,6 +9,7 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <cmath>
 
 using namespace eddy;
 
@@ -41,8 +42,8 @@ private slots:
         VideoTimeline timeline;
         timeline.resize(300, 52); timeline.setDuration(0); timeline.fitClip();
         QCOMPARE(timeline.visibleStart(), 0); QCOMPARE(timeline.visibleEnd(), 0);
-        timeline.setDuration(10000); timeline.zoomAt(10000.0 / 9000, 100); timeline.show();
-        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
+        timeline.setDuration(10000); timeline.zoomAt(2, 5000); timeline.show();   // view 2.5 to 7.5 s
+        QSignalSpy commits(&timeline, &VideoTimeline::clipEdited);
         QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));
         QVERIFY(!timeline.trimming());
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(70, 22));
@@ -53,12 +54,13 @@ private slots:
         timeline.resize(300, 38);
         timeline.setDuration(1000);
         timeline.show();
-        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));
+        QSignalSpy commits(&timeline, &VideoTimeline::clipEdited);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));   // the start's grip
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 22));
         QCOMPARE(timeline.trimIn(), 250);
         QCOMPARE(commits.count(), 1);
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 22));
+        // The trimmed start is off the axis: the block starts at the track's left again.
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 22));
         QTest::mouseMove(&timeline, QPoint(150, 22));
         QTest::keyClick(&timeline, Qt::Key_Escape);
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(150, 22));
@@ -69,18 +71,19 @@ private slots:
         VideoTimeline timeline;
         timeline.resize(300, 38);
         timeline.setDuration(10000);
-        timeline.setTrimRange(2500, 10000);
+        timeline.setTrimRange(2500, 10000);   // 7.5 s on 288 px; fine is a tenth of that
         timeline.show();
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(82, 22));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(11, 22));
         QCOMPARE(timeline.trimIn(), 2500);
-        QMouseEvent move(QEvent::MouseMove, QPointF(226, 22), QPointF(226, 22),
+        QMouseEvent move(QEvent::MouseMove, QPointF(203, 22), QPointF(203, 22),
                          Qt::NoButton, Qt::LeftButton, Qt::ShiftModifier);
         QApplication::sendEvent(&timeline, &move);
-        QCOMPARE(timeline.trimIn(), 3000);
+        QCOMPARE(timeline.clip().inMs, qint64(2500));   // nothing lands before the release
+        QCOMPARE(timeline.position(), 3000);           // the frame at the pulled edge
         const auto target = timeline.position();
         timeline.setPosition(10);
         QCOMPARE(timeline.position(), target);
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(226, 22));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(203, 22));
         QCOMPARE(timeline.trimIn(), 3000);
     }
     void gripsAreFoundInEditedTime() {
@@ -89,15 +92,15 @@ private slots:
         timeline.resize(312, 52);
         timeline.setDuration(10000);
         timeline.setFragments({{0, 4.0, false}, {8000, 1.0, false}});
-        timeline.setTrimRange(0, 8000);
         timeline.show();
         timeline.zoomAt(4000.0 / 3000.0, 0);   // edited 4 s in all: view edited 0 to 3 s
         QCOMPARE(timeline.visibleStart(), 0);
         QVERIFY(timeline.visibleEnd() > 8000);   // source 8 s is in view
-        const int outX = int(6 + 300.0 * 2000 / 3000);   // the track spans x 6 to 306
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(outX + 3, 30));
-        QVERIFY2(timeline.trimming(), "a press on the out grip seeked instead");
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(outX + 3, 30));
+        const int seamX = int(6 + 300.0 * 2000 / 3000);   // the track spans x 6 to 306
+        // The first piece's end grip: its middle half the gap and half a grip inside.
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(seamX - 5, 30));
+        QVERIFY2(timeline.trimming(), "a press on the end grip seeked instead");
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(seamX - 5, 30));
     }
     void zoomLaneGrowsTheTimelineUnderTheFilmStrip() {
         VideoTimeline timeline;
@@ -181,15 +184,15 @@ private slots:
         VideoTimeline timeline;
         timeline.resize(312, 52);
         timeline.setDuration(10000);
-        timeline.setTrimRange(3000, 10000);
+        timeline.setTrimRange(3000, 9000);   // 6 s on 300 px: 20 ms a pixel from source 3 s
         timeline.show();
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(66, 36));
-        QTest::mouseMove(&timeline, QPoint(126, 36));
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(126, 36));
-        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{3000, 4000}));
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(93, 36));   // the In grip
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(56, 36));
+        QTest::mouseMove(&timeline, QPoint(106, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(106, 36));
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{4000, 5000}));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(11, 36));   // the start's grip
         QVERIFY(timeline.trimming() && !timeline.marking());
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(93, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(11, 36));
     }
     void anOpenMarkFollowsThePlayhead() {
         VideoTimeline timeline;
@@ -269,16 +272,15 @@ private slots:
         VideoTimeline timeline;
         timeline.resize(312, 52);
         timeline.setDuration(10000);
-        timeline.setTrimRange(3000, 10000);
         timeline.show();
         QVERIFY(QTest::qWaitForWindowExposed(&timeline));
         Spring::setEnabled(true);
         const auto off = qScopeGuard([] { Spring::setEnabled(false); });
-        // The In grip's face at x 93 (3 s, just left of the range): its grey eases up.
-        const auto grip = [&] { return qGray(timeline.grab().toImage().pixel(93, 30)); };
+        // The start grip's face (x 8 to 14, inside the block): its grey eases up.
+        const auto grip = [&] { return qGray(timeline.grab().toImage().pixel(9, 26)); };
         timeline.repaint();
         const int rest = grip();
-        QTest::mouseMove(&timeline, QPoint(93, 36));
+        QTest::mouseMove(&timeline, QPoint(11, 36));
         QTest::qWait(30);
         const int midway = grip();
         QTRY_VERIFY_WITH_TIMEOUT(grip() > midway, 1000);
@@ -308,7 +310,7 @@ private slots:
         const auto hintAt = [&](QPoint at) { QTest::mouseMove(&timeline, at); return timeline.toolTip(); };
         QVERIFY(hintAt(QPoint(156, 8)).contains(QStringLiteral("Wheel")));         // the ruler
         QVERIFY(hintAt(QPoint(156, 36)).isEmpty());                                // the strip: its frame preview
-        QVERIFY(hintAt(QPoint(93, 36)).startsWith(QStringLiteral("Pull to trim")));  // the In grip
+        QVERIFY(hintAt(QPoint(11, 36)).startsWith(QStringLiteral("Pull to trim")));  // the start's grip
         QVERIFY(hintAt(QPoint(200, 66)).startsWith(QStringLiteral("Add a zoom")));   // the empty zoom lane
     }
     void clickingTheEmptyLaneAsksForAZoomThere() {
@@ -491,7 +493,7 @@ private slots:
     void zoomKeepsAnchorAndDoesNotEditTrim() {
         VideoTimeline timeline;
         timeline.setDuration(10000);
-        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
+        QSignalSpy commits(&timeline, &VideoTimeline::clipEdited);
         timeline.zoomAt(2, 2500);
         QCOMPARE(timeline.visibleStart(), 1250);
         QCOMPARE(timeline.visibleEnd(), 6250);
@@ -511,26 +513,27 @@ private slots:
         timeline.setMinimumRange(40);
         timeline.show();
         QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
-        QSignalSpy commits(&timeline, &VideoTimeline::trimCommitted);
-        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(150, 19));
+        QSignalSpy commits(&timeline, &VideoTimeline::clipEdited);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(150, 25));
         QCOMPARE(timeline.position(), 500);
         QCOMPARE(timeline.trimIn(), 0);
         QCOMPARE(timeline.trimOut(), 1000);
         QCOMPARE(commits.count(), 0);
         QVERIFY(!seeks.isEmpty());
 
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 19));
-        QTest::mouseMove(&timeline, QPoint(78, 19));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(6, 25));
+        QTest::mouseMove(&timeline, QPoint(78, 25));
         QCOMPARE(commits.count(), 0);
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 19));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 25));
         QCOMPARE(timeline.trimIn(), 250);
         QCOMPARE(commits.count(), 1);
-        QCOMPARE(commits.at(0).at(0).toLongLong(), 250);
+        QCOMPARE(commits.at(0).at(1).value<fragments::Clip>().inMs, qint64(250));
 
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(294, 19));
-        QTest::mouseMove(&timeline, QPoint(78, 19));
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(78, 19));
-        QCOMPARE(timeline.trimOut(), 290);
+        // 0.75 s left on 288 px; the end's grip pulled 144 px in takes 375 ms off.
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(294, 25));
+        QTest::mouseMove(&timeline, QPoint(150, 25));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(150, 25));
+        QCOMPARE(timeline.trimOut(), 625);
         QCOMPARE(commits.count(), 2);
     }
     void keepsTrimInsideDurationAndOneFrameApart() {
@@ -589,10 +592,13 @@ private slots:
         timeline.setFragments({{0, 1.0, false}, {800, 1.0, true}, {1200, 1.0, false}});
         timeline.fitClip();
         const QImage cut = timeline.grab().toImage();
-        const int seam = int(lane.left() + lane.width() * 800 / 2600.0);
+        const qreal seamX = lane.left() + lane.width() * 800 / 2600.0;
+        const int seam = int(seamX), after = int(std::ceil(seamX + 2));   // the gap is seamX ± 2
         const QColor quiet = cut.pixelColor(int(lane.left() + lane.width() * 400 / 2600.0), y);
-        for (int x = seam - 2; x <= seam + 2; ++x)
+        // Either side of the blocks' 4 px gap (seam - 2 to seam + 2, the bar's own colour).
+        for (const int x : {seam - 5, seam - 4, seam - 3, after, after + 1, after + 2})
             QVERIFY2(cut.pixelColor(x, y) == quiet, qPrintable(QStringLiteral("%1: %2").arg(x).arg(cut.pixelColor(x, y).name())));
+        QCOMPARE(cut.pixelColor(seam, y), timeline.palette().color(QPalette::Window));
         timeline.setFragments({});
         timeline.fitClip();
         // A click on the waveform scrubs like the film strip.

@@ -118,7 +118,7 @@ private slots:
         w.setStudioDocument(studio);
         auto *timeline = w.findChild<VideoTimeline *>();
         timeline->setTrimRange(400, 2600);
-        emit timeline->trimCommitted(400, 2600);
+        emit timeline->clipEdited(timeline->clip(), {400, 2600, {}}, 0);
         const QString project = dir.filePath("clip.eddy");
         QVERIFY(saveAndWait(w, project));
         QString error;

@@ -25,18 +25,17 @@ private slots:
         QCOMPARE(play->accessibleName(), theme::spokenName(play->toolTip()));
         QVERIFY(!play->accessibleName().contains(QLatin1Char('\t')));
         QVERIFY(w.findChild<VideoTimeline *>(QStringLiteral("VideoTimeline")) != nullptr);
-        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("TrimSetIn")) != nullptr);
-        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("TrimSetOut")) != nullptr);
-        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("TrimReset")) != nullptr);
+        // K: the clip's two edits are labelled buttons with their icon.
+        for (const char *name : {"ClipSplit", "ClipDelete"}) {
+            auto *button = w.findChild<QToolButton *>(QString::fromLatin1(name));
+            QVERIFY(button && !button->text().isEmpty() && !button->icon().isNull());
+            QCOMPARE(button->accessibleName(), theme::spokenName(button->toolTip()));
+        }
         auto *mute = w.findChild<QToolButton *>(QStringLiteral("PlaybackMute"));
         QVERIFY(mute != nullptr);
         QVERIFY(mute->text().isEmpty());
         QVERIFY(!mute->icon().isNull());
         QCOMPARE(mute->accessibleName(), theme::spokenName(mute->toolTip()));
-        auto *reset = w.findChild<QToolButton *>(QStringLiteral("TrimReset"));
-        QVERIFY(reset != nullptr);
-        QVERIFY(reset->text().isEmpty());
-        QVERIFY(!reset->icon().isNull());
         auto *volume = w.findChild<QSlider *>(QStringLiteral("PlaybackVolume"));
         QVERIFY(volume != nullptr);
         QCOMPARE(volume->value(), 100);
@@ -243,13 +242,10 @@ private slots:
         StudioDocument studio = window.studioDocument();
         studio.fragments = {{0, 1.0, false}, {5000, 1.0, true}};
         window.setStudioDocument(studio);
-        auto *field = window.findChild<QLineEdit *>(QStringLiteral("TrimInTime"));
         auto *timeline = window.findChild<VideoTimeline *>();
-        field->setFocus();
-        // On the ruler's clock the cut has no length: 0:05.000 is its seam, the cut's start.
-        field->selectAll(); QTest::keyClicks(field, QStringLiteral("5.000")); QTest::keyClick(field, Qt::Key_Return);
+        timeline->setPosition(6000);
+        QTest::keyClick(&window, Qt::Key_I);
         QCOMPARE(timeline->trimIn(), 0);
-        QCOMPARE(field->text(), QStringLiteral("0:00.000"));
         QCOMPARE(window.findChild<Toast *>()->text(), QStringLiteral("Keep at least part of the clip"));
     }
     void changingTheRateWhilePausedLeavesThePlayheadAlone() {
@@ -353,12 +349,10 @@ private slots:
         player->pause();
 
         // Two committed time edits define a short loop inside the first GOP.
-        auto setTime = [&](const char *name, const char *value) {
-            auto *field = window.findChild<QLineEdit *>(name);
-            field->selectAll(); QTest::keyClicks(field, value); QTest::keyClick(field, Qt::Key_Return);
-        };
-        setTime("TrimInTime", "0.400");
-        setTime("TrimOutTime", "0.960");
+        timeline->setPosition(400);
+        QTest::keyClick(&window, Qt::Key_I);
+        timeline->setPosition(960);
+        QTest::keyClick(&window, Qt::Key_O);
         QTRY_VERIFY(qAbs(video->videoSink()->videoFrame().startTime() / 1000 - frameOrigin - 400) <= 40);
         auto *loop = window.findChild<QToolButton *>("PlaybackLoop");
         loop->click();
@@ -383,7 +377,7 @@ private slots:
                                       - frameOrigin - 920) <= 1, 3000);
         QCOMPARE(window.findChild<QUndoStack *>()->count(), 2);
 
-        window.findChild<QToolButton *>("TrimReset")->click();
+        emit timeline->clipEdited(timeline->clip(), {0, 3000, {}}, 0);   // the whole clip again
         loop->click();
         wraps = 0;
         play->click();
@@ -455,23 +449,16 @@ private slots:
         QCoreApplication::processEvents();
         QCOMPARE(window.width(), 520);
         for (const auto *name : {"PlaybackPlay", "PlaybackLoop", "PlaybackSpeed", "PlaybackMute",
-                                 "TrimSetIn", "TrimInTime", "TrimSetOut", "TrimOutTime",
-                                 "TrimDurationCaption", "TrimDuration", "TrimReset"}) {
+                                 "ClipSplit", "ClipDelete", "ClipDurationCaption", "ClipDuration"}) {
             const auto *control = window.findChild<QWidget *>(name);
             QVERIFY(control && control->isVisible());
             QVERIFY2(window.rect().contains(QRect(control->mapTo(&window, QPoint()), control->size())), name);
         }
         QVERIFY(!window.findChild<QSlider *>("PlaybackVolume")->isVisible());
-        for (const auto *name : {"TrimInTime", "TrimOutTime"}) {
-            auto *field = window.findChild<QLineEdit *>(name);
-            field->setCursorPosition(0);
-            const qreal start = field->inputMethodQuery(Qt::ImCursorRectangle).toRectF().x();
-            field->setCursorPosition(field->text().size());
-            const qreal end = field->inputMethodQuery(Qt::ImCursorRectangle).toRectF().x();
-            // A field that scrolls horizontally hides leading digits before
-            // the first trim. All digits must fit using the styled font.
-            QVERIFY2(end - start >= field->fontMetrics().horizontalAdvance(field->text()) - 1, name);
-        }
+        // Ten hours of clip: every digit of the length fits in its fixed box.
+        auto *length = window.findChild<QLabel *>("ClipDuration");
+        QVERIFY2(length->contentsRect().width() >= length->fontMetrics().horizontalAdvance(length->text()),
+                 qPrintable(length->text()));
         // Wide, the row shows the same controls: volume stays in the speaker's hold menu.
         window.resize(1200, 680);
         QTRY_COMPARE_WITH_TIMEOUT(window.width(), 1200, 1000);
@@ -530,7 +517,7 @@ private slots:
         timeline->setPosition(800);
         QTest::keyClick(&w, Qt::Key_O);
         QCOMPARE(timeline->trimOut(), 800);
-        QTest::mouseClick(w.findChild<QToolButton *>(QStringLiteral("TrimReset")), Qt::LeftButton);
+        emit timeline->clipEdited(timeline->clip(), {0, 1000, {}}, 0);   // both ends pulled back out
         QCOMPARE(timeline->trimIn(), 0);
         QCOMPARE(timeline->trimOut(), 1000);
     }
@@ -546,24 +533,22 @@ private slots:
         EditorWindow w(doc, cfg, cli);
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *undo = w.findChild<QUndoStack *>();
-        auto *inTime = w.findChild<QLineEdit *>(QStringLiteral("TrimInTime"));
-        auto *outTime = w.findChild<QLineEdit *>(QStringLiteral("TrimOutTime"));
-        QVERIFY(timeline && undo && inTime && outTime);
-        QCOMPARE(inTime->text(), QStringLiteral("0:00.000"));
-        QCOMPARE(outTime->text(), QStringLiteral("0:12.500"));
+        auto *length = w.findChild<QLabel *>(QStringLiteral("ClipDuration"));
+        QVERIFY(timeline && undo && length);
+        QCOMPARE(length->text(), QStringLiteral("0:12.500"));
 
         timeline->setPosition(1234);
         QTest::keyClick(&w, Qt::Key_I);
         QCOMPARE(timeline->trimIn(), 1234);
-        QCOMPARE(inTime->text(), QStringLiteral("0:01.234"));
+        QCOMPARE(length->text(), QStringLiteral("0:11.266"));
         QCOMPARE(undo->count(), 1);
 
         undo->undo();
         QCOMPARE(timeline->trimIn(), 0);
-        QCOMPARE(inTime->text(), QStringLiteral("0:00.000"));
+        QCOMPARE(length->text(), QStringLiteral("0:12.500"));
         undo->redo();
         QCOMPARE(timeline->trimIn(), 1234);
-        QCOMPARE(inTime->text(), QStringLiteral("0:01.234"));
+        QCOMPARE(length->text(), QStringLiteral("0:11.266"));
     }
     void loopAndSpeedArePreviewOnlyAndFrameStepsDoNotDrift() {
         MediaDocument doc; doc.kind = MediaKind::Video;
@@ -587,33 +572,6 @@ private slots:
         QCOMPARE(timeline->position(), 9977);
         QCOMPARE(undo->count(), 0);
         QVERIFY(!window.findChild<QTimer *>("VideoExportTimer")->isActive());
-    }
-    void trimTimeEditingCommitsOnceAndEscapeDoesNotClose() {
-        MediaDocument doc; doc.kind = MediaKind::Video;
-        doc.path = QStringLiteral("/tmp/nonexistent-editorwindow-test.mp4");
-        doc.video = {QSize(64, 48), 10000, 25};
-        Config cfg; cfg.animations = false;
-        EditorWindow window(doc, cfg, {});
-        auto *field = window.findChild<QLineEdit *>("TrimInTime");
-        auto *timeline = window.findChild<VideoTimeline *>();
-        auto *undo = window.findChild<QUndoStack *>();
-        QVERIFY(field && timeline && undo);
-        field->selectAll(); QTest::keyClicks(field, "1.250");
-        QTest::keyClick(field, Qt::Key_Return);
-        QCOMPARE(timeline->trimIn(), 1250);
-        QCOMPARE(undo->count(), 1);
-        QCOMPARE(field->text(), QStringLiteral("0:01.250"));
-        field->selectAll(); QTest::keyClicks(field, "9:99");
-        QTest::keyClick(field, Qt::Key_Return);
-        QCOMPARE(timeline->trimIn(), 1250);
-        QCOMPARE(undo->count(), 1);
-        field->selectAll(); QTest::keyClicks(field, "2");
-        QTest::keyClick(field, Qt::Key_Escape);
-        QCOMPARE(field->text(), QStringLiteral("0:01.250"));
-        QCOMPARE(undo->count(), 1);
-        QCOMPARE(window.findChild<QLineEdit *>("TrimDuration")->text(), QStringLiteral("0:08.750"));
-        undo->undo();
-        QCOMPARE(timeline->trimIn(), 0);
     }
     void failedRequestedVideoExportIsVisible() {
         MediaDocument doc;

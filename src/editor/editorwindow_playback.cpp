@@ -193,30 +193,6 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
             return true;
         }
     }
-    const bool trimField = widget == m_trimInLabel || widget == m_trimOutLabel || widget == m_trimDurationLabel;
-    if (trimField && event->type() == QEvent::FocusOut) ++m_trimStepSession;   // ends a run of ↑/↓ steps
-    if (event->type() == QEvent::KeyPress && trimField) {
-        const auto *key = static_cast<QKeyEvent *>(event);
-        auto *field = static_cast<QLineEdit *>(widget);
-        if (key->key() == Qt::Key_Escape) {
-            field->setModified(false);
-            updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
-            ++m_trimStepSession;
-            m_canvas->setFocus();
-            return true;
-        }
-        if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
-            commitTrimTime(field);
-            ++m_trimStepSession;
-            return true;
-        }
-        if ((key->key() == Qt::Key_Up || key->key() == Qt::Key_Down)
-            && (key->modifiers() & ~Qt::ShiftModifier & ~Qt::KeypadModifier) == 0) {
-            if (field->isModified()) commitTrimTime(field);   // a typed value is where the steps start
-            stepTrimField(field, key->key() == Qt::Key_Up ? 1 : -1, key->modifiers().testFlag(Qt::ShiftModifier));
-            return true;
-        }
-    }
     if (event->type() == QEvent::ToolTip && !widget->toolTip().isEmpty()) {
         const auto *help = static_cast<QHelpEvent *>(event);
         m_tooltip->setText(theme::tooltipHtml(widget->toolTip()));
@@ -486,7 +462,6 @@ void EditorWindow::ensureVideoPlayer() {
         m_media.video.durationMs = duration;
         m_trimInMs = m_timeline->trimIn();
         m_trimOutMs = m_timeline->trimOut();
-        updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
         rebuildCamera();
         if (m_timeLabel) {
             m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(widestTime()));

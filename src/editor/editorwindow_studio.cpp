@@ -344,7 +344,7 @@ void EditorWindow::rebuildCamera() {
                         QRectF(base).center(), m_cursorTrack.get(), follows});
     }
     m_timeline->setFragments(m_studio.fragments);
-    updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+    updateClipControls();
     // A recording with its pointer is made for zooms: the lane shows from the start (C5).
     m_timeline->setZoomLaneVisible(m_studio.style.active() || !m_studio.zooms.isEmpty() || m_cursorTrack);
     m_timeline->setZooms(m_studio.zooms, [this](qint64 source) {
@@ -430,7 +430,8 @@ void EditorWindow::addZoomAt(qint64 sourceMs) {
 }
 
 void EditorWindow::selectFragment(int index) {
-    if (m_studio.fragments.isEmpty() || index >= m_studio.fragments.size()) index = -1;
+    // K: a clip never split is one piece, and it can be chosen too (for its speed).
+    if (index >= fragments::expanded(m_studio.fragments).size()) index = -1;
     if (index >= 0 && m_timeline) m_timeline->clearMark();
     if (index >= 0 && m_selectedZoom) {
         m_selectedZoom = 0;
@@ -440,6 +441,72 @@ void EditorWindow::selectFragment(int index) {
     m_selectedFragment = index;
     if (m_timeline) m_timeline->setSelectedFragment(index);
     refreshZoomUi();
+    updateClipControls();
+}
+
+// K: one edit of the trim and the fragments, one undo step. The timeline takes it first,
+// so its blocks glide once from where they were, not through a halfway state.
+void EditorWindow::applyClip(const fragments::Clip &after, int piece) {
+    if (!isVideo() || !m_timeline) return;
+    const bool trim = after.inMs != m_trimInMs || after.outMs != m_trimOutMs;
+    const bool list = after.list != m_studio.fragments;
+    if (!trim && !list) return;
+    if (TimeMap(m_media.video.durationMs, after.inMs, after.outMs, after.list).pieces().isEmpty()) {
+        m_toast->showMessage(tr("Keep at least part of the clip"));
+        return;
+    }
+    m_timeline->setClip(after.inMs, after.outMs, after.list);
+    m_undo->beginMacro(tr("Edit clip"));
+    if (list) editStudio([&](StudioDocument &d) { d.fragments = after.list; });
+    if (trim)
+        m_undo->push(new SetTrimRangeCommand(m_trimInMs, m_trimOutMs, after.inMs, after.outMs,
+            [this](qint64 in, qint64 out) { setTrimRangeState(in, out); }));
+    m_undo->endMacro();
+    const QVector<TimePiece> pieces = after.pieces(m_media.video.durationMs);
+    selectFragment(piece >= 0 && piece < pieces.size()
+                   ? fragments::indexAt(after.list, qint64(pieces[piece].srcStart)) : -1);
+}
+
+// Delete: a marked range first (C1), else the chosen piece; the gap closes and the
+// playhead lands where the next piece now starts.
+void EditorWindow::deleteChosen() {
+    if (!isVideo() || !m_timeline) return;
+    if (m_timeline->hasMark() || m_timeline->markOpen()) {
+        cutMarkedRange();
+        return;
+    }
+    const qint64 duration = m_media.video.durationMs;
+    const fragments::Clip now{m_trimInMs, m_trimOutMs, m_studio.fragments};
+    const QVector<TimePiece> pieces = now.pieces(duration);
+    int piece = -1;
+    for (int i = 0; i < pieces.size(); ++i)
+        if (fragments::indexAt(now.list, qint64(pieces[i].srcStart)) == m_selectedFragment) piece = i;
+    if (piece < 0) return;
+    const auto after = fragments::removePiece(now, piece, duration);
+    if (!after) {
+        m_toast->showMessage(tr("Keep at least part of the clip"));
+        return;
+    }
+    ensureVideoPlayer();
+    if (m_player) m_player->pause();
+    m_resumeAfterSeek = false;
+    applyClip(*after);
+    const TimeMap map(duration, after->inMs, after->outMs, after->list);
+    qint64 at = qRound64(map.toSource(map.toOutputAfter(pieces[piece].srcStart)));
+    if (at >= after->outMs) at = qMax(after->inMs, lastFrameMs());
+    m_timeline->setPosition(at);
+    m_timeline->ensureVisible(at);
+    requestVideoSeek(at);
+    flushVideoSeek();
+}
+
+void EditorWindow::updateClipControls() {
+    if (!isVideo()) return;
+    if (m_deleteButton)
+        m_deleteButton->setEnabled(m_selectedFragment >= 0 || (m_timeline && m_timeline->hasMark()));
+    if (m_clipDuration)
+        m_clipDuration->setText(formatPreciseTime(qRound64(
+            TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments).outputDurationMs())));
 }
 
 // Cuts a kept fragment (it stays selected, its bar offers Restore) or restores a cut one.
@@ -660,10 +727,11 @@ void EditorWindow::refreshZoomUi() {
     const bool keep = cameraBase() != cameraContent();
     if (i >= 0 && !cropping) m_zoomBar->setZoom(m_studio.zooms[i]);
     fadeVisible(m_zoomBar, i >= 0 && !cropping);
-    const bool fragment = m_selectedFragment >= 0 && m_selectedFragment < m_studio.fragments.size() && !cropping;
+    const QVector<Fragment> parts = fragments::expanded(m_studio.fragments);
+    const bool fragment = m_selectedFragment >= 0 && m_selectedFragment < parts.size() && !cropping;
     if (fragment)
-        m_fragmentBar->setFragment(m_studio.fragments[m_selectedFragment],
-                                   m_selectedFragment > 0 && !m_studio.fragments[m_selectedFragment - 1].removed);
+        m_fragmentBar->setFragment(parts[m_selectedFragment],
+                                   m_selectedFragment > 0 && !parts[m_selectedFragment - 1].removed);
     fadeVisible(m_fragmentBar, fragment);
     const bool map = !cropping && !playing && (i >= 0 || keep);
     if (map && !fadeTarget(m_miniMap)) {

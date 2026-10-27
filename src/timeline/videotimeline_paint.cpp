@@ -13,6 +13,7 @@
 #include <QKeyEvent>
 #include <QWheelEvent>
 #include <QMenu>
+#include <algorithm>
 #include <cmath>
 
 namespace eddy {
@@ -20,7 +21,7 @@ namespace eddy {
 // A grey envelope, the same up and down, with a brighter RMS core on a fixed
 // dB scale. Stretches not read yet get a dotted line, never a flat "silence".
 // Drawn once into a cache: the playhead repaints the timeline every frame.
-void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, const std::function<QColor(qreal)> &ink) {
+void VideoTimeline::paintWaveform(QPainter &painter, const std::function<QColor(qreal)> &ink) {
     const QRectF lane = waveformRect();
     const qreal dpr = devicePixelRatioF();
     const size_t key = qHashMulti(0, lane.width(), lane.height(), m_viewStart, m_viewEnd, dpr, m_waveRevision,
@@ -54,8 +55,7 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
                 // A column at a cut reads its own piece only, never the sound that was cut.
                 const qint64 from = timeForX(x);
                 qint64 to = timeForX(x + 1);
-                if (!m_fragments.isEmpty())
-                    for (const TimePiece &piece : m_axis.pieces())
+                for (const TimePiece &piece : m_axis.pieces())
                         if (from >= piece.srcStart && from < piece.srcEnd) to = std::min<qint64>(to, qint64(piece.srcEnd));
                 const auto s = m_waveform->summary(from, to);
                 if (!s.known) {
@@ -73,10 +73,6 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
     painter.save();
     painter.setClipPath(shape);
     painter.drawImage(lane.topLeft(), m_waveCache);
-    QColor shade = palette().color(QPalette::Window);
-    shade.setAlpha(205);
-    painter.fillRect(QRectF(lane.left(), lane.top(), qMax(0.0, inX - lane.left()), lane.height()), shade);
-    painter.fillRect(QRectF(qMax(lane.left(), outX), lane.top(), qMax(0.0, lane.right() - outX), lane.height()), shade);
     painter.restore();
 }
 
@@ -85,8 +81,6 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     const QRectF track = trackRect();
-    const qreal inX = xForTime(m_in);
-    const qreal outX = xForTime(m_out);
 
     const QColor background = palette().color(QPalette::Window);
     const QColor foreground = palette().color(QPalette::WindowText);
@@ -96,44 +90,99 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
                                 background.blueF() * (1 - amount) + foreground.blueF() * amount);
     };
     painter.setPen(Qt::NoPen);
-    QPainterPath clip;
-    clip.addRoundedRect(track, 6, 6);
-    painter.save();
-    painter.setClipPath(clip);
-    painter.fillRect(track, ink(0.12 + 0.06 * m_states->value(kFocus)));   // focus: a brighter track, not a ring
+    // Every kept piece a block (K): its own thumbnails, a 2 px gap to the next, grips at
+    // both ends. The block being pulled is drawn last, over a neighbour it grows onto.
+    const QVector<QRectF> blocks = pieceRects();
+    const QVector<TimePiece> &pieces = m_axis.pieces();
     const auto times = thumbnailTimes();
-    for (int i = 0; i < times.size(); ++i) {
-        const QRectF slot(track.left() + i * track.width() / times.size(), track.top(),
-                          track.width() / times.size(), track.height());
-        // Until its own thumbnail arrives, a slot shows the nearest one kept from
-        // before an edit, zoom or resize, rather than a strip gone empty.
-        const QImage image = thumbnailNear(times[i], nullptr);
-        if (image.isNull()) continue;
-        const qreal scale = qMax(slot.width() / image.width(), slot.height() / image.height());
-        const QSizeF crop(slot.width() / scale, slot.height() / scale);
-        painter.drawImage(slot, image, QRectF(QPointF(image.width() - crop.width(), image.height() - crop.height()) / 2, crop));
-    }
-    QColor shade = background;
-    shade.setAlpha(205);
-    painter.fillRect(QRectF(track.left(), track.top(), qMax(0.0, inX - track.left()), track.height()), shade);
-    painter.fillRect(QRectF(qMax(track.left(), outX), track.top(),
-                           qMax(0.0, track.right() - outX), track.height()), shade);
-    if (!m_fragments.isEmpty()) {
-        const QVector<Fragment> parts = fragments::expanded(m_fragments);
-        for (const TimePiece &piece : m_axis.pieces()) {
-            const qreal x0 = xForTime(qRound64(piece.srcStart));
-            const qreal x1 = track.left() + track.width() * (piece.outEnd() - m_viewStart) / (m_viewEnd - m_viewStart);
-            // The other fragments step back while one is selected, easing in and out.
-            const qreal dim = m_states->value(stateKey(kDim, quint64(fragments::indexAt(m_fragments, qRound64(piece.srcStart)))));
-            if (dim > 0.001) {
-                QColor quiet = background;
-                quiet.setAlphaF(110 / 255.0 * dim);
-                painter.fillRect(QRectF(x0, track.top(), x1 - x0, track.height()), quiet);
+    const qreal slotWidth = times.isEmpty() ? track.width() : track.width() / times.size();
+    const int picked = selectedPiece();
+    QFont speedFont = font();
+    speedFont.setPixelSize(theme::kFsCaption);
+    const QFontMetricsF speedMetrics(speedFont);
+    QVector<int> order;
+    for (int i = 0; i < blocks.size(); ++i) if (!(m_drag == Drag::Edge && i == m_edgePiece)) order.append(i);
+    if (m_drag == Drag::Edge && m_edgePiece >= 0 && m_edgePiece < blocks.size()) order.append(m_edgePiece);
+    for (const int i : std::as_const(order)) {
+        const QRectF block = blocks[i];
+        if (block.right() < track.left() || block.left() > track.right() || block.width() <= 0) continue;
+        const QPainterPath shape = theme::squircleRect(block, qMin<qreal>(theme::kRChip, block.width() / 2));
+        painter.save();
+        painter.setClipRect(track);
+        painter.setClipPath(shape, Qt::IntersectClip);
+        painter.fillRect(block, ink(0.12 + 0.06 * m_states->value(kFocus)));   // focus: a brighter strip, not a ring
+        // Its slots move with it: each slot whose middle falls in the piece, shifted by the
+        // block's glide. Until its own thumbnail arrives a slot shows the nearest kept one.
+        const qreal shift = block.left() - kGap / 2 - xForOutput(pieces[i].outStart);
+        const bool pulled = m_drag == Drag::Edge && i == m_edgePiece;
+        // Every slot that touches the piece, with a picture from inside it: no bare end.
+        for (int k = 0; k < times.size(); ++k) {
+            const QRectF slot(track.left() + k * slotWidth + (pulled && !m_edgeEnd ? 0 : shift), track.top(), slotWidth, track.height());
+            if (slot.right() <= block.left() || slot.left() >= block.right()) continue;
+            const qint64 inside = std::clamp<qint64>(times[k], qint64(pieces[i].srcStart), qint64(pieces[i].srcEnd) - 1);
+            const QImage image = thumbnailNear(inside, nullptr);
+            if (image.isNull()) continue;
+            const qreal scale = qMax(slot.width() / image.width(), slot.height() / image.height());
+            const QSizeF crop(slot.width() / scale, slot.height() / scale);
+            painter.drawImage(slot, image, QRectF(QPointF(image.width() - crop.width(), image.height() - crop.height()) / 2, crop));
+        }
+        if (pulled) {   // the frame at the pulled edge, right inside it
+            const QImage image = thumbnailNear(m_position, nullptr);
+            if (!image.isNull()) {
+                const QRectF slot(m_edgeEnd ? block.right() - slotWidth : block.left(), track.top(), slotWidth, track.height());
+                const qreal scale = qMax(slot.width() / image.width(), slot.height() / image.height());
+                const QSizeF crop(slot.width() / scale, slot.height() / scale);
+                painter.drawImage(slot, image, QRectF(QPointF(image.width() - crop.width(), image.height() - crop.height()) / 2, crop));
             }
-            // A 2 px seam between fragments.
-            if (piece.outStart > 0) painter.fillRect(QRectF(x0 - 1, track.top(), 2, track.height()), background);
+        }
+        // Grips inside the block: the clip's two ends always, an inner edge while it is
+        // hovered or its piece chosen; brighter while pulled or under the pointer.
+        const qreal chosen = m_states->value(stateKey(kPicked, quint64(i)));
+        for (const bool isEnd : {false, true}) {
+            const qreal active = m_states->value(stateKey(kEdge, quint64(i * 2 + int(isEnd))));
+            const bool outer = isEnd ? i + 1 == blocks.size() : i == 0;
+            const qreal shown = outer ? 1.0 : qMax(active, chosen);
+            if (shown < 0.001) continue;
+            const QRectF grip(isEnd ? block.right() - kInset : block.left(), track.top(), kInset, track.height());
+            painter.setOpacity(shown);
+            painter.fillRect(grip, ink(0.34 + 0.16 * active));
+            painter.setBrush(ink(0.78 + 0.17 * active));
+            painter.drawRoundedRect(QRectF(grip.center().x() - 1, grip.center().y() - 6, 2, 12), 1, 1);
+            painter.setOpacity(1);
+        }
+        // Its speed, when not 1x, top left on a quiet backing, while there is room.
+        if (pieces[i].speed != 1.0) {
+            const QString speed = QString::number(pieces[i].speed, 'g', 3) + QStringLiteral("\u00d7");
+            const qreal w = speedMetrics.horizontalAdvance(speed) + 2 * theme::kS1;
+            const QRectF label(block.left() + kInset + theme::kS1, track.top() + theme::kS1, w, theme::kFsCaption + theme::kS1);
+            if (label.right() + theme::kS1 <= block.right() - kInset) {
+                QColor backing = background;
+                backing.setAlphaF(0.78);
+                painter.setBrush(backing);
+                painter.drawRoundedRect(label, 3, 3);
+                painter.setFont(speedFont);
+                painter.setPen(foreground);
+                painter.drawText(label, Qt::AlignCenter, speed);
+                painter.setPen(Qt::NoPen);
+            }
+        }
+        painter.restore();
+        // Chosen: a 2 px ring in the text colour, inside the block, easing in.
+        if (chosen > 0.001) {
+            painter.save();
+            painter.setOpacity(chosen);
+            painter.setBrush(Qt::NoBrush);
+            painter.setPen(QPen(foreground, 2));
+            painter.setClipRect(track);
+            painter.drawPath(theme::squircleRect(block.adjusted(1, 1, -1, -1), qMin<qreal>(theme::kRChip - 1, block.width() / 2)));
+            painter.restore();
+            painter.setPen(Qt::NoPen);
         }
     }
+    painter.save();
+    QPainterPath clip;
+    clip.addRoundedRect(track, 6, 6);
+    painter.setClipPath(clip);
     // The marked range (C1): one step lighter on the strip and the waveform, no line.
     const qreal markOpacity = m_markFade->value();
     QRectF markColumns;
@@ -146,7 +195,13 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.fillRect(QRectF(x0, track.top(), markColumns.width(), track.height()), lift);
     }
     painter.restore();
-    if (waveformShown()) paintWaveform(painter, inX, outX, ink);
+    if (waveformShown()) {
+        paintWaveform(painter, ink);
+        // The blocks' gaps run on through the waveform.
+        const QRectF lane = waveformRect();
+        for (int i = 1; i < blocks.size(); ++i)
+            painter.fillRect(QRectF(blocks[i].left() - kGap, lane.top(), kGap, lane.height()), background);
+    }
     if (!markColumns.isEmpty() && waveformShown()) {
         QColor lift = foreground;
         lift.setAlphaF(kMarkLift * markOpacity);
@@ -272,20 +327,6 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.setPen(Qt::NoPen);
     }
 
-    // Grips sit just outside the kept range, the strip's full height, so they never
-    // cover a kept frame; the track's inset leaves them room at the clip's ends.
-    auto handle = [&](qreal x, Drag kind) {
-        if (x < track.left() || x > track.right()) return;
-        const qreal active = m_states->value(kind == Drag::In ? kGripIn : kGripOut);
-        const QRectF grip(kind == Drag::In ? x - kInset : x, track.top(), kInset, track.height());
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(ink(0.34 + 0.16 * active));
-        painter.drawRoundedRect(grip, 3, 3);
-        painter.setBrush(ink(0.78 + 0.17 * active));
-        painter.drawRoundedRect(QRectF(grip.center().x() - 1, grip.center().y() - 6, 2, 12), 1, 1);
-    };
-    handle(inX, Drag::In);
-    handle(outX, Drag::Out);
     // A bound beyond the view: a chevron in the inset, pointing to where it is.
     auto chevron = [&](qreal x, qreal direction) {
         const qreal y = track.center().y();
@@ -297,9 +338,9 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.setBrush(Qt::NoBrush);
         painter.drawPath(mark);
     };
-    // The view runs in edited time; the bounds are source times.
-    if (edited(m_in) < m_viewStart) chevron(kInset / 2, 1);
-    if (edited(m_out) > m_viewEnd) chevron(width() - kInset / 2, -1);
+    // More clip beyond the view.
+    if (m_viewStart > 0) chevron(kInset / 2, 1);
+    if (m_viewEnd < editedDuration()) chevron(width() - kInset / 2, -1);
 
     // The playhead over everything, its head in the gap above the strip.
     const qreal playX = xForTime(m_position);
@@ -353,7 +394,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     }
     // A cut is a notch in the ruler over its seam (E3); hover names it.
     for (int i = 0; i < parts.size(); ++i) {
-        if (!parts[i].removed) continue;
+        if (!notchShown(i)) continue;
         const qreal x = xForTime(parts[i].startMs);
         if (x < track.left() - 4 || x > track.right() + 4) continue;
         const qreal lit = m_states->value(stateKey(kNotch, quint64(i)));

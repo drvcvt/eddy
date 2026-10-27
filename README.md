@@ -24,8 +24,9 @@ cover only that. A spotlight dims everything but the part you care about.
 **Crop.** Free or to a ratio (16:9, 9:16, 1:1, the original), without losing the
 annotations outside it.
 
-**Video.** A film strip with a ruler, hover previews and trim grips. Split at the
-playhead, cut a piece out or play it faster. Redactions and spotlights can hold
+**Video.** The clip as pieces on a film strip, with a ruler and hover previews.
+Split at the playhead, drag any piece's edge to trim it, take a piece out or play
+it faster; the strip always shows exactly what gets exported. Redactions and spotlights can hold
 for a stretch of the clip. Copy a single annotated frame, or the whole edited
 video.
 
@@ -114,13 +115,14 @@ On videos:
 | `Space` or `K` | Play / pause |
 | `←` / `→` or `J` / `L` | Step back / forward one frame (cuts are skipped) |
 | `Shift+←` / `Shift+→` | A second back / forward, as the clip plays |
-| `↑` / `↓` | To the previous / next edge (cut, zoom, mask, Start, End) |
-| `Home` / `End` | To Start / to the last frame of the range |
-| `↑` / `↓` in Start, End or Duration | Step that time a frame (`Shift`: a second) |
+| `↑` / `↓` | To the previous / next edge (piece, zoom, mask) |
+| `Home` / `End` | To the first / the last frame of the clip |
 | `I` / `O` | Set start / end at the playhead |
-| `S` | Split at the playhead |
+| `S` or Split | Split at the playhead |
+| Click a piece | Choose it (its speed, join, delete) |
+| Drag a piece's edge | Trim it, inner edges too (`Shift`: finer); the gap closes on release |
 | `Shift` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |
-| `Delete` | Cut the marked range, or cut / restore the selected piece |
+| `Delete` or Delete | Take the marked range or the chosen piece out |
 | Click on a cut's notch | Restore the cut |
 | Right-click the timeline › Cut pauses | Cut every stretch where nothing happens (or play it at 4×) |
 | `Z` | Add a zoom at the playhead |

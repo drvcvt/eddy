@@ -10,6 +10,7 @@
 #include "studio/studiodocument.h"
 #include "studio/camerapath.h"
 #include "video/timemap.h"
+#include "video/fragments.h"
 #include "output/exportsettings.h"
 #include "project/projectcodec.h"
 #include "project/projectstore.h"
@@ -129,8 +130,6 @@ private:
     void setTrimEndAtPlayhead();
     void applyTrimRange(qint64 inMs, qint64 outMs, int mergeKey = 0);
     void setTrimRangeState(qint64 inMs, qint64 outMs);
-    void updateTrimTimeLabels(qint64 inMs, qint64 outMs);
-    void commitTrimTime(QLineEdit *field);
     void requestVideoSeek(qint64 position);
     void flushVideoSeek();
     void finishVideoSeek();
@@ -192,9 +191,13 @@ private:
     void positionZoomUi();
     void addZoomAt(qint64 sourceMs);
     void selectFragment(int index);
-    void toggleFragmentCut(int index);   // Delete and the bar's Cut/Restore
+    void toggleFragmentCut(int index);   // cut or restore one fragment
     void restoreCut(int index);          // a click on a cut's notch
     void cutMarkedRange();               // Delete with a range marked on the timeline (C1)
+    // K: the trim and the fragments as one undo step; `piece` (of the result) is chosen after.
+    void applyClip(const fragments::Clip &after, int piece = -1);
+    void deleteChosen();                 // Delete and its button: the mark, else the chosen piece
+    void updateClipControls();           // Delete's state and the output's length
     void toggleShortcutSheet();          // ?, F1 and the keyboard button (H1)
     QPointer<QWidget> m_shortcutSheet;
     void findPauses(bool cut);           // C2: cut the clip's pauses, or play them at 4x
@@ -209,7 +212,6 @@ private:
     qint64 editedMs(qint64 sourceMs) const;
     qint64 sourceFromEdited(qint64 editedMs) const;
     QString widestTime() const;   // the longest clock reading, so nothing changes width
-    void stepTrimField(QLineEdit *field, int direction, bool second);
     void refreshMasks();
     void applyTimeWindows(qint64 sourceMs);
     void setTimeScope(AnnotationItem *item, bool fromPlayhead);
@@ -313,10 +315,8 @@ private:
     QLabel *m_timeLabel = nullptr;
     QLabel *m_exportStatus = nullptr;
     QToolButton *m_exportCancel = nullptr;
-    QLineEdit *m_trimInLabel = nullptr;
-    QLineEdit *m_trimOutLabel = nullptr;
-    QLineEdit *m_trimDurationLabel = nullptr;   // editable: a length sets End (C4)
-    int m_trimStepSession = 0;                  // ↑/↓ in one field, one focus: one undo step
+    QToolButton *m_splitButton = nullptr, *m_deleteButton = nullptr;   // K: the clip's two edits
+    QLabel *m_clipDuration = nullptr;           // the output's length
     QTimer *m_seekTimer = nullptr;
     QTimer *m_seekSettleTimer = nullptr;
     qint64 m_seekTarget = -1;
