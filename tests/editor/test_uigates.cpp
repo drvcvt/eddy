@@ -4,6 +4,8 @@
 #include "editortest.h"
 #include <QPainter>
 #include <QListWidget>
+#include <QMenu>
+#include <QTimer>
 #include <QScrollBar>
 #include <QStyleOptionSlider>
 
@@ -170,6 +172,47 @@ private slots:
         option.sliderPosition = bar->sliderPosition(); option.pageStep = bar->pageStep();
         const QRect arrow = bar->style()->subControlRect(QStyle::CC_ScrollBar, &option, QStyle::SC_ScrollBarAddLine, bar);
         QVERIFY2(arrow.height() <= 0, qPrintable(QString::number(arrow.height())));
+    }
+
+    void popoversOpenUnderTheBarInsideTheWindow() {
+        // Colour, Studio and Export opened at three different places; Export overlapped
+        // the bar by 5 px and could run past the window's right edge.
+        QImage image(800, 500, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        for (const int width : {1000, 760}) {
+            EditorWindow window(image, cfg, CliOptions());
+            window.resize(width, 600);
+            window.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&window));
+            auto *bar = window.findChild<QWidget *>(QStringLiteral("Toolbar"));
+            const int top = bar->mapToGlobal(QPoint(0, bar->height())).y() + theme::kS1;
+            const int right = window.mapToGlobal(QPoint(window.width(), 0)).x() - theme::kBarPad;
+            const auto check = [&](QWidget *popup, const char *name) {
+                QVERIFY2(popup, name);
+                const QRect at(popup->mapToGlobal(QPoint()), popup->size());
+                QVERIFY2(at.top() == top, qPrintable(QStringLiteral("%1 top %2, want %3").arg(name).arg(at.top()).arg(top)));
+                QVERIFY2(at.right() < right + 1, qPrintable(QStringLiteral("%1 right %2 past %3").arg(name).arg(at.right()).arg(right)));
+            };
+            window.findChild<QToolButton *>(QStringLiteral("Swatch"))->click();
+            QApplication::processEvents();
+            QWidget *colour = nullptr;
+            for (QWidget *w : QApplication::topLevelWidgets())
+                if (w->objectName() == QStringLiteral("ColorPopover") && w->isVisible()) colour = w;
+            check(colour, "colour");
+            colour->close();
+            window.findChild<QToolButton *>(QStringLiteral("Studio"))->click();
+            QApplication::processEvents();
+            QWidget *studio = nullptr;
+            for (QWidget *w : QApplication::topLevelWidgets())
+                if (w->objectName() == QStringLiteral("StudioPopover") && w->isVisible()) studio = w;
+            check(studio, "studio");
+            studio->close();
+            auto *save = window.findChild<QToolButton *>(QStringLiteral("Save"));
+            QMenu *menu = save->menu();
+            QTimer::singleShot(50, menu, [&] { check(menu, "export"); menu->close(); });
+            save->showMenu();
+        }
     }
 
     void toolRailIconsShareOneAxis() {

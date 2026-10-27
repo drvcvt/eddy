@@ -321,8 +321,7 @@ void EditorWindow::openStudio() {
             [this](const StudioDocument &d) { setStudioDocument(d); }));
     });
     auto *button = m_toolbar->findChild<QToolButton *>(QStringLiteral("Studio"));
-    const QPoint anchor = button->mapToGlobal(QPoint(button->width(), button->height() + 4));
-    popover->move(anchor - QPoint(popover->width(), 0));
+    popover->move(theme::popoverPosition(button, m_toolbar, popover->size(), true));
     popover->show();
 }
 

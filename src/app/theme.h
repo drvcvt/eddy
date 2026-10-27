@@ -68,6 +68,11 @@ QPainterPath squircle(const QRectF &rect);
 // Only the corners in `rounded` curve; the rest stay square.
 enum Corner { TopLeft = 1, TopRight = 2, BottomLeft = 4, BottomRight = 8, AllCorners = 15 };
 QPainterPath squircleRect(const QRectF &rect, qreal radius, int rounded = AllCorners);
+// Where a popover opens from a top-bar button: `s1` under the bar, on the button's
+// side (its left edge, or its right edge with `alignRight`), inside the window.
+QPoint popoverPosition(const QWidget *button, const QWidget *bar, QSize size, bool alignRight);
+// A button's menu opens at popoverPosition instead of on the bar's edge.
+void placeMenuAtBar(QMenu *menu, const QWidget *button, const QWidget *bar, bool alignRight);
 // Menus open on rounded corners: frameless and translucent, so the stylesheet's
 // radius shows instead of the window's square edge. Before the menu first shows.
 void roundMenu(QMenu *menu);

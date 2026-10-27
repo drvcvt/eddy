@@ -285,6 +285,40 @@ QPainterPath squircle(const QRectF &rect) {
     return path;
 }
 
+QPoint popoverPosition(const QWidget *button, const QWidget *bar, QSize size, bool alignRight) {
+    const QWidget *window = button->window();
+    const QPoint origin = window->mapToGlobal(QPoint());
+    const int x = alignRight ? button->mapToGlobal(QPoint(button->width(), 0)).x() - size.width()
+                             : button->mapToGlobal(QPoint()).x();
+    const int left = origin.x() + kBarPad, right = origin.x() + window->width() - kBarPad - size.width();
+    return {qMax(left, qMin(x, right)), bar->mapToGlobal(QPoint(0, bar->height())).y() + kS1};
+}
+
+namespace {
+// Moves the menu on its Show event: before the native window maps, so a Wayland
+// popup opens there too.
+class MenuAtBar : public QObject {
+public:
+    MenuAtBar(QMenu *menu, const QWidget *button, const QWidget *bar, bool alignRight)
+        : QObject(menu), m_button(button), m_bar(bar), m_alignRight(alignRight) {}
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() == QEvent::Show) {
+            auto *menu = static_cast<QMenu *>(watched);
+            menu->move(popoverPosition(m_button, m_bar, menu->size(), m_alignRight));
+        }
+        return false;
+    }
+private:
+    const QWidget *m_button, *m_bar;
+    bool m_alignRight;
+};
+}
+
+void placeMenuAtBar(QMenu *menu, const QWidget *button, const QWidget *bar, bool alignRight) {
+    menu->installEventFilter(new MenuAtBar(menu, button, bar, alignRight));
+}
+
 void roundMenu(QMenu *menu) {
     menu->setWindowFlag(Qt::FramelessWindowHint);
     menu->setAttribute(Qt::WA_TranslucentBackground);

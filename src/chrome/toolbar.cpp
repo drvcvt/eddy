@@ -32,6 +32,7 @@ QMenu *Toolbar::enableExportMenu(QWidget *panel) {
     action->setDefaultWidget(panel);
     menu->addAction(action);
     save->setMenu(menu);
+    theme::placeMenuAtBar(menu, save, this, true);   // under the bar, not over its edge
     save->setPopupMode(QToolButton::DelayedPopup);
     save->setFocusPolicy(Qt::StrongFocus);
     save->setToolTip(tr("Save\tEnter\nExport options\tRight-click"));
@@ -183,7 +184,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
             });
         });
         pop->adjustSize();
-        pop->move(color->mapToGlobal(QPoint(0, color->height() + 4)));
+        pop->move(theme::popoverPosition(color, this, pop->size(), false));
         pop->show();
     });
     lay->addWidget(color);

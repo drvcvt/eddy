@@ -46,7 +46,7 @@ static QIcon swatchIcon(const StudioStyle &style, qreal dpr) {
 
 StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const StudioCameraSettings &camera,
                              QWidget *parent)
-    : QWidget(parent, Qt::Popup), m_style(style), m_content(content) {
+    : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint), m_style(style), m_content(content) {
     setObjectName(QStringLiteral("StudioPopover"));
     setAttribute(Qt::WA_StyledBackground, true);
     auto *outer = new QVBoxLayout(this);
