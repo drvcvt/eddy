@@ -246,7 +246,7 @@ void VideoTimeline::setWaveformVisible(bool visible) {
 QRectF VideoTimeline::waveformRect() const {
     if (!waveformShown()) return {};
     const QRectF track = trackRect();
-    return QRectF(track.left(), track.bottom() + theme::kS1, track.width(), kLaneH);
+    return QRectF(track.left(), track.bottom() + theme::kS1, track.width(), kWaveH);
 }
 
 qreal VideoTimeline::belowWaveform() const {
@@ -277,7 +277,7 @@ void VideoTimeline::setSelectedZoom(quint32 id) {
 }
 
 void VideoTimeline::updateHeight() {
-    setFixedHeight(kBaseH + (waveformShown() ? kLaneStep : 0) + (m_laneVisible ? kLaneStep : 0) + (m_masks.isEmpty() ? 0 : kMaskStep));
+    setFixedHeight(kBaseH + (waveformShown() ? kWaveStep : 0) + (m_laneVisible ? kLaneStep : 0) + (m_masks.isEmpty() ? 0 : kMaskStep));
 }
 
 bool VideoTimeline::inZoomLane(QPointF pos) const {

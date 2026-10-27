@@ -349,9 +349,9 @@ private slots:
         QVERIFY(timeline.waveformRect().isEmpty());
         AudioWaveformProvider waveform(file, 3000, 0);
         timeline.setWaveform(&waveform);
-        QCOMPARE(timeline.height(), VideoTimeline::kBaseH + 2 * VideoTimeline::kLaneStep);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kWaveStep + VideoTimeline::kLaneStep);
         const QRectF lane = timeline.waveformRect();
-        QCOMPARE(lane.height(), 28.0);
+        QCOMPARE(lane.height(), 20.0);   // a mask lane's height: no text to carry
         QCOMPARE(lane.top(), qreal(VideoTimeline::kBaseH + theme::kS1));  // right under the film strip
         QCOMPARE(timeline.zoomLaneRect().top(), lane.bottom() + 4);
         QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);

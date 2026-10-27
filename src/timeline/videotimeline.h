@@ -24,10 +24,11 @@ public:
     static constexpr qreal kRulerH = 16;                             // a 12 px caption and its line
     static constexpr qreal kTrackTop = kRulerH + theme::kS1;
     static constexpr qreal kTrackH = 32;
-    static constexpr qreal kLaneH = 28, kMaskH = 20;
+    static constexpr qreal kLaneH = 28, kMaskH = 20, kWaveH = kMaskH;   // the waveform carries no text
     // Each lane brings the kS1 above it; nothing empty stays under the last one.
     static constexpr int kBaseH = int(kTrackTop + kTrackH);
     static constexpr int kLaneStep = theme::kS1 + int(kLaneH), kMaskStep = theme::kS1 + int(kMaskH);
+    static constexpr int kWaveStep = theme::kS1 + int(kWaveH);
     explicit VideoTimeline(QWidget *parent = nullptr);
 
     void setDuration(qint64 durationMs);
@@ -75,7 +76,7 @@ public:
     qint64 trimIn() const { return m_in; }
     qint64 trimOut() const { return m_out; }
 
-    // Waveform lane (21.09. plan 4, E8): 28 px right under the film strip,
+    // Waveform lane (21.09. plan 4, E8): 20 px right under the film strip,
     // for videos with sound. Clicks scrub like the film strip. Hiding it is a
     // view setting from the context menu, not an edit.
     void setWaveform(AudioWaveformProvider *waveform);
