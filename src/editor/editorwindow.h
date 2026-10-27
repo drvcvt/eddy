@@ -368,6 +368,11 @@ private:
     int m_videoIpcInProgress = 0;
     bool m_closeAfterVideoIpc = false;
     bool m_closeAfterVideoExport = false;
+    // C8: a close asked for while work runs (Esc, the close button) waits for it; a second
+    // Esc takes it back. The early-exit flags above are not asked for and stay.
+    bool closePending() const;
+    void withdrawClose();
+    void showClosePending();
     bool m_renderingVideoOverlay = false;
     int m_videoOverlayRenderGeneration = 0;
     SelectionHandles *m_handles = nullptr;

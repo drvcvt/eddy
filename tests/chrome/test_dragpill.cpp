@@ -1,4 +1,8 @@
 #include <QtTest>
+#include <QApplication>
+#include <QScopeGuard>
+#include "app/theme.h"
+#include "app/spring.h"
 #include <QMimeData>
 #include <QImage>
 #include <QUrl>
@@ -95,6 +99,29 @@ private slots:
         const QColor center = rendered.pixelColor(rendered.width() / 2, rendered.height() / 2);
         QVERIFY(center.alpha() > 80);
         QVERIFY(center.alpha() < 255);
+    }
+    void anExportFillsThePillAtOneWidth() {
+        Spring::setEnabled(false);
+        qApp->setPalette(theme::palette(true));
+        qApp->setStyleSheet(theme::styleSheet(true));
+        const auto plain = qScopeGuard([] { qApp->setStyleSheet({}); Spring::setEnabled(true); });
+        DragPill pill;
+        pill.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&pill));
+        const int width = pill.width();
+        pill.setPreparationNeeded(true);
+        QCOMPARE(pill.width(), width);
+        pill.setEnabled(false);
+        pill.setBusy(true);
+        QCOMPARE(pill.width(), width);   // "Exporting" fits the reserved label
+        QCOMPARE(pill.findChild<QLabel *>(QStringLiteral("DragPillText"))->text(), QStringLiteral("Exporting"));
+        pill.setProgress(50);
+        QCOMPARE(pill.progress(), 0.5);
+        const QImage shot = pill.grab().toImage();
+        const int filled = qGray(shot.pixel(pill.width() / 4, 2)), open = qGray(shot.pixel(pill.width() * 3 / 4, 2));
+        QVERIFY2(filled > open, qPrintable(QStringLiteral("%1 %2").arg(filled).arg(open)));   // raise3 over the track
+        pill.setBusy(false);
+        QCOMPARE(pill.findChild<QLabel *>(QStringLiteral("DragPillText"))->text(), QStringLiteral("Prepare drag"));
     }
 };
 

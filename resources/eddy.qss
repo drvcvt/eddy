@@ -219,6 +219,8 @@ QLabel#DragPillText {
     font-weight: 500;
 }
 QLabel#DragPillText:disabled { color: @faint; }
+/* While an export runs in the pill (C8): readable on its track and fill. */
+QLabel#DragPillText[busy="true"]:disabled { color: @sub; }
 
 QToolButton#Save { color: @fg; }
 

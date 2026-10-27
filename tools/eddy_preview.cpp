@@ -1,7 +1,8 @@
 // Dev tool: render the editor chrome to a PNG for visual verification (offscreen).
-// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera|video-file-mark] [MEDIA]
+// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera|video-file-mark|video-file-busy] [MEDIA]
 #include "app/fills.h"
 #include "editor/editorwindow.h"
+#include "chrome/dragpill.h"
 #include "app/theme.h"
 #include "app/config.h"
 #include "app/cli.h"
@@ -154,6 +155,15 @@ int main(int argc, char **argv) {
             auto *timeline = window->findChild<eddy::VideoTimeline*>();
             timeline->setTrimRange(timeline->duration() / 5, timeline->duration() * 4 / 5);
             timeline->trimPreviewed(timeline->trimIn(), timeline->trimOut());
+        }
+        if (mode.contains(QStringLiteral("busy"))) {   // C8: an export running in the pill
+            auto *pill = window->findChild<eddy::DragPill *>();
+            pill->setEnabled(false);
+            pill->setBusy(true);
+            pill->setProgress(40);
+            QEventLoop settle;
+            QTimer::singleShot(600, &settle, &QEventLoop::quit);
+            settle.exec();
         }
         if (mode.contains(QStringLiteral("mark"))) {   // C1: a range marked to cut
             auto *timeline = window->findChild<eddy::VideoTimeline*>();

@@ -717,28 +717,45 @@ void EditorWindow::showEvent(QShowEvent *e) {
     fade->setTarget(1);
 }
 
+bool EditorWindow::closePending() const {
+    return m_closeAfterVideoSave || m_videoSavePendingClose || m_closeAfterVideoIpc || m_closeAfterVideoExport;
+}
+
+void EditorWindow::showClosePending() {
+    if (m_exportStatus) m_exportStatus->setText(tr("Closes when done"));
+    if (m_toast) m_toast->showAction(tr("Closes when the export is done"), tr("Stay open"), [this] { withdrawClose(); });
+}
+
+// Only the close that was asked for: the work goes on, the window stays.
+void EditorWindow::withdrawClose() {
+    if (!closePending()) return;
+    m_closeAfterVideoSave = m_videoSavePendingClose = m_closeAfterVideoIpc = m_closeAfterVideoExport = false;
+    if (m_exportStatus) m_exportStatus->setText(QString());
+    if (m_toast) m_toast->showMessage(tr("Stays open"));
+}
+
 void EditorWindow::closeEvent(QCloseEvent *e) {
     if (m_videoSaveInProgress) {
         m_closeAfterVideoSave = true;
-        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video save…"));
+        showClosePending();
         e->ignore();
         return;
     }
     if (!m_videoSavePendingPath.isEmpty()) {
         m_videoSavePendingClose = true;
-        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video export…"));
+        showClosePending();
         e->ignore();
         return;
     }
     if (m_videoIpcInProgress > 0) {
         m_closeAfterVideoIpc = true;
-        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video handoff…"));
+        showClosePending();
         e->ignore();
         return;
     }
     if (m_videoExportInProgress || m_videoStatusRequested) {
         m_closeAfterVideoExport = true;
-        if (m_toast) m_toast->showMessage(QStringLiteral("Finishing video export…"));
+        showClosePending();
         e->ignore();
         return;
     }

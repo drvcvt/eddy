@@ -690,7 +690,9 @@ private slots:
 
         QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
         QTest::mouseClick(cancel, Qt::LeftButton);
-        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QStringLiteral("Edited"), 2000);
+        // The cancel has landed: no status words left, the pill offers to prepare again.
+        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QString(), 2000);
+        QTRY_COMPARE(w.findChild<QLabel *>(QStringLiteral("DragPillText"))->text(), QStringLiteral("Prepare drag"));
         qputenv("PATH", oldPath);
         QVERIFY2(w.close(), "window stayed blocked after cancelling the export");
 #endif
@@ -738,6 +740,79 @@ private slots:
         qputenv("PATH", oldPath);
 #endif
     }
+    void aCloseDuringAnExportShowsAndCanBeTakenBack() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("#!/bin/sh\ncase \"$*\" in *lavfi*) exit 1;; esac\nwhile :; do sleep 0.05; done\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        const auto restore = qScopeGuard([&] { qputenv("PATH", oldPath); });
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/eddy-close-pending-test.mp4");
+        doc.video = {QSize(64, 48), 1000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        auto *status = w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"));
+        auto *pillText = w.findChild<QLabel *>(QStringLiteral("DragPillText"));
+        auto *cancel = w.findChild<QToolButton *>(QStringLiteral("VideoExportCancel"));
+        w.findChild<VideoTimeline *>()->setPosition(200);
+        QTest::keyClick(&w, Qt::Key_I);
+        w.sendToShelf();
+        QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
+        QCOMPARE(pillText->text(), QStringLiteral("Exporting"));   // the export runs in the pill
+        QTest::keyClick(&w, Qt::Key_Escape);                     // close: it waits, and says so
+        QVERIFY(w.isVisible());
+        QCOMPARE(status->text(), QStringLiteral("Closes when done"));
+        QTest::keyClick(&w, Qt::Key_Escape);                     // and Esc again takes it back
+        QVERIFY(w.isVisible());
+        QCOMPARE(status->text(), QString());
+        QCOMPARE(w.findChild<Toast *>()->text(), QStringLiteral("Stays open"));
+        QTest::mouseClick(cancel, Qt::LeftButton);
+        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QString(), 2000);
+        QVERIFY(w.isVisible());                                  // withdrawn: Cancel closes nothing
+        QVERIFY2(w.close(), "window stayed blocked after taking the close back");
+#endif
+    }
+    void aFailedExportKeepsAPendingCloseOpen() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        // Closing would drop what was asked for: a failure keeps the window and says why.
+        QTemporaryDir dir;
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write("#!/bin/sh\ncase \"$*\" in *lavfi*) exit 1;; esac\nsleep 0.6\necho 'Conversion failed!' >&2\nexit 1\n");
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        const auto restore = qScopeGuard([&] { qputenv("PATH", oldPath); });
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/eddy-failed-close-test.mp4");
+        doc.video = {QSize(64, 48), 1000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        w.findChild<VideoTimeline *>()->setPosition(200);
+        QTest::keyClick(&w, Qt::Key_I);
+        w.sendToShelf();
+        QTRY_VERIFY_WITH_TIMEOUT(!w.findChild<QToolButton *>(QStringLiteral("VideoExportCancel"))->isHidden(), 5000);
+        QTest::keyClick(&w, Qt::Key_Escape);
+        QTRY_COMPARE_WITH_TIMEOUT(w.findChild<QLabel *>(QStringLiteral("VideoExportStatus"))->text(),
+                                  QStringLiteral("Export failed"), 8000);
+        QVERIFY(w.isVisible());
+        QVERIFY(w.findChild<Toast *>()->text().contains(QStringLiteral("stays open")));
+#endif
+    }
     void runningVideoExportCanBeCancelled() {
 #ifdef Q_OS_WIN
         QSKIP("POSIX fake ffmpeg helper is not available on Windows");
@@ -776,7 +851,9 @@ private slots:
         QTest::mouseClick(cancel, Qt::LeftButton);
         QCOMPARE(toast->text(), QStringLiteral("Video export cancelled"));
         QVERIFY(cancel->isHidden());
-        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QStringLiteral("Edited"), 2000);
+        // The cancel has landed: no status words left, the pill offers to prepare again.
+        QTRY_COMPARE_WITH_TIMEOUT(status->text(), QString(), 2000);
+        QTRY_COMPARE(w.findChild<QLabel *>(QStringLiteral("DragPillText"))->text(), QStringLiteral("Prepare drag"));
         qputenv("PATH", oldPath);
         QCOMPARE(toast->text(), QStringLiteral("Video export cancelled"));
         QVERIFY2(w.close(), "window stayed blocked after cancelling the export");

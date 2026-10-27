@@ -371,8 +371,9 @@ void EditorWindow::onVideoContentChanged() {
     }
     ++m_videoRevision;
     const bool edited = hasVideoEdits();
-    if (m_exportStatus) {
-        m_exportStatus->setText(edited ? tr("Edited") : QString());
+    // The pill says it ("Prepare drag"); the status keeps a pending close in view.
+    if (m_exportStatus && !closePending()) {
+        m_exportStatus->setText(QString());
         m_exportStatus->setToolTip(tr("Video export status"));
     }
     if (m_dragPill) {
@@ -445,9 +446,8 @@ void EditorWindow::startVideoExportCache() {
         QMetaObject::invokeMethod(qApp, [receiver, revision, percent] {
             if (receiver && receiver->m_videoExportInProgress && receiver->m_videoExportCancel
                 && !receiver->m_videoExportCancel->load()
-                && receiver->m_videoRevision == revision && receiver->m_exportStatus) {
-                receiver->m_exportStatus->setText(percent < 0 ? tr("Exporting…")
-                    : tr("Exporting %1%").arg(percent));
+                && receiver->m_videoRevision == revision && receiver->m_dragPill) {
+                receiver->m_dragPill->setProgress(percent);   // the pill fills (C8)
             }
         }, Qt::QueuedConnection);
     };
@@ -462,9 +462,13 @@ void EditorWindow::startVideoExportCache() {
         }
     request.timedOverlays = renderTimedOverlays();
     m_videoExportInProgress = true;
-    if (m_dragPill) m_dragPill->setEnabled(false);
-    if (m_exportStatus) {
-        m_exportStatus->setText(tr("Preparing…"));
+    if (m_dragPill) {
+        m_dragPill->setEnabled(false);
+        m_dragPill->setBusy(true);
+    }
+    // The pill shows the export; the status keeps its words for what needs reading.
+    if (m_exportStatus && !closePending()) {
+        m_exportStatus->setText(QString());
         m_exportStatus->setToolTip(tr("Video export status"));
     }
     if (m_exportCancel) fadeVisible(m_exportCancel, true);
@@ -497,14 +501,15 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         m_cachedVideoPath = path;
         m_cachedVideoRevision = revision;
         if (m_dragPill) {
+            m_dragPill->setProgress(100);
             m_dragPill->setPreparationNeeded(false);
             m_dragPill->setEnabled(true);
         }
-        if (m_exportStatus) m_exportStatus->setText(tr("Ready"));
+        if (m_exportStatus && !closePending()) m_exportStatus->setText(QString());
     } else {
         QFile::remove(path);
         if (cancelled) {
-            if (m_exportStatus) m_exportStatus->setText(hasVideoEdits() ? tr("Edited") : QString());
+            if (m_exportStatus && !closePending()) m_exportStatus->setText(QString());
         } else if (!result.ok && revision == m_videoRevision) {
             if (m_exportStatus) {
                 m_exportStatus->setText(tr("Export failed"));
@@ -523,13 +528,20 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
             failPendingVideoActions(result.error);
     }
 
+    if (m_dragPill) m_dragPill->setBusy(false);
     const bool needsFreshExport = hasVideoEdits() && revision != m_videoRevision;
     if (m_videoStatusRequested && (m_videoExportPending || needsFreshExport)) {
         m_videoExportPending = false;
         scheduleVideoExportCache(100);
     } else if (m_closeAfterVideoExport) {
         m_closeAfterVideoExport = false;
-        close();
+        // A failed export keeps the window: closing would drop what was asked for (mt: the
+        // data would be corrupt or lost). The status names the failure.
+        if (!result.ok && !cancelled && revision == m_videoRevision) {
+            if (m_toast) m_toast->showMessage(tr("The export failed; eddy stays open"), 6000);
+        } else {
+            close();
+        }
     }
 }
 
@@ -541,6 +553,7 @@ void EditorWindow::cancelVideoExport() {
     m_videoExportPending = false;
     failPendingVideoActions();
     if (m_exportCancel) fadeVisible(m_exportCancel, false);
+    if (m_dragPill) m_dragPill->setBusy(false);
     if (m_exportStatus) m_exportStatus->setText(tr("Cancelling…"));
     if (m_toast) m_toast->showMessage(tr("Video export cancelled"));
 }
@@ -587,7 +600,9 @@ void EditorWindow::runVideoIpc(
             if (receiver && receiver->m_videoIpcInProgress == 0
                 && receiver->m_closeAfterVideoIpc) {
                 receiver->m_closeAfterVideoIpc = false;
-                receiver->close();
+                if (result.ok) receiver->close();   // a failed handoff keeps the window open
+                else if (receiver->m_toast)
+                    receiver->m_toast->showMessage(tr("The handoff failed; eddy stays open"), 6000);
             }
         }, Qt::QueuedConnection);
     });

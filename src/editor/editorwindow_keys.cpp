@@ -322,6 +322,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             m_spaceArmed = false;
             if (m_tools->cancelActive()) break;
             if (m_canvas->spacePanActive()) { m_canvas->setSpacePan(false); break; }
+            if (closePending()) { withdrawClose(); break; }   // the second Esc takes the close back
             close();
             break;
         default: QWidget::keyPressEvent(e);

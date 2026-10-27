@@ -1,6 +1,9 @@
 #include "chrome/dragpill.h"
 #include "project/waylanddrag.h"
 #include "app/theme.h"
+#include <QStyleOption>
+#include <QStyle>
+#include "app/spring.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -16,6 +19,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <cmath>
+#include <algorithm>
 #include <QBuffer>
 #include <QByteArray>
 #include <QTemporaryFile>
@@ -196,6 +200,56 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setAccessibleName(label->text());
     setToolTip(tr("Drag into another app"));
     reserveLabelWidth();   // from the start: the first "Prepare drag" would widen it
+    m_track = new Spring(motion::kBase, [this](qreal) { update(); }, this);
+    m_fill = new Spring(motion::kBase, [this](qreal) { update(); }, this);
+    m_track->jumpTo(0);
+    m_fill->jumpTo(0);
+}
+
+void DragPill::setBusy(bool busy) {
+    if (busy == m_busy) return;
+    m_busy = busy;
+    auto *label = findChild<QLabel *>(QStringLiteral("DragPillText"));
+    label->setProperty("busy", busy);   // eddy.qss: @sub, readable on the fill, while disabled
+    label->style()->unpolish(label);
+    label->style()->polish(label);
+    if (busy) {
+        label->setText(tr("Exporting"));
+        setAccessibleName(tr("Exporting"));
+        m_fill->jumpTo(0);
+        m_track->setTarget(1);
+    } else {
+        setPreparationNeeded(m_preparationNeeded);   // its own label back
+        m_track->setTarget(0);   // the track and its fill go together
+    }
+}
+
+void DragPill::setProgress(int percent) {
+    if (percent < 0) return;
+    m_fill->setTarget(qBound(0, percent, 100) / 100.0);
+    setAccessibleName(tr("Exporting %1\u00a0%").arg(qBound(0, percent, 100)));
+}
+
+qreal DragPill::progress() const { return m_fill->value(); }
+
+void DragPill::paintEvent(QPaintEvent *) {
+    QStyleOption option;
+    option.initFrom(this);
+    QPainter painter(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &option, &painter, this);   // the stylesheet's hover
+    const qreal track = m_track->value();
+    if (track <= 0.001) return;
+    const bool dark = palette().color(QPalette::Window).lightness() < 128;
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPainterPath shape;
+    shape.addRoundedRect(QRectF(rect()), theme::kRChip, theme::kRChip);
+    painter.setClipPath(shape);
+    painter.setOpacity(track);
+    painter.fillRect(rect(), theme::tone(theme::Tone::BarHover, dark));
+    // The fill's edge on whole device pixels, so it steps cleanly instead of smearing.
+    const qreal dpr = devicePixelRatioF();
+    const qreal edge = std::round(width() * m_fill->value() * dpr) / dpr;
+    painter.fillRect(QRectF(0, 0, edge, height()), theme::tone(theme::Tone::Raise3, dark));
 }
 
 // The label switches between two texts; it keeps the wider one's width so the
@@ -204,8 +258,9 @@ void DragPill::reserveLabelWidth() {
     auto *label = findChild<QLabel *>(QStringLiteral("DragPillText"));
     label->ensurePolished();
     const QFontMetrics metrics(label->font());
-    label->setMinimumWidth(qMax(metrics.horizontalAdvance(tr("Drag out")),
-                                metrics.horizontalAdvance(tr("Prepare drag"))));
+    label->setFixedWidth(std::max({metrics.horizontalAdvance(tr("Drag out")),
+                                 metrics.horizontalAdvance(tr("Prepare drag")),
+                                 metrics.horizontalAdvance(tr("Exporting"))}));
 }
 
 DragPill::~DragPill() {

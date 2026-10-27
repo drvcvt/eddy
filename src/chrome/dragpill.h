@@ -37,6 +37,8 @@ QPixmap makeDragGhostPixmap(const QImage &preview, const QSize &maxSize = QSize(
 
 // A bottom-of-canvas handle: press and drag it into another window to drop the
 // current composite. The image is fetched from an injected provider at drag time.
+class Spring;
+
 class DragPill : public QWidget {
     Q_OBJECT
 public:
@@ -46,6 +48,11 @@ public:
     void setFileProvider(std::function<FileDragPayload()> provider);
     void refreshTheme();
     void setPreparationNeeded(bool needed);
+    // A running export shows in the pill (C8): a track over its width and a fill from the
+    // left, both on motion::kBase. `percent` < 0: not known yet, the track alone.
+    void setBusy(bool busy);
+    void setProgress(int percent);
+    qreal progress() const;   // the fill shown, 0..1; for tests
 signals:
     void preparationRequested();
 
@@ -54,6 +61,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void keyPressEvent(QKeyEvent *e) override;
+    void paintEvent(QPaintEvent *e) override;
 
 private:
     void reserveLabelWidth();
@@ -62,6 +70,8 @@ private:
     std::function<FileDragPayload()> m_fileProvider;
     QPoint m_pressPos;
     bool m_preparationNeeded = false;
+    bool m_busy = false;
+    Spring *m_track = nullptr, *m_fill = nullptr;
     QString m_lastTempPath;   // previous generated temp file, removed before the next / on destroy
 };
 
