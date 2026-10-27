@@ -99,6 +99,32 @@ private slots:
         QVERIFY2(off.isEmpty(), qPrintable(off.join(QStringLiteral("\n   "))));
     }
 
+    void dragPillWordSitsOnItsMiddle() {
+        // A QLabel centres its line box; the capitals sat a pixel low beside the grip.
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("pill.mp4")), QSize(1000, 680));
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        auto *pill = window->findChild<DragPill *>();
+        auto *label = pill->findChild<QLabel *>(QStringLiteral("DragPillText"));
+        auto *icon = pill->findChild<QLabel *>(QStringLiteral("DragPillIcon"));
+        QVERIFY(pill && label && icon);
+        const QImage shot = pill->grab().toImage();
+        const QColor background = shot.pixelColor(1, 1);
+        const QColor ink = label->palette().color(QPalette::WindowText);
+        // The first capital only: "D" has no descender and no ascender above the caps.
+        const QRect text(label->mapTo(pill, QPoint()), label->size());
+        const int startX = text.x() + int((label->width() - label->fontMetrics().horizontalAdvance(label->text())) / 2);
+        const Ink caps = inkOf(shot, QRect(startX, 0, label->fontMetrics().horizontalAdvance(QStringLiteral("D")), shot.height()),
+                               background, ink);
+        const Ink grip = inkOf(shot, QRect(icon->mapTo(pill, QPoint()), icon->size()), background, ink);
+        QVERIFY(caps.any && grip.any);
+        const qreal capsMiddle = (caps.top + caps.bottom) / 2, gripMiddle = (grip.top + grip.bottom) / 2;
+        qInfo("pill: capitals %+.2f px off the middle, grip %+.2f px off the capitals",
+              capsMiddle - pill->height() / 2.0, gripMiddle - capsMiddle);
+        QVERIFY(std::abs(capsMiddle - pill->height() / 2.0) <= 0.5);
+        QVERIFY(std::abs(gripMiddle - capsMiddle) <= 0.5);
+    }
+
     void toolRailIconsShareOneAxis() {
         QImage image(800, 500, QImage::Format_ARGB32_Premultiplied);
         image.fill(Qt::white);

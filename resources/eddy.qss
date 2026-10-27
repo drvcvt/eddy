@@ -217,11 +217,12 @@ QWidget#DragPill {
 }
 QWidget#DragPill:hover, QWidget#DragPill:focus { background-color: @bar-hover; }
 QWidget#DragPill:disabled { background-color: transparent; }
+/* Words in the UI face; the fixed font is for values only. */
 QLabel#DragPillText {
     color: @fg;
-    font-family: @font-mono;
+    font-family: @font-ui;
     font-size: @fs-caption;
-    font-weight: 400;
+    font-weight: 500;
 }
 QLabel#DragPillText:disabled { color: @faint; }
 
@@ -255,6 +256,7 @@ QWidget#ViewControls QToolButton {
     font-size: @fs-caption;
     font-weight: 400;
 }
+QWidget#ViewControls QToolButton#ZoomFit { font-family: @font-ui; font-weight: 500; }
 QLineEdit#ColorHex {
     background-color: @raise2;
     color: @fg;

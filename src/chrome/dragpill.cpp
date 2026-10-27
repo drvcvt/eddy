@@ -15,6 +15,7 @@
 #include <QColor>
 #include <QPainter>
 #include <QPainterPath>
+#include <cmath>
 #include <QBuffer>
 #include <QByteArray>
 #include <QTemporaryFile>
@@ -154,6 +155,25 @@ QPixmap makeDragGhostPixmap(const QImage &preview, const QSize &maxSize) {
     return pix;
 }
 
+namespace {
+// The pill's word on its capitals, like CapButton: a QLabel centres the line box,
+// which put the capitals a pixel low beside the grip.
+class CapLabel : public QLabel {
+public:
+    using QLabel::QLabel;
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        const qreal dpr = devicePixelRatioF();
+        auto snap = [dpr](qreal v) { return std::round(v * dpr) / dpr; };
+        const QFontMetricsF metrics(font());
+        painter.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::WindowText));
+        painter.drawText(QPointF(snap((width() - metrics.horizontalAdvance(text())) / 2),
+                                 snap((height() + metrics.capHeight()) / 2)), text());
+    }
+};
+}
+
 DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     setObjectName("DragPill");
     setAttribute(Qt::WA_StyledBackground, true);
@@ -169,7 +189,7 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
                                       QApplication::palette().color(QPalette::WindowText), theme::kFsCaption)
                         .pixmap(QSize(theme::kFsCaption, theme::kFsCaption)));   // Rounded grip, distinct from the Arrow annotation tool.
     lay->addWidget(icon);
-    auto *label = new QLabel(tr("Drag out"), this);
+    auto *label = new CapLabel(tr("Drag out"), this);
     label->setObjectName("DragPillText");
     label->setAlignment(Qt::AlignCenter);
     lay->addWidget(label);

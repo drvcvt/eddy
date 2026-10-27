@@ -1,4 +1,5 @@
 #include "chrome/loupe.h"
+#include <QFontDatabase>
 #include "app/theme.h"
 #include <QPainter>
 #include <QPainterPath>
@@ -112,9 +113,8 @@ void Loupe::paintEvent(QPaintEvent *) {
     p.setBrush(m_color);
     p.drawRoundedRect(chip, 3, 3);
     p.setPen(palette().color(QPalette::WindowText));
-    QFont f = p.font();
+    QFont f = QFontDatabase::systemFont(QFontDatabase::FixedFont);   // a value: the fixed font
     f.setPixelSize(theme::kFsCaption);
-    f.setWeight(QFont::DemiBold);
     p.setFont(f);
     p.drawText(label.adjusted(20, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft,
                m_color.name(QColor::HexRgb).toUpper());
