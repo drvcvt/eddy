@@ -544,9 +544,10 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     m_recoveryMax->setInterval(10000);
     connect(m_recoveryMax, &QTimer::timeout, this, &EditorWindow::writeRecovery);
     connect(m_undo, &QUndoStack::indexChanged, this, [this] { if (m_recoveryEnabled) noteRecoveryChange(); });
-    // Holding Save opens the export popover; its footer holds the project actions.
+    // A right-click on Save opens the export popover; its footer holds the project actions.
     m_exportPanel = new ExportPanel;
     m_exportPanel->setVideo(isVideo());
+    m_exportPanel->setSound(m_studio.audio, isVideo() && m_media.video.hasAudio);
     QMenu *exportMenu = m_toolbar->enableExportMenu(m_exportPanel);
     connect(exportMenu, &QMenu::aboutToShow, this, &EditorWindow::openExportPanel);
     connect(m_exportPanel, &ExportPanel::saveRequested, this, [this, exportMenu] {
@@ -560,6 +561,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     connect(m_exportPanel, &ExportPanel::projectOpenRequested, this, [this, exportMenu] {
         exportMenu->close();
         openProjectDialog();
+    });
+    connect(m_exportPanel, &ExportPanel::soundChosen, this, [this](bool on) {
+        editStudio([on](StudioDocument &d) { d.audio = on; });
     });
     connect(m_exportPanel, &ExportPanel::resumeRequested, this, [this, exportMenu] {
         exportMenu->close();

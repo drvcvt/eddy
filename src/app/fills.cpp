@@ -5,6 +5,8 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QEvent>
+#include <QMenu>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QToolButton>
 #include <QWidget>
@@ -188,6 +190,59 @@ bool SelectionGlide::eventFilter(QObject *watched, QEvent *event) {
         break;
     }
     return false;
+}
+
+namespace {
+class ContextMark : public QWidget {
+public:
+    static constexpr int kLeg = 4;
+    explicit ContextMark(QToolButton *button) : QWidget(button) {
+        setObjectName(QStringLiteral("ContextMark"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setFocusPolicy(Qt::NoFocus);
+        resize(kLeg, kLeg);
+        place();
+        button->installEventFilter(this);
+    }
+protected:
+    bool eventFilter(QObject *, QEvent *event) override {
+        if (event->type() == QEvent::Resize) place();
+        return false;
+    }
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled,
+                                         QPalette::PlaceholderText));   // @sub, like a label
+        painter.drawPolygon(QPolygonF{QPointF(kLeg, 0), QPointF(kLeg, kLeg), QPointF(0, kLeg)});
+    }
+private:
+    void place() { move(parentWidget()->width() - kLeg, parentWidget()->height() - kLeg); raise(); }
+};
+
+class KeepOpen : public QObject {
+public:
+    using QObject::QObject;
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() != QEvent::MouseButtonRelease) return false;
+        auto *menu = static_cast<QMenu *>(watched);
+        QAction *action = menu->actionAt(static_cast<QMouseEvent *>(event)->position().toPoint());
+        if (!action || !action->isCheckable() || !action->isEnabled()) return false;
+        action->trigger();
+        return true;
+    }
+};
+}
+
+void markContextMenu(QToolButton *button) {
+    if (!button->findChild<QWidget *>(QStringLiteral("ContextMark"), Qt::FindDirectChildrenOnly))
+        new ContextMark(button);
+}
+
+void keepOpenOnToggle(QMenu *menu) {
+    menu->installEventFilter(new KeepOpen(menu));
 }
 
 }

@@ -20,8 +20,11 @@ public:
     // The framed output before any shrinking, the output duration and the
     // source path for Original's container.
     void setOutput(QSize framed, qint64 durationMs, const QString &sourcePath);
+    // Whether the output carries the clip's sound; the row shows only for clips that have one.
+    void setSound(bool on, bool available);
 signals:
     void settingsChanged(const ExportSettings &settings);
+    void soundChosen(bool on);
     void saveRequested();
     void projectSaveRequested();
     void projectOpenRequested();
@@ -34,6 +37,9 @@ private:
     qint64 m_durationMs = 0;
     QString m_sourcePath;
     QButtonGroup *m_preset = nullptr, *m_format = nullptr, *m_size = nullptr, *m_fps = nullptr;
+    QButtonGroup *m_sound = nullptr;
+    QList<QWidget *> m_soundRow;
+    bool m_soundOn = true, m_soundAvailable = false;
     QLabel *m_summary = nullptr;
     QToolButton *m_save = nullptr;
     QList<QWidget *> m_videoOnly;

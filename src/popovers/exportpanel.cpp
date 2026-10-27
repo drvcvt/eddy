@@ -28,6 +28,10 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     m_format = addRow(tr("Format"), {QStringLiteral("MP4"), QStringLiteral("WebM"), QStringLiteral("GIF")});
     m_size = addRow(tr("Size"), {tr("Full"), QStringLiteral("1080"), QStringLiteral("720"), QStringLiteral("480")});
     m_fps = addRow(tr("Frames"), {QStringLiteral("60"), QStringLiteral("30"), QStringLiteral("15")});
+    m_sound = addRow(tr("Sound"), {tr("On"), tr("Off")});
+    m_soundRow = m_videoOnly.mid(m_videoOnly.size() - 2);   // shown by setSound, for clips with sound
+    m_videoOnly.resize(m_videoOnly.size() - 2);
+    for (QWidget *w : std::as_const(m_soundRow)) w->hide();
     m_preset->button(0)->setToolTip(tr("The source's format and size, at most 60 frames"));
     m_size->button(0)->setToolTip(tr("Full size"));
     for (int i = 1; i < 4; ++i) m_size->button(i)->setToolTip(tr("Shorter side at most %1 px").arg(kSides[i]));
@@ -52,6 +56,8 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
         sync();
         emit settingsChanged(m_settings);
     });
+    // The sound is the document's (undoable, shared with the speaker's menu), not a setting.
+    connect(m_sound, &QButtonGroup::idClicked, this, [this](int id) { emit soundChosen(id == 0); });
 
     auto *footer = new QHBoxLayout;
     footer->setSpacing(theme::kS2);
@@ -132,8 +138,17 @@ void ExportPanel::setSettings(const ExportSettings &settings) {
 void ExportPanel::setVideo(bool video) {
     m_video = video;
     for (QWidget *w : std::as_const(m_videoOnly)) w->setVisible(video);
+    for (QWidget *w : std::as_const(m_soundRow)) w->setVisible(video && m_soundAvailable);
     sync();
     adjustSize();
+}
+
+void ExportPanel::setSound(bool on, bool available) {
+    m_soundOn = on;
+    const bool shown = available != m_soundAvailable;
+    m_soundAvailable = available;
+    if (shown) setVideo(m_video);
+    else sync();
 }
 
 void ExportPanel::setOutput(QSize framed, qint64 durationMs, const QString &sourcePath) {
@@ -158,6 +173,13 @@ void ExportPanel::sync() {
         : source == QLatin1String("mp4") ? 0 : source == QLatin1String("webm") ? 1 : -1);
     check(m_size, int(std::find(std::begin(kSides), std::end(kSides), m_settings.shortSide) - std::begin(kSides)));
     check(m_fps, int(std::find(std::begin(kRates), std::end(kRates), m_settings.fps) - std::begin(kRates)));
+    // A GIF has no sound to carry.
+    const bool gif = m_settings.format == ExportSettings::Format::Gif;
+    check(m_sound, gif || !m_soundOn ? 1 : 0);
+    for (QAbstractButton *b : m_sound->buttons()) {
+        b->setEnabled(!gif);
+        b->setToolTip(gif ? tr("A GIF has no sound") : QString());
+    }
     const QSize out = exportSize(m_framed, m_settings.shortSide);
     // A gap, not a glyph, between size and time.
     m_summary->setText(m_framed.isEmpty() ? QString()

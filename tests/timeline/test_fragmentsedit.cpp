@@ -9,6 +9,9 @@
 #include <QToolButton>
 #include <QUndoStack>
 #include <QVideoSink>
+#include <QWidgetAction>
+#include <QContextMenuEvent>
+#include "popovers/exportpanel.h"
 #include "editor/editorwindow.h"
 #include "output/exportsettings.h"
 #include "timeline/fragmentbar.h"
@@ -68,6 +71,88 @@ private slots:
         EditorWindow silent(videoDoc(dir.filePath("none.mp4")), cfg, {});
         for (QAction *a : silent.findChildren<QAction *>())
             if (a->text() == QStringLiteral("Include audio in output")) QVERIFY(!a->isEnabled());
+    }
+    void theSoundComesOffInTheExportPanelToo() {
+        // Where output settings live: one switch with the speaker's menu, the same undo step.
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        ExportPanel *panel = nullptr;
+        for (auto *a : w.findChildren<QWidgetAction *>())
+            if (auto *p = qobject_cast<ExportPanel *>(a->defaultWidget())) panel = p;
+        QVERIFY(panel);
+        QAbstractButton *on = nullptr, *off = nullptr;
+        for (auto *b : panel->findChildren<QAbstractButton *>()) {
+            if (b->accessibleName() == QStringLiteral("Sound On")) on = b;
+            if (b->accessibleName() == QStringLiteral("Sound Off")) off = b;
+        }
+        QVERIFY(on && off && on->isVisibleTo(panel) && on->isChecked());
+        auto *undo = w.findChild<QUndoStack *>();
+        const int steps = undo->count();
+        off->click();
+        QVERIFY(!w.studioDocument().audio);
+        QVERIFY(off->isChecked());
+        QVERIFY(w.findChild<QLabel *>(QStringLiteral("NoAudio"))->isVisible());
+        QCOMPARE(undo->count(), steps + 1);
+        undo->undo();
+        QVERIFY(w.studioDocument().audio && on->isChecked());
+        // A clip without sound has no row; a GIF has no sound to carry.
+        EditorWindow silent(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        for (auto *a : silent.findChildren<QWidgetAction *>())
+            if (auto *p = qobject_cast<ExportPanel *>(a->defaultWidget()))
+                for (auto *b : p->findChildren<QAbstractButton *>())
+                    if (b->accessibleName().startsWith(QStringLiteral("Sound "))) QVERIFY(!b->isVisibleTo(p));
+        ExportSettings gif = panel->settings();
+        gif.format = ExportSettings::Format::Gif;
+        panel->setSettings(gif);
+        QVERIFY(off->isChecked() && !on->isEnabled());
+    }
+    void buttonMenusOpenOnRightClickAndSaySo() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        for (const char *name : {"PlaybackMute", "Copy", "Save"}) {
+            auto *button = w.findChild<QToolButton *>(QString::fromLatin1(name));
+            QVERIFY2(button && button->menu(), name);
+            QVERIFY2(button->findChild<QWidget *>(QStringLiteral("ContextMark")), name);   // the corner mark
+            QVERIFY2(button->toolTip().contains(QStringLiteral("Right-click")), name);
+            QSignalSpy opened(button->menu(), &QMenu::aboutToShow);
+            QSignalSpy clicked(button, &QToolButton::clicked);
+            QTimer::singleShot(0, button->menu(), &QMenu::close);
+            QContextMenuEvent event(QContextMenuEvent::Mouse, button->rect().center(),
+                                    button->mapToGlobal(button->rect().center()));
+            QApplication::sendEvent(button, &event);
+            QCOMPARE(opened.count(), 1);
+            QCOMPARE(clicked.count(), 0);
+        }
+    }
+    void theSoundMenuStaysOpenWhileItToggles() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        QMenu *menu = w.findChild<QToolButton *>(QStringLiteral("PlaybackMute"))->menu();
+        QAction *include = nullptr;
+        for (QAction *a : menu->actions())
+            if (a->text() == QStringLiteral("Include audio in output")) include = a;
+        QVERIFY(include);
+        menu->popup(w.mapToGlobal(QPoint(100, 100)));
+        QVERIFY(QTest::qWaitForWindowExposed(menu));
+        QTest::mouseClick(menu, Qt::LeftButton, {}, menu->actionGeometry(include).center());
+        QVERIFY(!include->isChecked() && !w.studioDocument().audio);
+        QVERIFY(menu->isVisible());
+        QTest::mouseClick(menu, Qt::LeftButton, {}, menu->actionGeometry(include).center());
+        QVERIFY(include->isChecked() && w.studioDocument().audio);
+        menu->close();
     }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;

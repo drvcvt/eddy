@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include "app/fills.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -156,10 +157,10 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setCursor(Qt::PointingHandCursor);
     m_muteButton->setFixedSize(theme::kControl);
     m_muteButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
-    m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
+    m_muteButton->setToolTip(tr("Mute audio\nVolume and sound\tRight-click"));
     m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
 
-    // Volume lives in the speaker's hold menu only: one control for it, and a row
+    // Volume lives in the speaker's right-click menu only: one control for it, and a row
     // that shows the same controls at every width.
     auto *audioMenu = new QMenu(m_muteButton);
     auto *audioWidget = new QWidget(audioMenu);
@@ -186,10 +187,12 @@ QWidget *EditorWindow::createPlaybackBar() {
     });
     m_noAudio = new QLabel(tr("No audio"), bar);
     m_noAudio->setObjectName(QStringLiteral("NoAudio"));
-    m_noAudio->setToolTip(tr("The output has no sound; turn it back on in the speaker menu"));
+    m_noAudio->setToolTip(tr("The output has no sound; turn it back on with a right-click on the speaker"));
     m_noAudio->hide();
     m_muteButton->setMenu(audioMenu);
     m_muteButton->setPopupMode(QToolButton::DelayedPopup);
+    keepOpenOnToggle(audioMenu);   // flip the output's sound, then set the volume
+    markContextMenu(m_muteButton);
     m_muteButton->setFocusPolicy(Qt::StrongFocus);
 
     leftGroup->addWidget(m_playButton);
@@ -402,7 +405,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_muteButton->setIcon(theme::tintedIcon(
             muted ? QStringLiteral(":/icons/muted.svg") : QStringLiteral(":/icons/volume.svg"),
             palette().color(QPalette::ButtonText), palette().color(QPalette::ButtonText)));
-        m_muteButton->setToolTip(muted ? tr("Unmute audio\nHold for volume") : tr("Mute audio\nHold for volume"));
+        m_muteButton->setToolTip(muted ? tr("Unmute audio\nVolume and sound\tRight-click") : tr("Mute audio\nVolume and sound\tRight-click"));
         m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
     });
     connect(m_volumeSlider, &QSlider::valueChanged, this, [this](int value){
@@ -413,7 +416,7 @@ QWidget *EditorWindow::createPlaybackBar() {
             m_audioOutput->setMuted(false);
             const QColor color = palette().color(QPalette::ButtonText);
             m_muteButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/volume.svg"), color, color));
-            m_muteButton->setToolTip(tr("Mute audio\nHold for volume"));
+            m_muteButton->setToolTip(tr("Mute audio\nVolume and sound\tRight-click"));
             m_muteButton->setAccessibleName(theme::spokenName(m_muteButton->toolTip()));
         }
     });

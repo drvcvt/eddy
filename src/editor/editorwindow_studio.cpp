@@ -137,6 +137,7 @@ void EditorWindow::setStudioDocument(const StudioDocument &doc) {
         m_outputAudio->setChecked(doc.audio);
         m_noAudio->setVisible(!doc.audio && m_media.video.hasAudio);
     }
+    if (m_exportPanel) m_exportPanel->setSound(doc.audio, isVideo() && m_media.video.hasAudio);
     if (isVideo()) onVideoContentChanged();
 }
 
