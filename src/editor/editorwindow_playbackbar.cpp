@@ -194,6 +194,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setMenu(audioMenu);
     m_muteButton->setPopupMode(QToolButton::DelayedPopup);
     keepOpenOnToggle(audioMenu);   // flip the output's sound, then set the volume
+    markContextMenu(m_muteButton);
     m_muteButton->setFocusPolicy(Qt::StrongFocus);
 
     leftGroup->addWidget(m_playButton);

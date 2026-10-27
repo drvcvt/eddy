@@ -600,6 +600,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         exportMenu->close();
         openProjectDialog();
     });
+    connect(m_toolbar, &Toolbar::shortcutsRequested, this, &EditorWindow::toggleShortcutSheet);
     connect(m_exportPanel, &ExportPanel::soundChosen, this, [this](bool on) {
         editStudio([on](StudioDocument &d) { d.audio = on; });
     });

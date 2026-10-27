@@ -87,6 +87,9 @@ export options: format, size, frame rate, GIF, and projects.
 
 ## Keys
 
+`?` or `F1` (or the keyboard button in the top bar) shows all of them in the editor. Buttons with a
+small rounded corner at their bottom right open more options on a right-click.
+
 | Key | |
 |-----|---|
 | `M` `A` `P` `R` `E` `H` `T` `N` `X` `C` | Move, Arrow, Pen, Rectangle, Ellipse, Highlight, Text, Step, Redact, Crop |

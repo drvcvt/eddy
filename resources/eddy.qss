@@ -302,6 +302,14 @@ QWidget#StudioPopover QToolButton:checked { background-color: @raise3; color: @f
 QWidget#MiniMap { background: @raise1; border: none; border-radius: @r-bar; }
 /* Resume: the kept edits, newest first. */
 QDialog#ResumeDialog { background: @raise1; }
+/* The shortcut sheet (H1): a popover like the others; keys quiet and fixed, words in the UI face. */
+QWidget#ShortcutSheet { background-color: @raise1; border: none; border-radius: @r-pop; }
+QWidget#ShortcutSheet QScrollArea, QWidget#ShortcutSheet QWidget#ShortcutContent,
+QWidget#ShortcutSheet QWidget#qt_scrollarea_viewport { background: transparent; }
+QWidget#ShortcutSheet QLabel#ShortcutGroup { color: @sub; font-size: @fs-caption; font-weight: 600; }
+QWidget#ShortcutSheet QLabel#ShortcutKeys { color: @sub; font-family: @font-mono; font-size: @fs-caption; }
+QWidget#ShortcutSheet QLabel#ShortcutWhat { color: @fg; font-size: @fs-ui; }
+
 /* Scroll bars: a slim rounded grip @s1 off the content, no arrows, no trough. @sub, as
    raise3 measured 1.4:1 and merged with a chosen row. One tone: a hover tone would
    switch at once; dragging it is its feedback. */

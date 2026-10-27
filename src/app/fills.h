@@ -54,6 +54,9 @@ void easeToggle(QToolButton *button);
 void fadeVisible(QWidget *widget, bool visible);
 // Where a fadeVisible widget is going: shown or not, already while it fades.
 bool fadeTarget(const QWidget *widget);
+// A button whose menu opens on right-click (and Alt+Down) carries a rounded corner
+// stroke at its bottom right, outside its hover mark: "there is more behind this" (H2).
+void markContextMenu(QToolButton *button);
 // Checkable entries switch without closing the menu, so a setting can be flipped
 // and the next one reached; plain entries still run and close it.
 void keepOpenOnToggle(QMenu *menu);

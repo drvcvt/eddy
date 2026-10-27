@@ -32,6 +32,7 @@ signals:
     void redoRequested();
     void eyedropperRequested();   // user chose the pipette in the colour popover
     void themeToggleRequested();
+    void shortcutsRequested();   // the keyboard button: every shortcut on one sheet
     void studioRequested();
 private:
     QWidget *m_toolRail = nullptr;

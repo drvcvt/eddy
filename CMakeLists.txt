@@ -51,6 +51,7 @@ add_library(eddy_core STATIC
     src/chrome/minimap.cpp
     src/chrome/loupe.cpp
     src/popovers/colorpopover.cpp
+    src/popovers/shortcutsheet.cpp
     src/bars/redactbar.cpp
     src/bars/textbar.cpp
     src/bars/spotlightbar.cpp
@@ -208,6 +209,7 @@ eddy_test(video/test_videoexporter)
 eddy_test(video/test_videorender)
 eddy_test(output/test_exportsettings)
 eddy_test(popovers/test_exportpanel)
+eddy_test(popovers/test_shortcutsheet)
 eddy_test(project/test_projectcodec)
 eddy_test(project/test_projectstore)
 eddy_test(project/test_recoverystore)

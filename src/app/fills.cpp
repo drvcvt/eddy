@@ -363,6 +363,43 @@ bool SelectionGlide::eventFilter(QObject *watched, QEvent *event) {
 }
 
 namespace {
+// The corner of a rounded square, drawn on its own: radius 3, a straight 4 px leg each way.
+// The stroke's outer edge lies on the button's edge, so it stays clear of the mark kMarkInset in.
+class ContextMark : public QWidget {
+public:
+    static constexpr qreal kRadius = 3, kLeg = 4, kPen = 1.5;
+    static constexpr int kSize = int(kRadius + kLeg + kPen);   // 8: the arc, a leg and the pen
+    explicit ContextMark(QToolButton *button) : QWidget(button) {
+        setObjectName(QStringLiteral("ContextMark"));
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setFocusPolicy(Qt::NoFocus);
+        resize(kSize, kSize);
+        place();
+        button->installEventFilter(this);
+    }
+protected:
+    bool eventFilter(QObject *, QEvent *event) override {
+        if (event->type() == QEvent::Resize) place();
+        return false;
+    }
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        QPen pen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled,
+                                 QPalette::PlaceholderText), kPen);   // @sub, like a quiet label
+        pen.setCapStyle(Qt::RoundCap);
+        painter.setPen(pen);
+        const qreal end = kSize - kPen / 2;   // the stroke's centre line
+        QPainterPath corner(QPointF(end, end - kRadius - kLeg));
+        corner.lineTo(end, end - kRadius);
+        corner.arcTo(QRectF(end - 2 * kRadius, end - 2 * kRadius, 2 * kRadius, 2 * kRadius), 0, -90);
+        corner.lineTo(end - kRadius - kLeg, end);
+        painter.drawPath(corner);
+    }
+private:
+    void place() { move(parentWidget()->width() - kSize, parentWidget()->height() - kSize); raise(); }
+};
+
 class KeepOpen : public QObject {
 public:
     using QObject::QObject;
@@ -416,6 +453,11 @@ void fadeVisible(QWidget *widget, bool visible) {
     }
     if (!visible && widget->isHidden()) return;
     spring->setTarget(visible ? 1 : 0);
+}
+
+void markContextMenu(QToolButton *button) {
+    if (!button->findChild<QWidget *>(QStringLiteral("ContextMark"), Qt::FindDirectChildrenOnly))
+        new ContextMark(button);
 }
 
 void keepOpenOnToggle(QMenu *menu) {

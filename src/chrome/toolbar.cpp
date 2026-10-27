@@ -37,6 +37,7 @@ QMenu *Toolbar::enableExportMenu(QWidget *panel) {
     save->setFocusPolicy(Qt::StrongFocus);
     save->setToolTip(tr("Save\tEnter\nExport options\tRight-click"));
     save->setAccessibleName(tr("Save; right-click or press Alt+Down for export options"));
+    markContextMenu(save);
     return menu;
 }
 
@@ -57,6 +58,7 @@ void Toolbar::enableVideoFrameCopy() {
     copy->setFocusPolicy(Qt::StrongFocus);
     copy->setToolTip(tr("Copy video\tCtrl+C\nCopy frame\tCtrl+Shift+C\nMore\tRight-click"));
     copy->setAccessibleName(tr("Copy video; right-click or press Alt+Down for frame copy"));
+    markContextMenu(copy);
 }
 
 static QToolButton *mkBtn(bool checkable, bool square, QToolButton *b = nullptr) {
@@ -237,6 +239,16 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     lay->addWidget(shelf);
     lay->addSpacing(theme::kS3);   // the theme is a view setting, not an output action
 
+    // Help sits with the view settings: every shortcut, also on ? and F1.
+    auto *keys = mkBtn(false, true);
+    keys->setObjectName(QStringLiteral("Shortcuts"));
+    keys->setIcon(theme::tintedIcon(QStringLiteral(":/icons/keyboard.svg"), iconRest, iconHover));
+    keys->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
+    keys->setToolTip(QStringLiteral("Shortcuts\t?"));
+    keys->setAccessibleName(QStringLiteral("Shortcuts"));
+    connect(keys, &QToolButton::clicked, this, &Toolbar::shortcutsRequested);
+    lay->addWidget(keys);
+
     m_themeBtn = mkBtn(false, true);
     m_themeBtn->setObjectName(QStringLiteral("Theme"));
     m_themeBtn->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
@@ -295,7 +307,7 @@ void Toolbar::setDark(bool dark) {
             QStringLiteral(":/icons/%1.svg").arg(button->objectName()), rest, active));
     const struct { const char *name; const char *icon; } actions[] = {
         {"Undo", "undo"}, {"Redo", "redo"},
-        {"Save", "save"}, {"Copy", "copy"}, {"SendToShelf", "shelf"}, {"Studio", "studio"},
+        {"Save", "save"}, {"Copy", "copy"}, {"SendToShelf", "shelf"}, {"Studio", "studio"}, {"Shortcuts", "keyboard"},
         {"WidthS", "width-thin"}, {"WidthM", "width-medium"}, {"WidthL", "width-thick"}};
     for (const auto &action : actions)
         if (auto *button = findChild<QToolButton *>(QString::fromLatin1(action.name)))

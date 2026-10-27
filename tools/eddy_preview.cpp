@@ -1,5 +1,5 @@
 // Dev tool: render the editor chrome to a PNG for visual verification (offscreen).
-// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera|video-file-mark|video-file-busy] [MEDIA]
+// Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera|video-file-mark|video-file-busy|...-keys] [MEDIA]
 #include "app/fills.h"
 #include "editor/editorwindow.h"
 #include "chrome/dragpill.h"
@@ -40,6 +40,7 @@
 #include <QClipboard>
 #include <QElapsedTimer>
 #include <memory>
+#include <QKeyEvent>
 #include <QPainter>
 #include "items/labels/stepitem.h"
 #include "items/shapes/rectitem.h"
@@ -258,6 +259,17 @@ int main(int argc, char **argv) {
             painter.drawPixmap(window->mapFromGlobal(popover->pos()), popover->grab());
         } else if (popover) {
             popover->close();
+        }
+    }
+    if (mode.contains(QStringLiteral("keys"))) {
+        // The shortcut sheet as F1 opens it, painted where it sits (a popup, so grab() misses it).
+        QKeyEvent f1(QEvent::KeyPress, Qt::Key_F1, Qt::NoModifier);
+        QApplication::sendEvent(window.get(), &f1);
+        app.processEvents();
+        if (auto *sheet = window->findChild<QWidget *>(QStringLiteral("ShortcutSheet"))) {
+            pm = window->grab();
+            QPainter painter(&pm);
+            painter.drawPixmap(window->mapFromGlobal(sheet->pos()), sheet->grab());
         }
     }
     if (mode.contains(QStringLiteral("zoom")) || mode.contains(QStringLiteral("camera"))) {

@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include "popovers/shortcutsheet.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -195,6 +196,11 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         if (m_selectedZoom) { selectZoom(0); e->accept(); return; }
         if (m_selectedFragment >= 0) { selectFragment(-1); e->accept(); return; }
     }
+    if (e->key() == Qt::Key_Question || e->key() == Qt::Key_F1) {   // every shortcut on one sheet
+        toggleShortcutSheet();
+        e->accept();
+        return;
+    }
     switch (e->key()) {
         case Qt::Key_I:
             if (isVideo() && m_timeline && e->modifiers() == Qt::ShiftModifier) { m_timeline->markFromPlayhead(); break; }
@@ -327,6 +333,18 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             break;
         default: QWidget::keyPressEvent(e);
     }
+}
+
+void EditorWindow::toggleShortcutSheet() {
+    if (m_shortcutSheet) { m_shortcutSheet->close(); return; }
+    auto *button = m_toolbar->findChild<QToolButton *>(QStringLiteral("Shortcuts"));
+    // The room under the top bar, inside the window: narrower, the columns stack and scroll.
+    const QSize room(width() - 2 * theme::kBarPad, height() - m_toolbar->height() - 2 * theme::kS3);
+    auto *sheet = new ShortcutSheet(isVideo(), room, this);
+    sheet->move(theme::popoverPosition(button, m_toolbar, sheet->size(), true));
+    sheet->show();
+    sheet->setFocus();
+    m_shortcutSheet = sheet;
 }
 
 TimeMap EditorWindow::clipMap() const {
