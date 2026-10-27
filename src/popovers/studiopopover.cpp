@@ -25,7 +25,7 @@ static QIcon swatchIcon(const StudioStyle &style, qreal dpr) {
     QPainter p(&pixmap);
     p.setRenderHint(QPainter::Antialiasing);
     QPainterPath shape;
-    shape.addRoundedRect(QRectF(1, 1, size - 2, size - 2), 6, 6);
+    shape = theme::squircle(QRectF(1, 1, size - 2, size - 2));
     if (style.active()) {
         const QImage bg = renderStudioBackground(QSize(100, 100), [&] {
             StudioStyle flat = style;

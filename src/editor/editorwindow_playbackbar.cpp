@@ -163,6 +163,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     // Volume lives in the speaker's right-click menu only: one control for it, and a row
     // that shows the same controls at every width.
     auto *audioMenu = new QMenu(m_muteButton);
+    theme::roundMenu(audioMenu);
     auto *audioWidget = new QWidget(audioMenu);
     auto *audioLayout = new QHBoxLayout(audioWidget);
     audioLayout->setContentsMargins(theme::kS2, theme::kS2, theme::kS2, theme::kS2);
@@ -514,6 +515,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_timeline, &VideoTimeline::zoomMenuRequested, this, [this](quint32 id, QPoint global) {
         selectZoom(id);
         QMenu menu(this);
+        theme::roundMenu(&menu);
         const QColor ink = palette().color(QPalette::WindowText);
         for (auto motion : {ZoomSegment::Motion::Focused, ZoomSegment::Motion::Smooth,
                             ZoomSegment::Motion::Instant}) {

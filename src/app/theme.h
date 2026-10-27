@@ -9,6 +9,7 @@
 
 class QWidget;
 
+class QMenu;
 class QPainter;
 
 namespace eddy {
@@ -67,6 +68,9 @@ QPainterPath squircle(const QRectF &rect);
 // Only the corners in `rounded` curve; the rest stay square.
 enum Corner { TopLeft = 1, TopRight = 2, BottomLeft = 4, BottomRight = 8, AllCorners = 15 };
 QPainterPath squircleRect(const QRectF &rect, qreal radius, int rounded = AllCorners);
+// Menus open on rounded corners: frameless and translucent, so the stylesheet's
+// radius shows instead of the window's square edge. Before the menu first shows.
+void roundMenu(QMenu *menu);
 // The one grip of the canvas (resize, crop): a 10 px squircle in the text colour on a
 // 1 px ring of the window colour, so it holds on light and dark content alike.
 void paintGrip(QPainter *painter, QPointF centre);

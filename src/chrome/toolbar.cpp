@@ -44,6 +44,7 @@ void Toolbar::enableVideoFrameCopy() {
     auto *copy = findChild<QToolButton *>(QStringLiteral("Copy"));
     if (!copy || copy->menu()) return;
     auto *menu = new QMenu(copy);
+    theme::roundMenu(menu);
     auto *video = menu->addAction(tr("Copy video"));
     video->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_C));
     connect(video, &QAction::triggered, this, &Toolbar::copyRequested);

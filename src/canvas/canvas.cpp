@@ -621,6 +621,7 @@ void Canvas::contextMenuEvent(QContextMenuEvent *e) {
         return;
     }
     QMenu menu(this);
+    theme::roundMenu(&menu);
     QAction *snap = menu.addAction(tr("Snap to objects"));
     snap->setCheckable(true);
     snap->setChecked(m_snapping);

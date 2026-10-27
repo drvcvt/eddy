@@ -48,6 +48,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
             return;
         }
         QMenu menu(this);
+        theme::roundMenu(&menu);
         if (m_waveform) {
             QAction *show = menu.addAction(tr("Show waveform"));
             show->setCheckable(true);

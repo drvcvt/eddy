@@ -6,12 +6,16 @@
 #include <QRegularExpressionValidator>
 #include <QPainter>
 #include <QApplication>
+#include <QStyle>
+#include <QStyleOption>
 
 namespace eddy {
 
-ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(parent, Qt::Popup) {
+ColorPopover::ColorPopover(QWidget *parent, const QColor &current)
+    : QWidget(parent, Qt::Popup | Qt::FramelessWindowHint) {
     setObjectName("ColorPopover");
     setAttribute(Qt::WA_StyledBackground, true);
+    setAttribute(Qt::WA_TranslucentBackground);   // the stylesheet's r-pop corners, not a square window
     auto *grid = new QGridLayout(this);
     grid->setContentsMargins(theme::kS3, theme::kS3, theme::kS3, theme::kS3);
     grid->setHorizontalSpacing(theme::kS1);
@@ -51,9 +55,13 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
         icon.fill(Qt::transparent);
         QPainter painter(&icon);
         painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(Qt::NoPen);
+        // A squircle like every mark, ringed like the top bar's colour disc, so the
+        // near-black and white presets still show on the popover.
+        QColor ring = QApplication::palette().color(QPalette::WindowText);
+        ring.setAlpha(90);
+        painter.setPen(QPen(ring, 1));
         painter.setBrush(c);
-        painter.drawRoundedRect(QRectF(1, 1, 18, 18), 6, 6);
+        painter.drawPath(theme::squircle(QRectF(1.5, 1.5, 17, 17)));
         if (b->isChecked()) {
             painter.setPen(QPen(c.lightness() > 140 ? QColor("#1a1a1a") : Qt::white,
                                 2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
@@ -78,7 +86,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     });
     grid->addWidget(custom, 3, 0, 1, 4);
 
-    auto *pipette = new QToolButton(this);
+    auto *pipette = new theme::CapButton(this);   // icon on the capitals, even padding
     pipette->setObjectName("Pipette");
     pipette->setText("Pick from image");
     pipette->setAccessibleName(pipette->text());
@@ -87,7 +95,6 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
                                        QApplication::palette().color(QPalette::WindowText),
                                        theme::kFsUi));
     pipette->setIconSize(QSize(theme::kFsUi, theme::kFsUi));
-    pipette->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     pipette->setFixedHeight(theme::kCtl);
     pipette->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     pipette->setCursor(Qt::PointingHandCursor);
@@ -99,5 +106,13 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current) : QWidget(par
     setFixedWidth(sizeHint().width());
     setFocusPolicy(Qt::StrongFocus);
     setFocus(); // Presets first; the hex field only edits when explicitly focused.
+}
+
+void ColorPopover::paintEvent(QPaintEvent *) {
+    // A translucent popup does not get its stylesheet background on its own.
+    QStyleOption option;
+    option.initFrom(this);
+    QPainter painter(this);
+    style()->drawPrimitive(QStyle::PE_Widget, &option, &painter, this);
 }
 }

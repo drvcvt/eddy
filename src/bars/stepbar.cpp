@@ -52,6 +52,7 @@ StepBar::StepBar(QWidget *parent) : QWidget(parent) {
     m_more = theme::floatButton(this, QStringLiteral("StepMore"), tr("More step actions"));
     m_more->setPopupMode(QToolButton::InstantPopup);
     auto *menu = new QMenu(m_more);
+    theme::roundMenu(menu);
     menu->addAction(tr("Renumber by creation order"), this, &StepBar::renumberRequested);
     m_more->setMenu(menu);
     layout->addWidget(m_more);

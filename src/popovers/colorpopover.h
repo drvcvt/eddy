@@ -11,5 +11,7 @@ signals:
     void picked(const QColor &c);
     void customRequested(const QColor &current);
     void eyedropperRequested();   // user chose the pipette: sample a colour off the canvas
+protected:
+    void paintEvent(QPaintEvent *) override;
 };
 }

@@ -8,6 +8,7 @@
 #include <QIconEngine>
 #include <QFontDatabase>
 #include <QFontInfo>
+#include <QMenu>
 #include <QToolButton>
 #include <QStyleOptionToolButton>
 #include <QStylePainter>
@@ -282,6 +283,11 @@ QPainterPath squircle(const QRectF &rect) {
     path.addPolygon(outline);
     path.closeSubpath();
     return path;
+}
+
+void roundMenu(QMenu *menu) {
+    menu->setWindowFlag(Qt::FramelessWindowHint);
+    menu->setAttribute(Qt::WA_TranslucentBackground);
 }
 
 void paintGrip(QPainter *painter, QPointF centre) {
