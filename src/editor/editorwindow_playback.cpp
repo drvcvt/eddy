@@ -79,6 +79,8 @@
 #include <QTimer>
 #include <QThread>
 #include <QPointer>
+#include <QThreadPool>
+#include <utility>
 #include <QScreen>
 #include <QSettings>
 #include <QHelpEvent>
@@ -269,11 +271,12 @@ void EditorWindow::setVideoPreviewImage(const QImage &image) {
     m_previewImage->setPixmap(pixmap);
 }
 
-bool EditorWindow::updateVideoBackground() {
-    if (m_videoBackgroundCurrent) return true;
-    const auto &frame = m_lastVideoFrame;
+namespace {
+// A video frame as the document's background: upright, at its display size, in the
+// canvas's format. Any thread.
+QImage frameImage(const QVideoFrame &frame, QSize native) {
     QImage image = frame.toImage();
-    if (image.isNull()) return false;
+    if (image.isNull()) return image;
     // Qt < 6.8 includes rotation/mirroring in toImage(). Newer Qt
     // applies the surface transform there, but not the presentation one.
 #if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
@@ -281,18 +284,57 @@ bool EditorWindow::updateVideoBackground() {
     if (rotation) image = image.transformed(QTransform().rotate(rotation));
     if (frame.mirrored()) image = image.transformed(QTransform().scale(-1, 1));
 #endif
-    if (image.size() != m_media.nativeSize())
-        image = image.scaled(m_media.nativeSize(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-    m_bg = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    if (image.size() != native)
+        image = image.scaled(native, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    return image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+}
+} // namespace
+
+bool EditorWindow::updateVideoBackground() {
+    if (m_videoBackgroundCurrent) return true;
+    const QImage image = frameImage(m_lastVideoFrame, m_media.nativeSize());
+    if (image.isNull()) return false;
+    adoptVideoBackground(image);
+    return true;
+}
+
+// Everything that reads the frame's pixels gets the new one.
+void EditorWindow::adoptVideoBackground(const QImage &image) {
+    m_bg = image;
     m_tools->setBackground(m_bg);
     m_ocr->setBackground(m_bg);
     for (QGraphicsItem *item : m_scene->items())
         if (auto *redact = dynamic_cast<RedactItem *>(item))
             redact->setSource(m_bg);
     m_videoBackgroundCurrent = true;
-    return true;
 }
 
+// Scrubbing while paused: the conversion runs on the pool like playing frames do, so a
+// drag no longer stalls the editor; only the newest frame is fetched after the running job.
+void EditorWindow::convertStillAsync(const QVideoFrame &frame) {
+    if (m_stillConverting) { m_stillWaiting = frame; return; }
+    m_stillConverting = true;
+    QPointer<EditorWindow> self(this);
+    const QSize native = m_media.nativeSize();
+    QThreadPool::globalInstance()->start([self, frame, native] {
+        const QImage image = frameImage(frame, native);
+        QMetaObject::invokeMethod(qApp, [self, frame, image] {
+            if (!self) return;
+            self->m_stillConverting = false;
+            const QVideoFrame waiting = std::exchange(self->m_stillWaiting, QVideoFrame());
+            const bool playing = self->m_player && self->m_player->playbackState() == QMediaPlayer::PlayingState;
+            if (!image.isNull() && !playing && frame == self->m_lastVideoFrame) {
+                self->adoptVideoBackground(image);
+                self->m_videoStill->setPixmap(QPixmap::fromImage(self->m_bg));
+                self->m_videoStill->show();
+            }
+            if (waiting.isValid() && !playing) self->convertStillAsync(waiting);
+        }, Qt::QueuedConnection);
+    });
+}
+
+// At once, on the GUI thread: pausing must leave a picture even if the backend clears
+// its surface right after. Frames arriving while paused go through convertStillAsync.
 void EditorWindow::showVideoStill() {
     if (!m_lastVideoFrame.isValid() || !updateVideoBackground()) return;
     m_videoStill->setPixmap(QPixmap::fromImage(m_bg));
@@ -338,8 +380,10 @@ void EditorWindow::ensureVideoPlayer() {
             if (needsPixels) updateVideoBackground();
             if (m_player->playbackState() == QMediaPlayer::PlayingState)
                 m_videoStill->hide();
+            else if (m_videoBackgroundCurrent)
+                showVideoStill();   // converted above for a tool that reads pixels
             else
-                showVideoStill();
+                convertStillAsync(frame);
             // GStreamer's buffer PTS may include a stream offset (e.g. H.264
             // reordering delay), while QMediaPlayer positions start at zero.
             // Loading primes the initial still. Anchor that first frame before

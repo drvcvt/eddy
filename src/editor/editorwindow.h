@@ -153,7 +153,9 @@ private:
     void saveVideo();
     void ensureVideoPlayer();
     bool updateVideoBackground();
+    void adoptVideoBackground(const QImage &image);
     void showVideoStill();
+    void convertStillAsync(const QVideoFrame &frame);
     void togglePlayback();
     qint64 lastFrameMs() const;
     void handlePlaybackEnd();
@@ -303,6 +305,10 @@ private:
     bool m_hasVideoFrame = false;
     QVideoFrame m_lastVideoFrame;
     bool m_videoBackgroundCurrent = false;
+    // Paused stills convert on the thread pool, one job at a time; the newest frame that
+    // arrived meanwhile waits here.
+    bool m_stillConverting = false;
+    QVideoFrame m_stillWaiting;
     bool m_hasSentVideoSeek = false;
     bool m_copyFramePending = false;
     QLabel *m_tooltip = nullptr;
