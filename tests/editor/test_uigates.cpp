@@ -179,9 +179,11 @@ private slots:
         // The trim group and the drag pill on the window's middle.
         QVERIFY2(qAbs(trim.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(trim.center().x())));
         QVERIFY2(qAbs(pill.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(pill.center().x())));
-        // Rows kS2 apart: strip to transport, transport to footer.
-        QCOMPARE(play.top() - (timeline.bottom() + 1), theme::kS2);
-        QCOMPARE(fit.top() - (play.bottom() + 1), theme::kS2);
+        // Rows kS2 apart: strip to the transport row (its tallest part, the trim field), and on to the footer.
+        QCOMPARE(trim.top() - (timeline.bottom() + 1), theme::kS2);
+        QCOMPARE(fit.top() - (trim.bottom() + 1), theme::kS2);
+        // The row's controls share its middle.
+        for (const QRect &r : {play, volume}) QCOMPARE(r.center().y(), trim.center().y());
     }
 
     void narrowWindowKeepsEveryControlInside() {

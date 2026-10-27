@@ -9,6 +9,8 @@
 #include <QSize>
 #include <QString>
 #include <QWidget>
+#include <QPainter>
+#include "app/theme.h"
 #include "app/config.h"
 #include "output/exporter.h"
 #include "app/spring.h"
@@ -18,6 +20,22 @@ namespace eddy {
 
 
 // The playback row folds its trim fields onto a second line when the window gets narrow.
+// Start, End and Duration on one recessed field: the workspace's deeper grey on
+// squircle corners, no outline. Its controls keep their own hover fills on top.
+class TrimField : public QWidget {
+public:
+    using QWidget::QWidget;
+    static constexpr int kInset = 2;   // around the kCtl controls: the field is kCtl + 4 high
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(theme::tone(theme::Tone::Well, palette().color(QPalette::Window).lightness() < 128));
+        painter.drawPath(theme::squircleRect(QRectF(rect()), theme::kRChip + kInset + 2));
+    }
+};
+
 // Three columns: play and time left, the trim group centred on the window,
 // loop, rate and sound right. The outer columns share one width, so the
 // middle sits on the window's centre (and on the drag pill's below).

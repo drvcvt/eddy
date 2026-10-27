@@ -122,10 +122,10 @@ QWidget *EditorWindow::createPlaybackBar() {
     leftGroup->setSpacing(theme::kS2);
     auto *rightGroup = new QHBoxLayout;
     rightGroup->setSpacing(theme::kS2);
-    auto *trimControls = new QWidget(bar);
+    auto *trimControls = new TrimField(bar);
     trimControls->setObjectName(QStringLiteral("TrimControls"));
     auto *trim = new QHBoxLayout(trimControls);
-    trim->setContentsMargins(0, 0, 0, 0);
+    trim->setContentsMargins(theme::kS1, TrimField::kInset, theme::kS1, TrimField::kInset);
     trim->setSpacing(0);   // captions and values bring their own kS2 padding
 
     m_playButton = new QToolButton(bar);
