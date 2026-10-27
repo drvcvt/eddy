@@ -472,9 +472,17 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     auto *fl = new QGridLayout(viewControls);
     fl->setContentsMargins(theme::kBarPad, theme::kBarPad, theme::kBarPad, theme::kBarPad);
     fl->setSpacing(theme::kS1);
+    // Three columns like the playback row: zoom left, the pill in the middle, status right.
+    // The sides share one width while that fits (balanceFooter), so the pill sits on the
+    // window's centre; when it does not, the pill gives way instead of being covered.
+    fl->setColumnStretch(0, 1);
+    fl->setColumnStretch(2, 1);
+    fl->setHorizontalSpacing(theme::kS2);
     auto *zoomControls = new QHBoxLayout;
     zoomControls->setSpacing(theme::kS1);
     fl->addLayout(zoomControls, 0, 0, Qt::AlignLeft);
+    m_footerGrid = fl;
+    m_footerLeft = zoomControls;
     auto *fit = new theme::CapButton(viewControls);
     fit->setObjectName(QStringLiteral("ZoomFit"));
     fit->setText(QStringLiteral("Fit"));
@@ -500,7 +508,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     updateZoom();
     zoomControls->addWidget(zoom);
     // Align independently within the full row, not the space left after zoom.
-    fl->addWidget(m_dragPill, 0, 0, Qt::AlignCenter);
+    fl->addWidget(m_dragPill, 0, 1, Qt::AlignCenter);
     if (isVideo()) {
         m_exportStatus = new QLabel(viewControls);
         m_exportStatus->setObjectName(QStringLiteral("VideoExportStatus"));
@@ -524,7 +532,14 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         // On the window's edge, like the row's speaker above it; the group grows to the
         // left, so the pill (centred on its own) and the transport row stay put.
         exportControls->addWidget(m_noAudio);
-        fl->addLayout(exportControls, 0, 0, Qt::AlignRight);
+        fl->addLayout(exportControls, 0, 2, Qt::AlignRight);
+        m_footerRight = exportControls;
+    } else {
+        // An empty column drops its spacing and pulls the pill off the centre: hold it.
+        auto *holder = new QWidget(viewControls);
+        holder->setFixedHeight(0);
+        holder->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);   // grows like the left column
+        fl->addWidget(holder, 0, 2);
     }
     viewControls->setAttribute(Qt::WA_StyledBackground, true);
     lay->addWidget(viewControls, isVideo() ? 3 : 2, 0, 1, 2);
@@ -652,6 +667,19 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     const int minW = qMax(isVideo() ? 520 : 760, lay->minimumSize().width());
     setMinimumSize(minW, chromeH + m_toolbar->toolRail()->sizeHint().height());
     resize(qMin(qMax(native.width() + chromeW, minW), maxW), qMin(native.height() + chromeH, maxH));
+}
+
+void EditorWindow::balanceFooter() {
+    if (!m_footerGrid) return;
+    QWidget *footer = m_footerGrid->parentWidget();
+    const int side = qMax(m_footerLeft->sizeHint().width(), m_footerRight ? m_footerRight->sizeHint().width() : 0);
+    const QMargins m = m_footerGrid->contentsMargins();
+    const int needed = 2 * side + m_dragPill->sizeHint().width() + 2 * m_footerGrid->horizontalSpacing()
+                       + m.left() + m.right();
+    const int balanced = footer->width() >= needed ? side : 0;
+    if (m_footerGrid->columnMinimumWidth(0) == balanced && m_footerGrid->columnMinimumWidth(2) == balanced) return;
+    m_footerGrid->setColumnMinimumWidth(0, balanced);
+    m_footerGrid->setColumnMinimumWidth(2, balanced);
 }
 
 // Wayland gives a client no say over its window's opacity (Qt warns on every frame and

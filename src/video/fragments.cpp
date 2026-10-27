@@ -39,7 +39,7 @@ bool split(QVector<Fragment> &list, qint64 sourceMs, qint64 durationMs) {
 void setSpeed(QVector<Fragment> &list, int index, double speed) {
     QVector<Fragment> parts = expanded(list);
     if (index < 0 || index >= parts.size()) return;
-    parts[index].speed = std::clamp(speed, 0.25, 4.0);
+    parts[index].speed = std::clamp(speed, kMinSpeed, kMaxSpeed);
     list = simplified(parts);
 }
 

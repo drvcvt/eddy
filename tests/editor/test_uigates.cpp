@@ -164,7 +164,7 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(&list));
         QScrollBar *bar = list.verticalScrollBar();
         QVERIFY(bar->isVisible());
-        QCOMPARE(bar->width(), theme::kS2);
+        QCOMPARE(bar->width(), theme::kS3);   // an 8 px grip kS1 off the rows
         QStyleOptionSlider option;
         option.initFrom(bar);
         option.orientation = Qt::Vertical;
@@ -212,6 +212,28 @@ private slots:
             QMenu *menu = save->menu();
             QTimer::singleShot(50, menu, [&] { check(menu, "export"); menu->close(); });
             save->showMenu();
+        }
+    }
+
+    void footerStatusNeverCoversThePill() {
+        // At the narrowest video window, with every status shown at once (an export running,
+        // Cancel, and the output without sound), the right group stays clear of the pill.
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("footer.mp4")), QSize(520, 620), true);
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        window->findChild<QLabel *>(QStringLiteral("VideoExportStatus"))->setText(QStringLiteral("Cancelling…"));
+        window->findChild<QWidget *>(QStringLiteral("VideoExportCancel"))->show();
+        window->findChild<QWidget *>(QStringLiteral("NoAudio"))->show();
+        QApplication::processEvents();
+        const auto rect = [&](const char *name) {
+            auto *w = window->findChild<QWidget *>(QString::fromLatin1(name));
+            return QRect(w->mapTo(window.get(), QPoint()), w->size());
+        };
+        const QRect pill = rect("DragPill");
+        for (const char *name : {"VideoExportStatus", "VideoExportCancel", "NoAudio"}) {
+            const QRect r = rect(name);
+            qInfo("%s %d..%d, pill %d..%d", name, r.left(), r.right(), pill.left(), pill.right());
+            QVERIFY2(!r.intersects(pill), name);
         }
     }
 

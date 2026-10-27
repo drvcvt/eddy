@@ -1,6 +1,7 @@
 #include "popovers/colorpopover.h"
 #include "app/theme.h"
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QToolButton>
 #include <QLineEdit>
 #include <QRegularExpressionValidator>
@@ -39,6 +40,14 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current)
         "#ff3b30", "#ff9f0a", "#ffd60a", "#32d74b",
         "#0a84ff", "#ffffff", "#1a1a1a", "#cccccc",
     };
+    // Two rows of four, flush with the hex field on both sides and evenly apart: in the
+    // grid the columns took the slack of the widest row unevenly (12 px left, 15 right).
+    QHBoxLayout *rows[2] = {new QHBoxLayout, new QHBoxLayout};
+    for (int r = 0; r < 2; ++r) {
+        rows[r]->setContentsMargins(0, 0, 0, 0);
+        rows[r]->setSpacing(0);
+        grid->addLayout(rows[r], 1 + r, 0, 1, 4);
+    }
     for (int i = 0; i < presets.size(); ++i) {
         const QColor c(presets[i]);
         auto *b = new QToolButton(this);
@@ -58,7 +67,7 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current)
         // A squircle like every mark, ringed like the top bar's colour disc, so the
         // near-black and white presets still show on the popover.
         QColor ring = QApplication::palette().color(QPalette::WindowText);
-        ring.setAlpha(90);
+        ring.setAlpha(110);   // 90 measured 2.9:1 around the near-black preset
         painter.setPen(QPen(ring, 1));
         painter.setBrush(c);
         painter.drawPath(theme::squircle(QRectF(1.5, 1.5, 17, 17)));
@@ -71,7 +80,8 @@ ColorPopover::ColorPopover(QWidget *parent, const QColor &current)
         b->setIcon(QIcon(icon));
         b->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
         connect(b, &QToolButton::clicked, this, [this, c]{ emit picked(c); close(); });
-        grid->addWidget(b, 1 + i / 4, i % 4);
+        if (i % 4) rows[i / 4]->addStretch(1);
+        rows[i / 4]->addWidget(b);
     }
     auto *custom = new QToolButton(this);
     custom->setObjectName("Custom");

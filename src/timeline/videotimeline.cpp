@@ -49,7 +49,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
         }
         QMenu menu(this);
         theme::roundMenu(&menu);
-        if (m_waveform) {
+        if (m_waveform && !m_waveform->silent()) {   // a silent track has nothing to show
             QAction *show = menu.addAction(tr("Show waveform"));
             show->setCheckable(true);
             show->setChecked(m_waveformVisible);

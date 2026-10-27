@@ -1,5 +1,5 @@
 /* eddy: semantic tokens, expanded once at startup (theme::styleSheet, docs/design.md).
-   Sizes: @fs-caption 12, @fs-ui 15; @ctl 28 control height; @s1..@s4 spacing;
+   Sizes: @fs-caption 12, @fs-ui 13; @ctl 26 control height; @s1..@s4 spacing;
    @r-chip 6, @r-bar 10 (= chip + @s1), @r-pop 14. */
 QWidget {
     font-family: @font-ui;
@@ -37,7 +37,7 @@ QToolButton:disabled { color: @faint; }
 /* No native menu arrows: hold-to-open buttons show none, and the menu buttons
    carry theme::setMenuArrow's rounded, filled one instead. */
 QToolButton::menu-indicator { image: none; width: 0; height: 0; }
-/* Hover fills come from HoverFills (app/hoverfill.cpp), eased with motion::kFast;
+/* Hover fills come from HoverFills (app/fills.cpp), eased with motion::kFast;
    the sheet only brightens the label. */
 QToolButton:hover { color: @fg; }
 /* Keyboard focus is a step quieter than hover, so a button a popup returned focus to
@@ -45,11 +45,6 @@ QToolButton:hover { color: @fg; }
 QToolButton:focus { color: @fg; }
 QToolButton:checked { background-color: @chip-on; color: @chip-on-fg; }
 QToolButton:checked:hover { background-color: @chip-on; color: @chip-on-fg; }
-/* The line widths and the tools show one fill that glides between them (SelectionGlide). */
-QToolButton#WidthS:checked, QToolButton#WidthM:checked, QToolButton#WidthL:checked {
-    background-color: transparent;
-    color: @fg;
-}
 
 /* One menu style for every menu: rows a control high, the panel @s1 around them. */
 QMenu {
@@ -112,6 +107,7 @@ QWidget#StepBar QToolButton:hover, QWidget#SelectionBar QToolButton:hover, QWidg
 QWidget#ZoomBar QToolButton:hover, QWidget#FragmentBar QToolButton:hover { color: @fg; }
 QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked,
 QWidget#StepBar QToolButton:checked, QWidget#ZoomBar QToolButton#ZoomTarget:checked { background-color: @raise3; color: @fg; }
+QWidget#ZoomBar QToolButton#ZoomTarget[glided="true"]:checked { background-color: transparent; }
 QWidget#ZoomBar QToolButton#ZoomTarget:disabled { color: @faint; }
 QWidget#ZoomBar QToolButton#ZoomScale, QWidget#FragmentBar QToolButton#FragmentSpeed { font-family: @font-mono; font-weight: 400; }
 /* Primary actions: HoverFills (app/fills.cpp) paints their fill and eases its hover. */
@@ -145,7 +141,6 @@ QWidget#PlaybackBar QToolButton {
 }
 QWidget#PlaybackBar QToolButton:hover { color: @fg; }
 QWidget#PlaybackBar QToolButton:focus { color: @fg; }
-QWidget#PlaybackBar QToolButton:pressed { background-color: @bar-active; }
 QWidget#PlaybackBar QToolButton:checked { background-color: @bar-active; color: @fg; }
 QWidget#PlaybackBar QToolButton#PlaybackPlay,
 QWidget#PlaybackBar QToolButton#PlaybackMute,
@@ -279,7 +274,8 @@ QWidget#ColorPopover QToolButton#Pipette {
     background-color: transparent;   /* raise2, painted by HoverFills with its hover */
 }
 
-QWidget#ColorPopover QToolButton:checked { background-color: @raise3; }
+/* The current colour carries its tick; a fill would read like the hover. */
+QWidget#ColorPopover QToolButton:checked { background-color: transparent; }
 
 QWidget#StudioPopover {
     background-color: @raise1;
@@ -305,12 +301,13 @@ QWidget#StudioPopover QToolButton:checked { background-color: @raise3; color: @f
 QWidget#MiniMap { background: @raise1; border: none; border-radius: @r-bar; }
 /* Resume: the kept edits, newest first. */
 QDialog#ResumeDialog { background: @raise1; }
-/* Scroll bars: a slim rounded grip on its surface, no arrows, no trough. It keeps one
-   tone (a hover tone would switch at once); dragging it is its feedback. */
-QScrollBar:vertical { background: transparent; width: @s2; margin: 0; }
-QScrollBar:horizontal { background: transparent; height: @s2; margin: 0; }
-QScrollBar::handle:vertical { background: @raise3; border-radius: @s1; min-height: @ctl; }
-QScrollBar::handle:horizontal { background: @raise3; border-radius: @s1; min-width: @ctl; }
+/* Scroll bars: a slim rounded grip @s1 off the content, no arrows, no trough. @sub, as
+   raise3 measured 1.4:1 and merged with a chosen row. One tone: a hover tone would
+   switch at once; dragging it is its feedback. */
+QScrollBar:vertical { background: transparent; width: @s3; margin: 0; }
+QScrollBar:horizontal { background: transparent; height: @s3; margin: 0; }
+QScrollBar::handle:vertical { background: @sub; border-radius: @s1; min-height: @ctl; margin-left: @s1; }
+QScrollBar::handle:horizontal { background: @sub; border-radius: @s1; min-width: @ctl; margin-top: @s1; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; border: none; background: none; }
 QScrollBar::add-page, QScrollBar::sub-page { background: none; }
 QDialog#ResumeDialog QListWidget { background: @raise1; border: none; outline: 0; color: @fg; font-size: @fs-ui; }
@@ -320,6 +317,9 @@ QDialog#ResumeDialog QLabel#ResumeEmpty { color: @sub; font-size: @fs-ui; }
 QDialog#ResumeDialog QToolButton { color: @sub; border: none; border-radius: @r-chip; padding: 0 @s3; font-size: @fs-ui; font-weight: 500; }
 QDialog#ResumeDialog QToolButton:hover { color: @fg; }
 QDialog#ResumeDialog QToolButton#ResumeOpen { background: transparent; color: @bg; font-weight: 600; }
+/* Disabled primaries sit on a plain raise2 field (HoverFills): their label goes quiet. */
+QDialog#ResumeDialog QToolButton#ResumeOpen:disabled, QToolButton#ToastAction:disabled,
+QWidget#ExportPanel QToolButton#ExportSave:disabled, QWidget#CropBar QToolButton#CropApply:disabled { color: @faint; }
 /* Export popover at Save: segmented rows, the choice a step brighter. */
 QWidget#ExportPanel { background-color: @raise1; border: none; border-radius: @r-pop; }
 QWidget#ExportPanel QLabel#ExportSection { color: @sub; font-size: @fs-caption; font-weight: 600; }

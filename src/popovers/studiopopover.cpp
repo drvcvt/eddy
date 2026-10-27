@@ -34,6 +34,13 @@ static QIcon swatchIcon(const StudioStyle &style, qreal dpr) {
         }());
         p.setClipPath(shape);
         p.drawImage(QRectF(1, 1, size - 2, size - 2), bg);
+        // Ringed like the colour swatches: the dark and light presets vanished on their own tone.
+        p.setClipping(false);
+        QColor ring = QApplication::palette().color(QPalette::WindowText);
+        ring.setAlpha(110);
+        p.setPen(QPen(ring, 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(theme::squircle(QRectF(1.5, 1.5, size - 3, size - 3)));
     } else {
         // "None": the empty squircle with a diagonal, in the icon ink colour.
         const QColor ink = QApplication::palette().color(QPalette::WindowText);

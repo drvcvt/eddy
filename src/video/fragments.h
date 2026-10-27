@@ -7,6 +7,9 @@
 // means one fragment over the whole source at 1x and is the normal form.
 namespace eddy::fragments {
 
+// How slow and fast a fragment may play; the output is at most 1 / kMinSpeed as long.
+inline constexpr double kMinSpeed = 0.25, kMaxSpeed = 4.0;
+
 inline constexpr qint64 kMinFragmentMs = 100;
 
 QVector<Fragment> expanded(const QVector<Fragment> &list);

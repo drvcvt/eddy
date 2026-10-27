@@ -25,7 +25,9 @@
 #include <QLockFile>
 class QGraphicsScene; class QUndoStack; class QResizeEvent; class QMouseEvent; class QCloseEvent;
 class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class QMediaPlayer; class QAudioOutput;
-class QToolButton; class QSlider; class QLabel; class QLineEdit;
+class QToolButton; class QSlider; class QLabel;
+class QHBoxLayout;
+class QGridLayout; class QLineEdit;
 class QTimer;
 namespace eddy {
 class Spring;
@@ -362,6 +364,9 @@ private:
     SpotlightBar *m_spotlightBar = nullptr;
     Toast *m_toast = nullptr;
     DragPill *m_dragPill = nullptr;
+    QGridLayout *m_footerGrid = nullptr;
+    QHBoxLayout *m_footerLeft = nullptr, *m_footerRight = nullptr;
+    void balanceFooter();
     bool m_dark = false;
 };
 }

@@ -169,6 +169,10 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
             || key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter))
             return true;
     }
+    // The footer's side columns follow their contents and the footer's width.
+    if ((event->type() == QEvent::Resize || event->type() == QEvent::LayoutRequest)
+        && widget->objectName() == QLatin1String("ViewControls"))
+        balanceFooter();
     if (event->type() == QEvent::ContextMenu) {
         // A button's menu opens on right-click: holding was the only way, and nobody guesses it.
         auto *button = qobject_cast<QToolButton *>(widget);

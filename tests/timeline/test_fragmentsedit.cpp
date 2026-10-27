@@ -17,6 +17,8 @@
 #include "output/exportsettings.h"
 #include "timeline/fragmentbar.h"
 #include "timeline/videotimeline.h"
+#include <QTimer>
+#include "timeline/audiowaveform.h"
 #include "bars/redactbar.h"
 #include "items/regions/redactitem.h"
 #include <QGraphicsScene>
@@ -161,6 +163,67 @@ private slots:
         QCOMPARE(at("PlaybackLoop"), loop);
         QCOMPARE(at("DragPill"), pill);
         QCOMPARE(at("TrimControls"), trim);
+    }
+    void aSlowedClipsDurationStillFits() {
+        // Duration shows the output: at 0.25x a 2:40 clip runs 10:40, a digit longer than its source.
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4"), 160000), cfg, {});
+        w.show();
+        StudioDocument doc = w.studioDocument();
+        Fragment slow;
+        slow.speed = 0.25;
+        doc.fragments = {slow};
+        w.setStudioDocument(doc);
+        auto *duration = w.findChild<QLabel *>(QStringLiteral("TrimDuration"));
+        QCOMPARE(duration->text(), QStringLiteral("10:40.000"));
+        QVERIFY2(duration->contentsRect().width() >= duration->fontMetrics().horizontalAdvance(duration->text()),
+                 qPrintable(QString::number(duration->contentsRect().width())));
+    }
+    void aSilentTrackOffersNoWaveformToShow() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("silent.mkv"));
+        QProcess make;
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x48:d=2:r=25",
+            "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=2", "-c:a", "pcm_s16le", "-shortest", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        VideoTimeline timeline;
+        timeline.resize(400, VideoTimeline::kBaseH);
+        timeline.setDuration(2000);
+        AudioWaveformProvider waveform(file, 2000, 0);
+        timeline.setWaveform(&waveform);
+        timeline.show();
+        QTRY_VERIFY(waveform.silent());
+        QTimer::singleShot(0, &timeline, [&] {
+            auto *menu = QApplication::activePopupWidget();
+            QVERIFY(menu);
+            for (QAction *a : static_cast<QMenu *>(menu)->actions())
+                QVERIFY(a->text() != QStringLiteral("Show waveform"));
+            menu->close();
+        });
+        emit timeline.customContextMenuRequested(QPoint(200, 20));
+    }
+    void theSoundMenuTogglesFromTheKeyboardAndStaysOpen() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        QMenu *menu = w.findChild<QToolButton *>(QStringLiteral("PlaybackMute"))->menu();
+        QAction *include = nullptr;
+        for (QAction *a : menu->actions())
+            if (a->text() == QStringLiteral("Include audio in output")) include = a;
+        menu->popup(w.mapToGlobal(QPoint(100, 100)));
+        QVERIFY(QTest::qWaitForWindowExposed(menu));
+        menu->setActiveAction(include);
+        QTest::keyClick(menu, Qt::Key_Return);
+        QVERIFY(!w.studioDocument().audio);
+        QVERIFY(menu->isVisible());
+        QTest::keyClick(menu, Qt::Key_Space);
+        QVERIFY(w.studioDocument().audio);
+        menu->close();
     }
     void theSoundMenuStaysOpenWhileItToggles() {
         QTemporaryDir dir;

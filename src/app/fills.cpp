@@ -7,6 +7,7 @@
 #include <QEvent>
 #include <QGraphicsOpacityEffect>
 #include <QMenu>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -146,9 +147,14 @@ Spring *HoverFills::springFor(QToolButton *button) {
     return spring;
 }
 
+// A checked choice shows its own fill (the glide, or the stylesheet's), never a hover on top.
+static bool showsChoice(const QToolButton *button) {
+    return button->isChecked() && !button->property("easedToggle").toBool();
+}
+
 void HoverFills::aim(QToolButton *button, bool hovered) {
     Spring *spring = springFor(button);
-    const qreal target = hovered && button->isEnabled() ? 1 : 0;
+    const qreal target = hovered && button->isEnabled() && !showsChoice(button) ? 1 : 0;
     if (spring->target() != target) spring->setTarget(target);
 }
 
@@ -172,13 +178,15 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
         if (const std::optional<QColor> rest = restingFill(button)) {
             const qreal level = button->isEnabled() ? qBound<qreal>(0, m_levels.value(button), 1) : 0;
             if (level > 0.001 && !button->underMouse()) aim(button, false);
-            const QColor top = hovered(*rest);
+            // Disabled, a primary steps back to a plain field: its full fill read as clickable.
+            const QColor base = button->isEnabled() ? *rest : theme::tone(theme::Tone::Raise2, dark());
+            const QColor top = hovered(base);
             QPainter painter(button);
             painter.setRenderHint(QPainter::Antialiasing);
             painter.fillPath(chip(QRectF(button->rect())),
-                             QColor::fromRgbF(rest->redF() + (top.redF() - rest->redF()) * level,
-                                              rest->greenF() + (top.greenF() - rest->greenF()) * level,
-                                              rest->blueF() + (top.blueF() - rest->blueF()) * level));
+                             QColor::fromRgbF(base.redF() + (top.redF() - base.redF()) * level,
+                                              base.greenF() + (top.greenF() - base.greenF()) * level,
+                                              base.blueF() + (top.blueF() - base.blueF()) * level));
             break;
         }
         const bool toggle = button->property("easedToggle").toBool();
@@ -190,7 +198,9 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
             if (spring->target() != target) spring->setTarget(target);
             checked = qBound<qreal>(0, m_checkLevels.value(button), 1);
         }
-        const qreal level = (!toggle && button->isChecked()) ? 0 : m_levels.value(button);
+        // Chosen while hovered: the hover fades out as the glide arrives, it never cuts to nothing.
+        if (showsChoice(button) && springFor(button)->target() != 0) aim(button, false);
+        const qreal level = m_levels.value(button);
         if (level <= 0.001 && checked <= 0.001) break;
         // Wayland reports no Leave after a popup grab; a paint without the pointer ends it.
         if (level > 0.001 && !button->underMouse()) aim(button, false);
@@ -298,7 +308,9 @@ bool SelectionGlide::eventFilter(QObject *watched, QEvent *event) {
     switch (event->type()) {
     case QEvent::Resize:
         if (watched == m_surface) m_layer->setGeometry(m_surface->rect());
-        follow(false);   // a new layout is not a choice: no motion
+        // A new layout is not a choice: no motion; but one mid-glide (a popover resizing
+        // with its page) turns towards the new place instead of snapping there.
+        follow(m_x->state() == QAbstractAnimation::Running || m_y->state() == QAbstractAnimation::Running);
         break;
     case QEvent::Move:
     case QEvent::Show:
@@ -317,9 +329,16 @@ public:
     using QObject::QObject;
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override {
-        if (event->type() != QEvent::MouseButtonRelease) return false;
         auto *menu = static_cast<QMenu *>(watched);
-        QAction *action = menu->actionAt(static_cast<QMouseEvent *>(event)->position().toPoint());
+        QAction *action = nullptr;
+        if (event->type() == QEvent::MouseButtonRelease) {
+            action = menu->actionAt(static_cast<QMouseEvent *>(event)->position().toPoint());
+        } else if (event->type() == QEvent::KeyPress) {   // Enter or Space on the highlighted entry
+            const int key = static_cast<QKeyEvent *>(event)->key();
+            if (key == Qt::Key_Return || key == Qt::Key_Enter || key == Qt::Key_Space) action = menu->activeAction();
+        } else {
+            return false;
+        }
         if (!action || !action->isCheckable() || !action->isEnabled()) return false;
         action->trigger();
         return true;
@@ -334,7 +353,10 @@ void fadeVisible(QWidget *widget, bool visible) {
         auto *effect = new QGraphicsOpacityEffect(widget);
         effect->setEnabled(false);   // fully shown, the widget paints directly and stays crisp
         widget->setGraphicsEffect(effect);
-        spring = new Spring(motion::kBase, [widget, effect](qreal opacity) {
+        spring = new Spring(motion::kBase, [widget](qreal opacity) {
+            // Looked up each frame: the widget owns the effect and may replace it.
+            auto *effect = qobject_cast<QGraphicsOpacityEffect *>(widget->graphicsEffect());
+            if (!effect) return;
             effect->setOpacity(opacity);
             effect->setEnabled(opacity < 0.999);
             if (opacity <= 0.001 && !widget->property("fadeTarget").toBool()) widget->hide();

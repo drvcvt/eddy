@@ -57,7 +57,7 @@ QColor tone(Tone which, bool dark) {
         {0.50, 0.72},    // Faint
         {0.72, 0.50},    // Sub
         {0.95, 0.22},    // Fg
-        {0.235, 0.94},   // BarHover
+        {0.235, 0.963},  // BarHover: light, a step short of raise2 so hover never reads as chosen
         {0.28, 0.915},   // BarActive
         {0.175, 0.955},  // Well
     };
@@ -328,9 +328,16 @@ void paintGrip(QPainter *painter, QPointF centre) {
     const QPalette palette = QApplication::palette();
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(QPen(palette.color(QPalette::Window), 1));
+    painter->setPen(Qt::NoPen);
+    // On whole device pixels, ring and face as two fills: a 1 px pen centred on the
+    // edge smeared over two half-covered columns.
+    const QPointF device = painter->deviceTransform().map(centre);   // device pixels, scale included
+    const QPointF snapped = painter->deviceTransform().inverted().map(
+        QPointF(std::round(device.x()), std::round(device.y())));
+    painter->setBrush(palette.color(QPalette::Window));
+    painter->drawPath(squircle(QRectF(snapped - QPointF(6, 6), QSizeF(12, 12))));
     painter->setBrush(palette.color(QPalette::WindowText));
-    painter->drawPath(squircle(QRectF(centre - QPointF(5, 5), QSizeF(10, 10))));
+    painter->drawPath(squircle(QRectF(snapped - QPointF(5, 5), QSizeF(10, 10))));
     painter->restore();
 }
 

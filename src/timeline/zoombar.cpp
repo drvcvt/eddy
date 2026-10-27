@@ -1,4 +1,6 @@
 #include "timeline/zoombar.h"
+#include "app/fills.h"
+#include <QButtonGroup>
 #include "chrome/motionicon.h"
 #include "app/theme.h"
 #include <QActionGroup>
@@ -49,6 +51,12 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
     m_cursor = button(QStringLiteral("ZoomTarget"), tr("Follow the pointer"));
     m_cursor->setText(tr("Cursor"));
     m_cursor->setCheckable(true);
+    // Point or Cursor: one fill gliding between them, like every other choice.
+    auto *targets = new QButtonGroup(this);
+    targets->setExclusive(false);   // set from the zoom, which may be neither while the pointer is unknown
+    targets->addButton(m_point);
+    targets->addButton(m_cursor);
+    new SelectionGlide(targets, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     connect(m_point, &QToolButton::clicked, this, [this] { emit targetChosen(ZoomSegment::Target::Point); });
     connect(m_cursor, &QToolButton::clicked, this, [this] { emit targetChosen(ZoomSegment::Target::Cursor); });
     setCursorAvailable(false);
