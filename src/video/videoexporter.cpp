@@ -285,7 +285,7 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     job.cancelled = req.cancelled;
 
     const QString ext = QFileInfo(req.outputPath).suffix().toLower();
-    const QString hardware = ext != "webm" && !gif && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
+    const QString hardware = ext != "webm" && !gif && req.capKbps <= 0 && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
         ? hardwareEncoder(ffmpeg) : QString();
     QStringList encoders;
     if (!hardware.isEmpty()) encoders.append(hardware);
@@ -462,6 +462,20 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         if (reencodeAudio)
             codecArgs += {QStringLiteral("-b:a"), QStringLiteral("192k")};
     }
+    if (req.capKbps > 0 && !gif) {
+        // Under a size limit: quality as usual, the rate capped where it would not fit,
+        // and a smaller sound track (a copied one could be any size).
+        const QString rate = QString::number(req.capKbps) + QLatin1Char('k');
+        const int bitrate = codecArgs.indexOf(QStringLiteral("-b:v"));
+        if (bitrate >= 0) codecArgs[bitrate + 1] = rate;   // VP9: constrained quality
+        else codecArgs += {QStringLiteral("-maxrate"), rate, QStringLiteral("-bufsize"), rate};
+        const int audio = codecArgs.indexOf(QStringLiteral("-c:a"));
+        if (audio >= 0 && codecArgs[audio + 1] == QLatin1String("copy")) codecArgs[audio + 1] = QStringLiteral("aac");
+        const int audioRate = codecArgs.indexOf(QStringLiteral("-b:a"));
+        const QString small = ext == QStringLiteral("webm") ? QStringLiteral("64k") : QStringLiteral("96k");
+        if (audioRate >= 0) codecArgs[audioRate + 1] = small;
+        else codecArgs += {QStringLiteral("-b:a"), small};
+    }
 
     // ffmpeg autorotates before the filter graph. Normalize sample aspect ratio
     // to the same display-pixel coordinate system used by the editor.
@@ -577,7 +591,8 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         actualOutput,
     };
 
-    const QString hardware = ext != "webm" && !gif && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
+    // A size limit takes the CPU encoder: its rate cap is the one measured to hold.
+    const QString hardware = ext != "webm" && !gif && req.capKbps <= 0 && (req.timeoutMs < 0 || req.timeoutMs >= 5000)
         ? hardwareEncoder(ffmpeg) : QString();
     QStringList encoders;
     if (!hardware.isEmpty()) encoders.append(hardware);
@@ -654,14 +669,37 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     return finishOutput(replaceInput, actualOutput, req.outputPath);
 }
 
+// C7: one try at the rate that fits the budget (measured to hold: 2 MB of noise came out at
+// 1.92 MB), one more a step lower if it still does not, else an honest failure.
+static DeliverResult writeWithin(const VideoExportRequest &req, bool render) {
+    const QString ext = QFileInfo(req.outputPath).suffix().toLower();
+    if (req.maxBytes <= 0 || ext == QStringLiteral("gif")) return writeVideo(req, render);
+    qint64 sourceMs = req.trimOutMs >= 0 ? req.trimOutMs : probeVideoFile(req.inputPath).info.durationMs;
+    const double seconds = std::max(0.1, TimeMap(sourceMs, req.trimInMs, sourceMs, req.fragments).outputDurationMs() / 1000.0);
+    const double audioBytes = req.includeAudio ? (ext == QStringLiteral("webm") ? 64000.0 : 96000.0) / 8 * seconds : 0;
+    VideoExportRequest attempt = req;
+    attempt.capKbps = std::max(100, int((0.97 * req.maxBytes - audioBytes) * 8 / (seconds + 1) / 1000));
+    for (int tries = 0; tries < 2; ++tries) {
+        DeliverResult r = writeVideo(attempt, render);
+        if (!r.ok) return r;
+        const qint64 size = QFileInfo(req.outputPath).size();
+        if (size <= req.maxBytes) return r;
+        attempt.capKbps = std::max(50, int(attempt.capKbps * double(req.maxBytes) / size * 0.95));
+    }
+    QFile::remove(req.outputPath);
+    DeliverResult r;
+    r.error = QStringLiteral("Could not fit into %1 MB").arg(req.maxBytes / 1000000.0, 0, 'g', 3);
+    return r;
+}
+
 DeliverResult writeVideoWithOverlay(const VideoExportRequest &req) {
     // A base view that follows the pointer moves over time like a zoom does.
     const bool follows = req.baseFollowsCursor && req.cursorTrack && !req.baseView.isNull();
-    return writeVideo(req, !req.zooms.isEmpty() || follows);
+    return writeWithin(req, !req.zooms.isEmpty() || follows);
 }
 
 DeliverResult writeVideoRendered(const VideoExportRequest &req) {
-    return writeVideo(req, true);
+    return writeWithin(req, true);
 }
 
 }

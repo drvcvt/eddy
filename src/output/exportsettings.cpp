@@ -12,11 +12,14 @@ ExportSettings exportPreset(ExportPreset preset) {
     case ExportPreset::Web: return {F::Mp4, 1080, 60};
     case ExportPreset::Small: return {F::Mp4, 720, 30};
     case ExportPreset::Gif: return {F::Gif, 480, 15};
+    case ExportPreset::Chat: return {F::Mp4, 1080, 30, 10};
     }
     return {};
 }
 
 std::optional<ExportPreset> presetOf(const ExportSettings &settings) {
+    // A limit is the chat preset whatever size or rate goes under it.
+    if (settings.limitMb > 0 && settings.format != ExportSettings::Format::Gif) return ExportPreset::Chat;
     for (auto preset : {ExportPreset::Original, ExportPreset::Web, ExportPreset::Small, ExportPreset::Gif})
         if (exportPreset(preset) == settings) return preset;
     return std::nullopt;
@@ -54,6 +57,8 @@ ExportSettings loadExportSettings(const QString &configPath) {
     settings.shortSide = side == 1080 || side == 720 || side == 480 ? side : 0;
     const int fps = s.value(QStringLiteral("fps"), 60).toInt();
     settings.fps = fps == 30 || fps == 15 ? fps : 60;
+    settings.limitMb = std::clamp(s.value(QStringLiteral("max_mb"), 0).toInt(), 0, 1000);
+    if (settings.format == F::Gif) settings.limitMb = 0;
     return settings;
 }
 
@@ -67,6 +72,7 @@ void saveExportSettings(const QString &configPath, const ExportSettings &setting
         : settings.format == F::Gif ? QStringLiteral("gif") : QStringLiteral("original"));
     s.setValue(QStringLiteral("short_side"), settings.shortSide);
     s.setValue(QStringLiteral("fps"), settings.fps);
+    s.setValue(QStringLiteral("max_mb"), settings.limitMb);
 }
 
 }

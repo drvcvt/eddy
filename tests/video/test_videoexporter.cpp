@@ -155,6 +155,30 @@ private slots:
 #endif
     }
 
+    void aSizeLimitHoldsOnBusyVideoAndLeavesQuietOneAlone() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        const QString noisy = dir.filePath(QStringLiteral("noisy.mp4")), still = dir.filePath(QStringLiteral("still.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "testsrc2=s=1280x720:d=12:r=30,noise=alls=40:allf=t", "-c:v", "libx264", "-preset", "ultrafast",
+            "-qp", "0", noisy}));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=0x202020:s=1280x720:d=12:r=30", "-pix_fmt", "yuv420p", still}));
+        QImage overlay(1280, 720, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{noisy, dir.filePath(QStringLiteral("capped.mp4")), overlay};
+        request.maxBytes = 2'000'000;
+        auto result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        const qint64 size = QFileInfo(request.outputPath).size();
+        QVERIFY2(size <= 2'000'000 && size >= 1'200'000, qPrintable(QString::number(size)));
+        VideoExportRequest quiet{still, dir.filePath(QStringLiteral("quiet.mp4")), overlay};
+        quiet.maxBytes = 2'000'000;
+        result = writeVideoWithOverlay(quiet);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY(QFileInfo(quiet.outputPath).size() < 600'000);   // quality decides where it fits anyway
+    }
     void framesVideoWithStudioBackground() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

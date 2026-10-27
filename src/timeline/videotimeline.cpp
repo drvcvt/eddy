@@ -277,6 +277,8 @@ void VideoTimeline::setWaveformVisible(bool visible) {
     update();
 }
 
+AudioWaveformProvider *VideoTimeline::waveform() const { return m_waveform; }
+
 bool VideoTimeline::waveformShown() const {
     return m_waveform && m_waveformVisible && !m_waveform->silent();
 }

@@ -41,6 +41,19 @@ private slots:
         QCOMPARE(exportSize(QSize(640, 360), 1080), QSize(640, 360));   // no upscale
         QCOMPARE(exportSize(QSize(2058, 1190), 720), QSize(1246, 720));
     }
+    void theChatPresetKeepsItsLimitUnderOtherSizes() {
+        ExportSettings chat = exportPreset(ExportPreset::Chat);
+        QCOMPARE(chat.limitMb, 10);
+        QCOMPARE(chat.format, ExportSettings::Format::Mp4);
+        chat.shortSide = 720;                                 // a size within the limit
+        QCOMPARE(presetOf(chat), std::optional<ExportPreset>(ExportPreset::Chat));
+        chat.format = ExportSettings::Format::Gif;           // no rate to cap: no limit, no preset
+        QVERIFY(presetOf(chat) != std::optional<ExportPreset>(ExportPreset::Chat));
+        QTemporaryDir dir;
+        const QString config = dir.filePath(QStringLiteral("config"));
+        saveExportSettings(config, exportPreset(ExportPreset::Chat));
+        QCOMPARE(loadExportSettings(config), exportPreset(ExportPreset::Chat));
+    }
     void theLastChoiceIsRemembered() {
         QTemporaryDir dir;
         const QString config = dir.filePath(QStringLiteral("config"));

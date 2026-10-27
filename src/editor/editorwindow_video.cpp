@@ -439,6 +439,7 @@ void EditorWindow::startVideoExportCache() {
     request.baseFollowsCursor = m_studio.keepZoomedIn && m_studio.keepFollowsCursor;
     request.motionBlur = m_studio.motionBlur;
     request.includeAudio = m_studio.audio;
+    request.maxBytes = qint64(m_exportSettings.limitMb) * 1'000'000;   // C7: the chat preset's 10 MB
     m_videoExportCancel = std::make_shared<std::atomic_bool>(false);
     request.cancelled = [cancel = m_videoExportCancel] { return cancel->load(); };
     QPointer<EditorWindow> receiver(this);
@@ -500,6 +501,7 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         }
         m_cachedVideoPath = path;
         m_cachedVideoRevision = revision;
+        if (m_exportPanel) m_exportPanel->setKnownSize(QFileInfo(path).size());   // now exact
         if (m_dragPill) {
             m_dragPill->setProgress(100);
             m_dragPill->setPreparationNeeded(false);

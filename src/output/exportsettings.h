@@ -12,10 +12,12 @@ struct ExportSettings {
     Format format = Format::Original;   // Original: the source's own container
     int shortSide = 0;                  // 0: full size; never scales up
     int fps = 60;                       // at most this many frames per second
+    int limitMb = 0;                    // C7: at most this many MB (10^6 bytes); 0: no limit, never for GIF
     bool operator==(const ExportSettings &) const = default;
 };
 
-enum class ExportPreset { Original, Web, Small, Gif };
+// Chat: MP4 within 10 MB, for chat apps and pull requests (C7).
+enum class ExportPreset { Original, Web, Small, Gif, Chat };
 
 ExportSettings exportPreset(ExportPreset preset);
 // The preset these settings match, if any.

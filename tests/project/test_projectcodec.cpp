@@ -113,7 +113,7 @@ private slots:
         p.studio.style.background = StudioStyle::Background::Color;
         p.studio.zooms = {{1, 2000, 4000, 2.0, ZoomSegment::Target::Point, QPointF(500, 300),
                            ZoomSegment::Motion::Smooth}};
-        p.exportSettings = exportPreset(ExportPreset::Small);
+        p.exportSettings = exportPreset(ExportPreset::Chat);   // the limit travels with the project
         p.items = QJsonArray{QJsonObject{{"type", "rect"}, {"pos", QJsonArray{0, 0}}, {"z", 0},
             {"color", "#ff3b30"}, {"width", 4}, {"rect", QJsonArray{1, 2, 3, 4}}}};
         QString error;

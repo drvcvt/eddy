@@ -54,6 +54,10 @@ struct VideoExportRequest {
     bool baseFollowsCursor = false;
     int motionBlur = 0;         // 0 to 100, frame renderer only (studio plan 6.11)
     bool includeAudio = true;   // false: no audio stream at all
+    // C7: at most this many bytes (not for GIF). The CPU encoder keeps its quality but is
+    // capped to the rate that fits; an output still over gets one more, lower try.
+    qint64 maxBytes = 0;
+    int capKbps = 0;            // the cap the try runs with; set by the export itself
     // Called from the export thread with 0-99 as encoding advances, or -1
     // while the output length is unknown.
     std::function<void(int percent)> progress;

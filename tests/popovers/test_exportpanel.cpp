@@ -15,6 +15,20 @@ static QToolButton *segment(ExportPanel &panel, const QString &row, const QStrin
 class TestExportPanel : public QObject {
     Q_OBJECT
 private slots:
+    void theTenMegabytePresetShowsItsLimitThenTheExactSize() {
+        ExportPanel panel;
+        panel.setOutput(QSize(1920, 1080), 42000, QStringLiteral("/a/clip.mp4"));
+        segment(panel, "Preset", "10 MB")->click();
+        QCOMPARE(panel.settings().limitMb, 10);
+        QCOMPARE(panel.findChild<QLabel *>("ExportSummary")->text(), QStringLiteral("1920 × 1080   0:42   max 10\u00a0MB"));
+        segment(panel, "Size", "720")->click();   // stays the 10 MB preset, smaller
+        QVERIFY(segment(panel, "Preset", "10 MB")->isChecked());
+        panel.setKnownSize(3'400'000);
+        QVERIFY(panel.findChild<QLabel *>("ExportSummary")->text().endsWith(QStringLiteral("3.4\u00a0MB")));
+        segment(panel, "Format", "GIF")->click();  // a GIF has no rate to cap
+        QCOMPARE(panel.settings().limitMb, 0);
+        QVERIFY(!segment(panel, "Preset", "10 MB")->isChecked());
+    }
     void presetsSetTheRowsAndARowLeavesThePreset() {
         ExportPanel panel;
         panel.setOutput(QSize(2058, 1190), 23400, QStringLiteral("/a/clip.mov"));

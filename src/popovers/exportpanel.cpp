@@ -25,7 +25,7 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     title->setObjectName(QStringLiteral("ExportSection"));
     grid->addWidget(title, m_row++, 0, 1, 2);
 
-    m_preset = addRow(tr("Preset"), {tr("Original"), tr("Web"), tr("Small"), tr("GIF")});
+    m_preset = addRow(tr("Preset"), {tr("Original"), tr("Web"), tr("Small"), tr("GIF"), tr("10 MB")});
     m_format = addRow(tr("Format"), {QStringLiteral("MP4"), QStringLiteral("WebM"), QStringLiteral("GIF")});
     m_size = addRow(tr("Size"), {tr("Full"), QStringLiteral("1080"), QStringLiteral("720"), QStringLiteral("480")});
     m_fps = addRow(tr("Frames"), {QStringLiteral("60"), QStringLiteral("30"), QStringLiteral("15")});
@@ -34,6 +34,7 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     m_videoOnly.resize(m_videoOnly.size() - 2);
     for (QWidget *w : std::as_const(m_soundRow)) w->hide();
     m_preset->button(0)->setToolTip(tr("The source's format and size, at most 60 frames"));
+    m_preset->button(4)->setToolTip(tr("At most 10 MB, for chat and pull requests\nSize and frames still choose within it"));
     m_size->button(0)->setToolTip(tr("Full size"));
     for (int i = 1; i < 4; ++i) m_size->button(i)->setToolTip(tr("Shorter side at most %1 px").arg(kSides[i]));
 
@@ -44,6 +45,7 @@ ExportPanel::ExportPanel(QWidget *parent) : QWidget(parent) {
     });
     connect(m_format, &QButtonGroup::idClicked, this, [this](int id) {
         m_settings.format = ExportSettings::Format(id + 1);
+        if (m_settings.format == ExportSettings::Format::Gif) m_settings.limitMb = 0;   // a GIF has no rate to cap
         sync();
         emit settingsChanged(m_settings);
     });
@@ -145,6 +147,11 @@ void ExportPanel::setVideo(bool video) {
     adjustSize();
 }
 
+void ExportPanel::setKnownSize(std::optional<qint64> bytes) {
+    m_knownSize = bytes;
+    sync();
+}
+
 void ExportPanel::setSound(bool on, bool available) {
     m_soundOn = on;
     const bool shown = available != m_soundAvailable;
@@ -184,8 +191,12 @@ void ExportPanel::sync() {
     }
     const QSize out = exportSize(m_framed, m_settings.shortSide);
     // A gap, not a glyph, between size and time.
+    // The size once it is known exactly; under a limit, the limit until then.
+    const QString size = !m_video ? QString()
+        : m_knownSize ? QStringLiteral("   %1\u00a0MB").arg(*m_knownSize / 1e6, 0, 'f', *m_knownSize < 10e6 ? 1 : 0)
+        : m_settings.limitMb > 0 ? QStringLiteral("   max %1\u00a0MB").arg(m_settings.limitMb) : QString();
     m_summary->setText(m_framed.isEmpty() ? QString()
-        : m_video ? QStringLiteral("%1 × %2   %3").arg(out.width()).arg(out.height()).arg(formatTime(m_durationMs))
+        : m_video ? QStringLiteral("%1 × %2   %3").arg(out.width()).arg(out.height()).arg(formatTime(m_durationMs)) + size
                   : QStringLiteral("%1 × %2").arg(m_framed.width()).arg(m_framed.height()));
     const QString suffix = m_video ? exportSuffix(m_settings, m_sourcePath) : QStringLiteral("png");
     m_save->setText(tr("Save %1").arg(suffix == QLatin1String("webm") ? QStringLiteral("WebM") : suffix.toUpper()));

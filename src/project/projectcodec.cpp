@@ -1,4 +1,5 @@
 #include "project/projectcodec.h"
+#include <algorithm>
 #include "items/shapes/arrowitem.h"
 #include "items/shapes/ellipseitem.h"
 #include "items/labels/stepitem.h"
@@ -321,7 +322,7 @@ QJsonObject projectToJson(const ProjectSnapshot &p) {
         {"position", p.positionMs},
         {"studio", studioToJson(p.studio)},
         {"export", QJsonObject{{"format", format}, {"shortSide", p.exportSettings.shortSide},
-                               {"fps", p.exportSettings.fps}}},
+                               {"fps", p.exportSettings.fps}, {"limitMb", p.exportSettings.limitMb}}},
         {"items", p.items}};
     return json;
 }
@@ -384,6 +385,9 @@ std::optional<ProjectSnapshot> projectFromJson(const QJsonObject &json, QString 
     p.exportSettings.shortSide = side == 1080 || side == 720 || side == 480 ? side : 0;
     const int fps = exportJson.value("fps").toInt(60);
     p.exportSettings.fps = fps == 30 || fps == 15 ? fps : 60;
+    // C7, older projects have none: no limit. Never for GIF.
+    p.exportSettings.limitMb = p.exportSettings.format == ExportSettings::Format::Gif
+        ? 0 : std::clamp(exportJson.value("limitMb").toInt(0), 0, 1000);
     if (!json.value("items").isArray()) return r.fail(QStringLiteral("items are missing")), done(false);
     p.items = json.value("items").toArray();
     return done(true);

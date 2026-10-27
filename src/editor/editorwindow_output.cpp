@@ -254,6 +254,10 @@ void EditorWindow::openExportPanel() {
     const QSize framed = studioLayout(cameraBase().size(), m_studio.style).output;
     m_exportPanel->setOutput(framed, isVideo() ? qint64(m_timeMap.outputDurationMs()) : 0, m_media.path);
     m_exportPanel->setSettings(m_exportSettings);
+    // Exact once the current edit is exported; before that no guess (C7).
+    const bool exported = isVideo() && hasVideoEdits() && m_cachedVideoRevision == m_videoRevision
+        && !m_cachedVideoPath.isEmpty();
+    m_exportPanel->setKnownSize(exported ? std::optional<qint64>(QFileInfo(m_cachedVideoPath).size()) : std::nullopt);
 }
 
 

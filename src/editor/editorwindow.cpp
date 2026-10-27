@@ -614,6 +614,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             m_exportSettings = settings;
             saveExportSettings(configPath(), settings);
             onVideoContentChanged();   // the cached export no longer matches
+            m_exportPanel->setKnownSize(std::nullopt);   // nor does its size
         });
         if (m_media.cursorTrack) m_cursorTrack = std::make_shared<const CursorTrack>(*m_media.cursorTrack);
         m_cameraRebuild = new QTimer(this);
