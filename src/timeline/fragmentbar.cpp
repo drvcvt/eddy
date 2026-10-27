@@ -36,6 +36,10 @@ FragmentBar::FragmentBar(QWidget *parent) : QWidget(parent) {
     }
     m_speed->setMenu(speeds);
     m_cut = button(QStringLiteral("FragmentCut"), tr("Leave this fragment out\tDelete"));
+    // As wide as its longer label, so Cut and Restore never move what is beside them.
+    m_cut->setText(tr("Restore"));
+    m_cut->ensurePolished();
+    m_cut->setFixedWidth(m_cut->sizeHint().width());
     connect(m_cut, &QToolButton::clicked, this, &FragmentBar::cutToggled);
     m_join = button(QStringLiteral("FragmentJoin"), tr("Join with the fragment before"));
     m_join->setText(tr("Join"));
@@ -46,10 +50,15 @@ FragmentBar::FragmentBar(QWidget *parent) : QWidget(parent) {
 void FragmentBar::setFragment(const Fragment &fragment, bool canJoin) {
     theme::setMenuLabel(m_speed, QString::number(fragment.speed, 'g', 3) + QStringLiteral("×"));
     for (QAction *a : m_speed->menu()->actions()) a->setChecked(qFuzzyCompare(a->data().toDouble(), fragment.speed));
-    m_speed->setVisible(!fragment.removed);
+    // Every control keeps its slot; what does not apply is disabled, not hidden, so the
+    // bar keeps one width from one fragment to the next.
+    m_speed->setEnabled(!fragment.removed);
+    m_speed->setToolTip(fragment.removed ? tr("A cut fragment has no speed") : tr("Speed of this fragment"));
     m_cut->setText(fragment.removed ? tr("Restore") : tr("Cut"));
     m_cut->setToolTip(fragment.removed ? tr("Bring this fragment back\tDelete") : tr("Leave this fragment out\tDelete"));
-    m_join->setVisible(canJoin && !fragment.removed);
+    m_join->setEnabled(canJoin && !fragment.removed);
+    m_join->setToolTip(canJoin && !fragment.removed ? tr("Join with the fragment before")
+                                                   : tr("Joins only with a kept fragment before it"));
     adjustSize();
 }
 

@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include "app/fills.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -262,7 +263,7 @@ void EditorWindow::hideVideoPreview() {
     m_hoverTime = -1;
     m_previewSampleTime = -1;
     m_previewTimer->stop();
-    m_videoPreview->hide();
+    m_previewFade->setTarget(0);   // fades out on `fast` like it came in; hidden at 0
     m_previewProvider->cancelHover();
 }
 
@@ -283,7 +284,8 @@ void EditorWindow::showVideoPreview() {
     m_videoPreview->move(pos);
     m_videoPreview->show();
     m_videoPreview->raise();
-    if (appearing) { m_previewFade->jumpTo(0); m_previewFade->setTarget(1); }
+    if (appearing) m_previewFade->jumpTo(0);
+    m_previewFade->setTarget(1);   // also turns a fade-out around
     m_previewProvider->requestHover(m_hoverTime, QSize(256, 144) * devicePixelRatioF());
 }
 
@@ -434,7 +436,7 @@ void EditorWindow::ensureVideoPlayer() {
             else if (m_presentedStart >= 0) applyTimeWindows(m_presentedStart);
             if (m_presentedStart >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState)
                 followPlaybackPieces(m_presentedStart);
-            if (m_miniMap && m_miniMap->isVisible() && updateVideoBackground())
+            if (m_miniMap && fadeTarget(m_miniMap) && updateVideoBackground())
                 m_miniMap->setContent(m_bg.copy(cameraContent())
                     .scaled(304, 224, Qt::KeepAspectRatio, Qt::SmoothTransformation), QRectF(cameraContent()));
         });

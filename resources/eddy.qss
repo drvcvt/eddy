@@ -106,9 +106,9 @@ QWidget#RedactBar QToolButton:hover, QWidget#TextBar QToolButton:hover, QWidget#
 QWidget#StepBar QToolButton:hover, QWidget#SelectionBar QToolButton:hover, QWidget#CropBar QToolButton:hover,
 QWidget#ZoomBar QToolButton:hover, QWidget#FragmentBar QToolButton:hover { color: @fg; }
 QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWidget#SpotlightBar QToolButton:checked,
-QWidget#StepBar QToolButton:checked, QWidget#ZoomBar QToolButton#ZoomTarget:checked { background-color: @raise3; color: @fg; }
-QWidget#ZoomBar QToolButton#ZoomTarget[glided="true"]:checked { background-color: transparent; }
-QWidget#ZoomBar QToolButton#ZoomTarget:disabled { color: @faint; }
+QWidget#StepBar QToolButton:checked, QWidget#ZoomBar QToolButton[zoomTarget="true"]:checked { background-color: @raise3; color: @fg; }
+QWidget#ZoomBar QToolButton[zoomTarget="true"][glided="true"]:checked { background-color: transparent; }
+QWidget#ZoomBar QToolButton[zoomTarget="true"]:disabled { color: @faint; }
 QWidget#ZoomBar QToolButton#ZoomScale, QWidget#FragmentBar QToolButton#FragmentSpeed { font-family: @font-mono; font-weight: 400; }
 /* Primary actions: HoverFills (app/fills.cpp) paints their fill and eases its hover. */
 QWidget#CropBar QToolButton#CropApply, QWidget#CropBar QToolButton#CropApply:hover { background: transparent; color: @chip-on-fg; }

@@ -52,6 +52,8 @@ void easeToggle(QToolButton *button);
 // While it fades out it takes no mouse input. A child widget only: Qt applies no
 // effect to a window, and Wayland gives windows no opacity.
 void fadeVisible(QWidget *widget, bool visible);
+// Where a fadeVisible widget is going: shown or not, already while it fades.
+bool fadeTarget(const QWidget *widget);
 // Checkable entries switch without closing the menu, so a setting can be flipped
 // and the next one reached; plain entries still run and close it.
 void keepOpenOnToggle(QMenu *menu);

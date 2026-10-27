@@ -385,6 +385,11 @@ protected:
 };
 }
 
+bool fadeTarget(const QWidget *widget) {
+    const QVariant target = widget->property("fadeTarget");
+    return target.isValid() ? target.toBool() : widget->isVisible();
+}
+
 void fadeVisible(QWidget *widget, bool visible) {
     widget->setProperty("fadeTarget", visible);
     auto *spring = widget->findChild<Spring *>(QStringLiteral("FadeSpring"), Qt::FindDirectChildrenOnly);

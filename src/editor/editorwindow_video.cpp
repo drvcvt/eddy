@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include "app/fills.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -466,7 +467,7 @@ void EditorWindow::startVideoExportCache() {
         m_exportStatus->setText(tr("Preparing…"));
         m_exportStatus->setToolTip(tr("Video export status"));
     }
-    if (m_exportCancel) m_exportCancel->show();
+    if (m_exportCancel) fadeVisible(m_exportCancel, true);
 
     auto *thread = QThread::create([receiver, revision, path, request] {
         const DeliverResult result = writeVideoWithOverlay(request);
@@ -485,7 +486,7 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
     m_videoExportInProgress = false;
     const bool cancelled = m_videoExportCancel && m_videoExportCancel->load();
     m_videoExportCancel.reset();
-    if (m_exportCancel) m_exportCancel->hide();
+    if (m_exportCancel) fadeVisible(m_exportCancel, false);
     const bool current = result.ok && hasVideoEdits() && revision == m_videoRevision;
     if (current) {
         if (!m_cachedVideoPath.isEmpty() && m_cachedVideoPath != path
@@ -539,7 +540,7 @@ void EditorWindow::cancelVideoExport() {
     if (m_videoExportTimer) m_videoExportTimer->stop();
     m_videoExportPending = false;
     failPendingVideoActions();
-    if (m_exportCancel) m_exportCancel->hide();
+    if (m_exportCancel) fadeVisible(m_exportCancel, false);
     if (m_exportStatus) m_exportStatus->setText(tr("Cancelling…"));
     if (m_toast) m_toast->showMessage(tr("Video export cancelled"));
 }

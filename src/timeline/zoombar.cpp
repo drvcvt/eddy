@@ -45,10 +45,12 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
         connect(action, &QAction::triggered, this, [this, s] { emit scaleChosen(s); });
     }
     m_scale->setMenu(scales);
-    m_point = button(QStringLiteral("ZoomTarget"), tr("Zoom on a fixed point"));
+    m_point = button(QStringLiteral("ZoomTargetPoint"), tr("Zoom on a fixed point"));
+    m_point->setProperty("zoomTarget", true);
     m_point->setText(tr("Point"));
     m_point->setCheckable(true);
-    m_cursor = button(QStringLiteral("ZoomTarget"), tr("Follow the pointer"));
+    m_cursor = button(QStringLiteral("ZoomTargetCursor"), tr("Follow the pointer"));
+    m_cursor->setProperty("zoomTarget", true);
     m_cursor->setText(tr("Cursor"));
     m_cursor->setCheckable(true);
     // Point or Cursor: one fill gliding between them, like every other choice.

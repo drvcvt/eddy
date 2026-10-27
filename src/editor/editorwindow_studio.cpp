@@ -385,7 +385,7 @@ void EditorWindow::updateCamera() {
     if (!isVideo() || !m_timeline) return;
     const bool cropping = m_crop && m_crop->active();
     m_canvas->setCamera(cropping ? QRectF() : currentCamera());
-    if (m_miniMap && m_miniMap->isVisible()) m_miniMap->setCamera(currentCamera());
+    if (m_miniMap && fadeTarget(m_miniMap)) m_miniMap->setCamera(currentCamera());
 }
 
 void EditorWindow::selectZoom(quint32 id) {
@@ -579,14 +579,14 @@ void EditorWindow::refreshZoomUi() {
     const int i = zoomlane::indexOf(m_studio.zooms, m_selectedZoom);
     const bool keep = cameraBase() != cameraContent();
     if (i >= 0 && !cropping) m_zoomBar->setZoom(m_studio.zooms[i]);
-    m_zoomBar->setVisible(i >= 0 && !cropping);
+    fadeVisible(m_zoomBar, i >= 0 && !cropping);
     const bool fragment = m_selectedFragment >= 0 && m_selectedFragment < m_studio.fragments.size() && !cropping;
     if (fragment)
         m_fragmentBar->setFragment(m_studio.fragments[m_selectedFragment],
                                    m_selectedFragment > 0 && !m_studio.fragments[m_selectedFragment - 1].removed);
     fadeVisible(m_fragmentBar, fragment);
     const bool map = !cropping && !playing && (i >= 0 || keep);
-    if (map && !m_miniMap->isVisible()) {
+    if (map && !fadeTarget(m_miniMap)) {
         // The picture only changes with the frame; see videoFrameChanged. m_bg is
         // the frame in document orientation and size, like the canvas shows it.
         const QRect content = cameraContent();
@@ -595,7 +595,7 @@ void EditorWindow::refreshZoomUi() {
             QRectF(content));
     }
     if (map) m_miniMap->setCamera(currentCamera());
-    m_miniMap->setVisible(map);
+    fadeVisible(m_miniMap, map);
     m_canvas->setCameraDragEnabled(map);
     positionZoomUi();
 }
@@ -605,11 +605,11 @@ void EditorWindow::positionZoomUi() {
     const QSize viewport = m_canvas->viewport()->size();
     m_zoomBar->adjustSize();
     const QRect bar(QPoint((viewport.width() - m_zoomBar->width()) / 2,
-                           viewport.height() - m_zoomBar->height() - 12), m_zoomBar->size());
+                           viewport.height() - m_zoomBar->height() - theme::kS3), m_zoomBar->size());
     m_zoomBar->move(bar.topLeft());
     m_fragmentBar->adjustSize();
     m_fragmentBar->move((viewport.width() - m_fragmentBar->width()) / 2,
-                        viewport.height() - m_fragmentBar->height() - 12);
+                        viewport.height() - m_fragmentBar->height() - theme::kS3);
     m_fragmentBar->raise();
     // Bottom right inside the content; above the bar when they would meet.
     const QRectF camera = m_canvas->camera().isEmpty() ? m_canvas->contentRect() : m_canvas->camera();
@@ -617,9 +617,9 @@ void EditorWindow::positionZoomUi() {
                                 m_canvas->mapFromScene(camera.bottomRight()))
                               .intersected(QRect(QPoint(), viewport));
     m_miniMap->setWidthLimit(qBound(72, content.width() / 4, 152));
-    QRect map(QPoint(content.right() - m_miniMap->width() - 12, content.bottom() - m_miniMap->height() - 12),
+    QRect map(QPoint(content.right() - m_miniMap->width() - theme::kS3, content.bottom() - m_miniMap->height() - theme::kS3),
               m_miniMap->size());
-    if (m_zoomBar->isVisible() && map.intersects(bar.adjusted(-6, -6, 6, 6))) map.moveBottom(bar.top() - 12);
+    if (fadeTarget(m_zoomBar) && map.intersects(bar.adjusted(-6, -6, 6, 6))) map.moveBottom(bar.top() - theme::kS3);
     m_miniMap->move(map.topLeft());
     m_zoomBar->raise();
     m_miniMap->raise();

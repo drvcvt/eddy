@@ -170,7 +170,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_volumeSlider->setObjectName(QStringLiteral("PlaybackVolume"));
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(100);
-    m_volumeSlider->setFixedWidth(96);
+    m_volumeSlider->setFixedWidth(4 * theme::kS6);
     m_volumeSlider->setAccessibleName(tr("Volume"));
     audioLayout->addWidget(m_volumeSlider);
     auto *audioAction = new QWidgetAction(audioMenu);
@@ -340,7 +340,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     previewLayout->setContentsMargins(theme::kS1, theme::kS1, theme::kS1, theme::kS1);
     previewLayout->setSpacing(theme::kS1);
     m_previewImage = new QLabel(m_videoPreview);
-    m_previewImage->setFixedSize(192, 108);
+    m_previewImage->setFixedSize(QSize(16, 9) * theme::kS3);   // 192 × 108, the clip's 16:9
     m_previewImage->setAlignment(Qt::AlignCenter);
     m_previewTime = new QLabel(m_videoPreview);
     m_previewTime->setTextFormat(Qt::RichText);
@@ -351,8 +351,9 @@ QWidget *EditorWindow::createPlaybackBar() {
     auto *previewOpacity = new QGraphicsOpacityEffect(m_videoPreview);
     previewOpacity->setOpacity(1);
     m_videoPreview->setGraphicsEffect(previewOpacity);
-    m_previewFade = new Spring(motion::kFast, [previewOpacity](qreal opacity) {
+    m_previewFade = new Spring(motion::kFast, [this, previewOpacity](qreal opacity) {
         previewOpacity->setOpacity(opacity);
+        if (opacity <= 0.001 && m_previewFade && m_previewFade->target() == 0) m_videoPreview->hide();
     }, m_videoPreview);
     m_previewTimer = new QTimer(this);
     m_previewTimer->setSingleShot(true);

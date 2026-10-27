@@ -538,12 +538,16 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_exportCancel->setFocusPolicy(Qt::NoFocus);
         m_exportCancel->setCursor(Qt::PointingHandCursor);
         m_exportCancel->setFixedHeight(theme::kCtl);
+        // Its slot stays while it is hidden: the status beside it never moves.
+        QSizePolicy keep = m_exportCancel->sizePolicy();
+        keep.setRetainSizeWhenHidden(true);
+        m_exportCancel->setSizePolicy(keep);
         m_exportCancel->hide();
         connect(m_exportCancel, &QToolButton::clicked, this, &EditorWindow::cancelVideoExport);
         auto *exportControls = new QHBoxLayout;
         exportControls->setSpacing(theme::kS1);
+        exportControls->addWidget(m_exportCancel);   // its kept slot sits left: the status stays on the edge
         exportControls->addWidget(m_exportStatus);
-        exportControls->addWidget(m_exportCancel);
         // On the window's edge, like the row's speaker above it; the group grows to the
         // left, so the pill (centred on its own) and the transport row stay put.
         exportControls->addWidget(m_noAudio);

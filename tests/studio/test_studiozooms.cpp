@@ -1,4 +1,6 @@
 #include <QtTest>
+#include <QScopeGuard>
+#include "app/spring.h"
 #include <QSlider>
 #include <QApplication>
 #include <QAudioOutput>
@@ -329,6 +331,21 @@ private slots:
         plain.show();
         QVERIFY(!plain.findChild<VideoTimeline *>()->zoomLaneVisible());
     }
+    void theZoomBarFadesOutAndLetsClicksThrough() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = true;
+        EditorWindow w(videoDoc(dir.filePath(QStringLiteral("none.mp4"))), cfg, {});
+        const auto off = qScopeGuard([] { Spring::setEnabled(false); });
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        QTest::keyClick(&w, Qt::Key_Z);
+        auto *bar = w.findChild<ZoomBar *>();
+        QTRY_VERIFY(bar->isVisible() && !bar->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QTest::keyClick(&w, Qt::Key_Escape);   // lets go of the zoom
+        QVERIFY(bar->isVisible());
+        QVERIFY(bar->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isHidden(), 2000);
+    }
     void followCursorNeedsATrackAndFollowsIt() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
@@ -337,7 +354,7 @@ private slots:
             plain.show();
             QTest::keyClick(&plain, Qt::Key_Z);
             QToolButton *cursor = nullptr;
-            for (auto *b : plain.findChildren<QToolButton *>(QStringLiteral("ZoomTarget")))
+            for (auto *b : plain.findChildren<QToolButton *>(QStringLiteral("ZoomTargetCursor")))
                 if (b->text() == QStringLiteral("Cursor")) cursor = b;
             QVERIFY(cursor && !cursor->isEnabled());
         }
@@ -352,7 +369,7 @@ private slots:
         QTest::keyClick(&w, Qt::Key_Z);
         auto *undo = w.findChild<QUndoStack *>();
         const int steps = undo->count();
-        for (auto *b : w.findChildren<QToolButton *>(QStringLiteral("ZoomTarget")))
+        for (auto *b : w.findChildren<QToolButton *>(QStringLiteral("ZoomTargetCursor")))
             if (b->text() == QStringLiteral("Cursor")) { QVERIFY(b->isEnabled()); b->click(); }
         QCOMPARE(w.studioDocument().zooms.first().target, ZoomSegment::Target::Cursor);
         QCOMPARE(undo->count(), steps + 1);

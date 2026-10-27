@@ -33,7 +33,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     m_edgePan.setInterval(33);
     connect(&m_edgePan, &QTimer::timeout, this, [this] {
         if (!interacting()) return;
-        const qreal edge = m_pointerX < 12 ? -1 : (m_pointerX > width() - 12 ? 1 : 0);
+        const qreal edge = m_pointerX < theme::kS3 ? -1 : (m_pointerX > width() - theme::kS3 ? 1 : 0);
         if (!edge) return;
         const qint64 before = m_viewStart;
         panBy(qRound64(edge * (m_viewEnd - m_viewStart) * 0.015));
@@ -160,7 +160,7 @@ void VideoTimeline::fitClip() { setViewRange(0, editedDuration()); }
 QVector<qint64> VideoTimeline::thumbnailTimes() const {
     QVector<qint64> times;
     if (m_duration <= 0) return times;
-    const int count = qBound(6, width() / 64, 24);
+    const int count = qBound(6, width() / (2 * int(kTrackH)), 24);   // slots about 2:1 on the strip
     for (int i = 0; i < count; ++i)
         times.append(qMin(m_duration - 1, source(m_viewStart + (i + 0.5) * (m_viewEnd - m_viewStart) / count)));
     return times;

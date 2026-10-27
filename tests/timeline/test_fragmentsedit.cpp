@@ -335,6 +335,24 @@ private slots:
         QCOMPARE(undo->count(), before);
         QVERIFY(timeline->hasMark());
     }
+    void theFragmentBarKeepsOneWidth() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        w.show();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *bar = w.findChild<FragmentBar *>();
+        timeline->setPosition(1000);
+        QTest::keyClick(&w, Qt::Key_S);
+        QTRY_VERIFY(bar->isVisible());
+        const int kept = bar->width();
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isEnabled());
+        QTest::keyClick(&w, Qt::Key_Delete);   // cut: Restore, no speed, no join
+        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Restore"));
+        QCOMPARE(bar->width(), kept);
+        QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isEnabled());
+        QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isVisible());
+    }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
