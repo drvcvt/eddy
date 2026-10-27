@@ -216,6 +216,24 @@ private slots:
         canvas->resetZoom();
         QVERIFY2(difference() == 0, qPrintable(QString::number(difference())));
     }
+    void aTrimThatKeepsNothingIsRefused() {
+        // The second half is cut; a start inside it would leave nothing to play or export.
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = QStringLiteral("/tmp/eddy-no-kept-piece.mp4");
+        doc.video = {QSize(64, 48), 10000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        StudioDocument studio = window.studioDocument();
+        studio.fragments = {{0, 1.0, false}, {5000, 1.0, true}};
+        window.setStudioDocument(studio);
+        auto *field = window.findChild<QLineEdit *>(QStringLiteral("TrimInTime"));
+        auto *timeline = window.findChild<VideoTimeline *>();
+        field->setFocus();
+        field->selectAll(); QTest::keyClicks(field, QStringLiteral("6.000")); QTest::keyClick(field, Qt::Key_Return);
+        QCOMPARE(timeline->trimIn(), 0);
+        QCOMPARE(field->text(), QStringLiteral("0:00.000"));
+        QCOMPARE(window.findChild<Toast *>()->text(), QStringLiteral("Keep at least part of the clip"));
+    }
     void playAfterATrailingCutStartsOver() {
         // The last second is cut: playback ends at 2 s, and Play then starts from the top
         // instead of parking in the cut and stopping again at once.

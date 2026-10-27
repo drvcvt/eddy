@@ -594,7 +594,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             QVector<Fragment> list = m_studio.fragments;
             if (!fragments::setRemoved(list, i, !list[i].removed)
                 || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
-                m_toast->showMessage(tr("Something of the clip has to stay"));
+                m_toast->showMessage(tr("Keep at least part of the clip"));
                 return;
             }
             editStudio([&](StudioDocument &d) { d.fragments = list; });

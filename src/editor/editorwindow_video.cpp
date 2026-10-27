@@ -176,6 +176,13 @@ void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
     inMs = m_timeline->trimIn();
     outMs = m_timeline->trimOut();
     if (inMs == m_trimInMs && outMs == m_trimOutMs) return;
+    // A range that holds only cut pieces would play and export nothing: keep the old one.
+    if (TimeMap(m_media.video.durationMs, inMs, outMs, m_studio.fragments).pieces().isEmpty()) {
+        m_timeline->setTrimRange(m_trimInMs, m_trimOutMs);
+        updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+        m_toast->showMessage(tr("Keep at least part of the clip"));
+        return;
+    }
     m_undo->push(new SetTrimRangeCommand(
         m_trimInMs, m_trimOutMs, inMs, outMs,
         [this](qint64 nextIn, qint64 nextOut) { setTrimRangeState(nextIn, nextOut); }));
