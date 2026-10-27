@@ -58,6 +58,22 @@ private slots:
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(226, 22));
         QCOMPARE(timeline.trimIn(), 3000);
     }
+    void gripsAreFoundInEditedTime() {
+        // A sped-up first piece: source 8 s is edited 2 s, inside a view of edited 0 to 3 s.
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.setFragments({{0, 4.0, false}, {8000, 1.0, false}});
+        timeline.setTrimRange(0, 8000);
+        timeline.show();
+        timeline.zoomAt(4000.0 / 3000.0, 0);   // edited 4 s in all: view edited 0 to 3 s
+        QCOMPARE(timeline.visibleStart(), 0);
+        QVERIFY(timeline.visibleEnd() > 8000);   // source 8 s is in view
+        const int outX = int(6 + 300.0 * 2000 / 3000);   // the track spans x 6 to 306
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(outX + 3, 30));
+        QVERIFY2(timeline.trimming(), "a press on the out grip seeked instead");
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(outX + 3, 30));
+    }
     void zoomLaneGrowsTheTimelineUnderTheFilmStrip() {
         VideoTimeline timeline;
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH);

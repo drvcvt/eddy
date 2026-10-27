@@ -268,8 +268,9 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.setBrush(Qt::NoBrush);
         painter.drawPath(mark);
     };
-    if (m_in < m_viewStart) chevron(kInset / 2, 1);
-    if (m_out > m_viewEnd) chevron(width() - kInset / 2, -1);
+    // The view runs in edited time; the bounds are source times.
+    if (edited(m_in) < m_viewStart) chevron(kInset / 2, 1);
+    if (edited(m_out) > m_viewEnd) chevron(width() - kInset / 2, -1);
 
     // The playhead over everything, its head in the gap above the strip.
     const qreal playX = xForTime(m_position);
