@@ -219,6 +219,20 @@ DeliverResult copyVideoAtomically(const QString &sourcePath, const QString &dest
 
 }
 
+// Qt 6.11's PipeWire audio backend can crash in its own thread while the first audio
+// output is created (thread QAudioContext in libpipewire-module-protocol-native; caught
+// once in 25 runs of test_uigates under gdb, 2026-10-27). Where a Pulse server answers,
+// pipewire-pulse included, Qt's PulseAudio backend plays the same sound without it.
+// A QT_AUDIO_BACKEND the user set always wins. Before the first QAudioOutput.
+static void preferPulseAudio() {
+#ifdef Q_OS_LINUX
+    if (qEnvironmentVariableIsSet("QT_AUDIO_BACKEND")) return;
+    const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (!runtime.isEmpty() && QFileInfo::exists(runtime + QStringLiteral("/pulse/native")))
+        qputenv("QT_AUDIO_BACKEND", "pulseaudio");
+#endif
+}
+
 EditorWindow::EditorWindow(const QImage &image, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : EditorWindow(imageDocument(image), cfg, cli, parent) {}
 
@@ -235,6 +249,7 @@ EditorWindow::~EditorWindow() {
 
 EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : QWidget(parent), m_media(media), m_bg(toolBackgroundFor(media)), m_cfg(cfg), m_cli(cli) {
+    preferPulseAudio();
 #ifdef Q_OS_WIN
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint
                    | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint
