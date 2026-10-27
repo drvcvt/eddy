@@ -119,6 +119,7 @@ On videos:
 | `Shift` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |
 | `Delete` | Cut the marked range, or cut / restore the selected piece |
 | Click on a cut's notch | Restore the cut |
+| Right-click the timeline › Cut pauses | Cut every stretch where nothing happens (or play it at 4×) |
 | `Z` | Add a zoom at the playhead |
 | Wheel, `Shift` + wheel | Zoom / pan the timeline |
 

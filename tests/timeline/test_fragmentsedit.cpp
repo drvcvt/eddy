@@ -353,6 +353,55 @@ private slots:
         QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isEnabled());
         QVERIFY(w.findChild<QToolButton *>(QStringLiteral("FragmentSpeed"))->isVisible());
     }
+    void cutPausesFindsTheSilenceWhileThePointerRests() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("pause.mkv"));
+        QProcess make;
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=160x90:d=7:r=25",
+            "-f", "lavfi", "-i", "sine=f=440:d=7", "-af", "volume='if(between(t,2,5),0,1)':eval=frame",
+            "-c:v", "libx264", "-c:a", "pcm_s16le", "-shortest", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        MediaDocument doc = videoDoc(file, 7000);
+        doc.video.hasAudio = true;
+        CursorTrack track;
+        track.videoSize = QSize(160, 90);
+        track.samples = {{0, QPointF(80, 45), true}};
+        doc.cursorTrack = track;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        auto *undo = w.findChild<QUndoStack *>();
+        const int steps = undo->count();
+        emit w.findChild<VideoTimeline *>()->pausesRequested(true);
+        QTRY_VERIFY_WITH_TIMEOUT(!w.studioDocument().fragments.isEmpty(), 10000);
+        const QVector<Fragment> cut = w.studioDocument().fragments;
+        QCOMPARE(cut.size(), 3);
+        QVERIFY2(cut[1].removed && qAbs(cut[1].startMs - 2200) <= 60, qPrintable(QString::number(cut[1].startMs)));
+        QVERIFY2(qAbs(cut[2].startMs - 4800) <= 60, qPrintable(QString::number(cut[2].startMs)));
+        QCOMPARE(undo->count(), steps + 1);   // one step
+        QVERIFY(w.findChild<Toast *>()->text().startsWith(QStringLiteral("Cut 1 pause,")));
+        undo->undo();
+        QVERIFY(w.studioDocument().fragments.isEmpty());
+    }
+    void withoutSoundOrPointerTheFrozenPictureDecides() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("frozen.mp4"));
+        QProcess make;   // 3 s of a still picture, then 3 s that move
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=160x90:d=3:r=25",
+            "-f", "lavfi", "-i", "testsrc2=s=160x90:d=3:r=25",
+            "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]", "-c:v", "libx264", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(file, 6000), cfg, {});
+        w.show();
+        emit w.findChild<VideoTimeline *>()->pausesRequested(true);
+        QTRY_VERIFY_WITH_TIMEOUT(!w.studioDocument().fragments.isEmpty(), 15000);
+        const QVector<Fragment> cut = w.studioDocument().fragments;
+        QVERIFY(cut[0].removed);   // from the clip's start: no breath kept there
+        QVERIFY2(qAbs(cut[1].startMs - 2800) <= 150, qPrintable(QString::number(cut[1].startMs)));
+    }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;

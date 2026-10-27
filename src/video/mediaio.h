@@ -1,4 +1,6 @@
 #pragma once
+#include <QVector>
+#include <functional>
 #include <QImage>
 #include <QSize>
 #include <QString>
@@ -56,5 +58,12 @@ QString mediaMimeTypeForPath(const QString &path);
 bool parseVideoTime(const QString &text, qint64 *milliseconds);
 ProbeVideoResult probeVideoFile(const QString &path);
 LoadMediaResult loadMediaInput(const InputSpec &spec);
+
+// C2: stretches where the picture does not change, from ffmpeg's freezedetect on a small
+// copy (10 fps, 320 px wide). Source ms; `fromMs` is where the analysis started.
+QVector<std::pair<qint64, qint64>> parseFreezes(const QByteArray &ffmpegLog, qint64 fromMs, qint64 toMs);
+// Runs it over [fromMs, toMs); nullopt when ffmpeg is missing, fails or `cancelled` says so.
+std::optional<QVector<std::pair<qint64, qint64>>> detectFreezes(const QString &path, qint64 fromMs, qint64 toMs,
+                                                               const std::function<bool()> &cancelled);
 
 }

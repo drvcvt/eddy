@@ -468,6 +468,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         if (m_studio.fragments.size() > 1) selectFragment(fragments::indexAt(m_studio.fragments, at));
     });
     connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::restoreCut);
+    connect(m_timeline, &VideoTimeline::pausesRequested, this, &EditorWindow::findPauses);
     // One target at a time: a mark lets go of annotations, a zoom and a fragment.
     connect(m_timeline, &VideoTimeline::markChanged, this, [this] {
         if (!m_timeline->hasMark() && !m_timeline->marking()) return;

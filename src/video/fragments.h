@@ -26,6 +26,9 @@ bool setRemoved(QVector<Fragment> &list, int index, bool removed);
 // ends move onto it, everything between is cut and melts with cut neighbours into one
 // fragment. False when nothing would be cut or nothing kept would remain.
 bool cutRange(QVector<Fragment> &list, qint64 fromMs, qint64 toMs, qint64 durationMs);
+// C2: every span cut (as cutRange) or played at kMaxSpeed, in one go; ends snap to seams
+// within kMinFragmentMs. False, the list unchanged, when nothing kept would remain.
+bool applySpans(QVector<Fragment> &list, const QVector<std::pair<qint64, qint64>> &spans, qint64 durationMs, bool cut);
 // Merges kept fragment `index` into the kept one before it, which keeps its
 // speed. Restoring a cut merges it with equal neighbours on its own.
 bool join(QVector<Fragment> &list, int index);

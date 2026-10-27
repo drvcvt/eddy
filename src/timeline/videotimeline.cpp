@@ -71,6 +71,10 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
             menu.addAction(tr("Add zoom here"), this, [this, time] { emit zoomAddRequested(time); });
             menu.addSeparator();
         }
+        // C2: the clip's dead air, found from its sound, pointer and picture.
+        menu.addAction(tr("Cut pauses"), this, [this] { emit pausesRequested(true); });
+        menu.addAction(tr("Speed up pauses (4×)"), this, [this] { emit pausesRequested(false); });
+        menu.addSeparator();
         menu.addAction(tr("Zoom in\t+"), this, [this] { glideView([this] { zoomAt(2, m_position); }); });
         menu.addAction(tr("Zoom out\t−"), this, [this] { glideView([this] { zoomAt(0.5, m_position); }); });
         menu.addAction(tr("Fit clip\t0"), this, [this] { glideView([this] { fitClip(); }); });

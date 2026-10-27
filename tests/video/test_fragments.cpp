@@ -57,6 +57,24 @@ private slots:
         QCOMPARE(list.size(), 2);
         QVERIFY(!list[1].removed);
     }
+    void pausesAreCutOrSpedUpInOneGo() {
+        using List = QVector<Fragment>;
+        const auto f = [](qint64 start, double speed, bool removed) {
+            Fragment x; x.startMs = start; x.speed = speed; x.removed = removed; return x;
+        };
+        List list;
+        QVERIFY(fragments::applySpans(list, {{2200, 4800}}, 10000, true));
+        QCOMPARE(list, (List{f(0, 1, false), f(2200, 1, true), f(4800, 1, false)}));
+        list = {};
+        QVERIFY(fragments::applySpans(list, {{2200, 4800}, {6000, 7000}}, 10000, false));
+        QCOMPARE(list, (List{f(0, 1, false), f(2200, 4, false), f(4800, 1, false), f(6000, 4, false), f(7000, 1, false)}));
+        list = {f(0, 1, false), f(5000, 1, false)};                     // 50 ms from a seam: onto it
+        QVERIFY(fragments::applySpans(list, {{2000, 4950}}, 10000, true));
+        QCOMPARE(list[2].startMs, 5000);
+        list = {};
+        QVERIFY(!fragments::applySpans(list, {{0, 10000}}, 10000, true));   // nothing kept: refused
+        QVERIFY(list.isEmpty());
+    }
     void cuttingARangeIsOneEditThatMeltsCuts() {
         const auto f = [](qint64 start, double speed, bool removed) {
             Fragment x;

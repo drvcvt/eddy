@@ -32,6 +32,15 @@ static bool runProcess(const QString &program, const QStringList &args) {
 class TestMediaIo : public QObject {
     Q_OBJECT
 private slots:
+    void freezesAreReadFromFfmpegsLog() {
+        const QByteArray log =
+            "[freezedetect @ 0x1] lavfi.freezedetect.freeze_start: 1.5\n"
+            "[freezedetect @ 0x1] lavfi.freezedetect.freeze_duration: 2\n"
+            "[freezedetect @ 0x1] lavfi.freezedetect.freeze_end: 3.5\n"
+            "[freezedetect @ 0x1] lavfi.freezedetect.freeze_start: 6\n";   // still frozen at the end
+        const auto spans = parseFreezes(log, 1000, 9000);
+        QCOMPARE(spans, (QVector<std::pair<qint64, qint64>>{{2500, 4500}, {7000, 9000}}));
+    }
     void parsesPreciseTimesWithoutOverflow() {
         qint64 ms = -1;
         QVERIFY(parseVideoTime("1:02.5", &ms)); QCOMPARE(ms, 62500);

@@ -96,6 +96,38 @@ bool cutRange(QVector<Fragment> &list, qint64 fromMs, qint64 toMs, qint64 durati
     return true;
 }
 
+bool applySpans(QVector<Fragment> &list, const QVector<std::pair<qint64, qint64>> &spans, qint64 durationMs, bool cut) {
+    QVector<Fragment> parts = list;
+    for (const auto &[from, to] : spans) {
+        if (cut) {
+            if (!cutRange(parts, from, to, durationMs)) return false;
+            continue;
+        }
+        // Faster: the same boundaries as a cut, the pieces between played at kMaxSpeed.
+        QVector<Fragment> all = expanded(parts);
+        QVector<qint64> seams{0, durationMs};
+        for (const Fragment &f : std::as_const(all)) seams.append(f.startMs);
+        const auto snap = [&](qint64 t) {
+            for (const qint64 s : std::as_const(seams)) if (std::abs(t - s) < kMinFragmentMs) return s;
+            return t;
+        };
+        const qint64 a = snap(std::clamp<qint64>(from, 0, durationMs)), b = snap(std::clamp<qint64>(to, 0, durationMs));
+        if (b <= a) continue;
+        for (const qint64 at : {a, b}) {
+            if (at >= durationMs) continue;
+            const int i = indexAt(all, at);
+            if (all[i].startMs == at) continue;
+            Fragment next = all[i];
+            next.startMs = at;
+            all.insert(i + 1, next);
+        }
+        for (Fragment &f : all) if (f.startMs >= a && f.startMs < b && !f.removed) f.speed = kMaxSpeed;
+        parts = simplified(all);
+    }
+    list = parts;
+    return true;
+}
+
 bool join(QVector<Fragment> &list, int index) {
     QVector<Fragment> parts = expanded(list);
     // Only two kept fragments join; joining into a cut would cut what was kept.

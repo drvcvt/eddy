@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include <QStandardPaths>
 #include "app/fills.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
@@ -488,6 +489,85 @@ void EditorWindow::cutMarkedRange() {
     m_timeline->ensureVisible(at);
     requestVideoSeek(at);
     flushVideoSeek();
+}
+
+// Every signal there is: the sound (unless the output leaves it out), the recorded pointer,
+// and where one of them is missing a frozen picture from ffmpeg, in the background.
+void EditorWindow::findPauses(bool cut) {
+    if (!isVideo() || !m_timeline) return;
+    AudioWaveformProvider *wave = m_studio.audio ? m_timeline->waveform() : nullptr;
+    if (wave && wave->state() == AudioWaveformProvider::State::Loading) {
+        // Still reading the sound: go on once it is read.
+        if (m_toast) m_toast->showMessage(tr("Finding pauses…"));
+        connect(wave, &AudioWaveformProvider::changed, this, [this, wave, cut] {
+            if (wave->state() == AudioWaveformProvider::State::Loading) return;
+            disconnect(wave, &AudioWaveformProvider::changed, this, nullptr);
+            findPauses(cut);
+        });
+        return;
+    }
+    PauseSignals input;
+    input.time = TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments);
+    if (wave && wave->state() == AudioWaveformProvider::State::Ready && !wave->silent())
+        input.peak = [wave](qint64 from, qint64 to) { return wave->summary(from, to).peak; };
+    if (m_cursorTrack) input.pointer = m_cursorTrack.get();
+    const int revision = m_videoRevision;
+    const auto apply = [this, cut, revision](PauseSignals signalsFound) {
+        if (revision != m_videoRevision) return;   // an edit since: the result is stale
+        const QVector<TimeSpan> pauses = eddy::findPauses(signalsFound);
+        if (pauses.isEmpty()) {
+            if (m_toast) m_toast->showMessage(tr("No pauses over 1 s"));
+            return;
+        }
+        QVector<Fragment> list = m_studio.fragments;
+        if (!fragments::applySpans(list, pauses, m_media.video.durationMs, cut)
+            || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
+            if (m_toast) m_toast->showMessage(tr("Keep at least part of the clip"));
+            return;
+        }
+        double seconds = 0;
+        for (const auto &[from, to] : pauses) seconds += (to - from) / 1000.0;
+        editStudio([&](StudioDocument &d) { d.fragments = list; });
+        selectFragment(-1);
+        const int step = m_undo->index();
+        const bool one = pauses.size() == 1;
+        const QString what = cut ? (one ? tr("Cut 1 pause, %1\u00a0s") : tr("Cut %2 pauses, %1\u00a0s"))
+                                 : (one ? tr("Sped up 1 pause, %1\u00a0s") : tr("Sped up %2 pauses, %1\u00a0s"));
+        if (m_toast)
+            m_toast->showAction(what.arg(seconds, 0, 'f', 1).arg(pauses.size()), tr("Undo"), [this, step] {
+                if (m_undo->index() == step) m_undo->undo();   // only while it is the last edit
+            });
+    };
+    const bool needFrozen = !input.peak || !input.pointer;
+    if (!needFrozen) { apply(input); return; }
+    if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) {
+        if (m_toast) m_toast->showMessage(tr("Finding pauses needs ffmpeg"));
+        return;
+    }
+    // The picture: freezedetect over the trim on a worker thread; Stop ends it.
+    if (m_pauseSearch) m_pauseSearch->store(true);
+    auto stop = std::make_shared<std::atomic_bool>(false);
+    m_pauseSearch = stop;
+    if (m_toast) m_toast->showAction(tr("Finding pauses…"), tr("Stop"), [stop] { stop->store(true); }, 60000);
+    QPointer<EditorWindow> receiver(this);
+    const QString path = m_media.path;
+    const qint64 from = m_trimInMs, to = m_trimOutMs;
+    auto *thread = QThread::create([receiver, stop, path, from, to, input, apply] {
+        const auto frozen = detectFreezes(path, from, to, [stop] { return stop->load(); });
+        QMetaObject::invokeMethod(qApp, [receiver, stop, frozen, input, apply] {
+            if (!receiver || stop->load()) return;
+            receiver->m_pauseSearch.reset();
+            if (!frozen) {
+                if (receiver->m_toast) receiver->m_toast->showMessage(tr("Could not read the picture for pauses"));
+                return;
+            }
+            PauseSignals all = input;
+            all.frozen = *frozen;
+            apply(all);
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
 }
 
 // S splits at the playhead and selects the part after it (studio plan 6.6).

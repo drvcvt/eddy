@@ -95,6 +95,7 @@ public:
     void setWaveformVisible(bool visible);
     // A silent track, once read to the end, folds its lane away.
     bool waveformShown() const;
+    AudioWaveformProvider *waveform() const { return m_waveform; }
     QRectF waveformRect() const;
 
     // Zoom lane (studio plan 6.1, Q1 = C): a 28 px row under the film strip on
@@ -129,6 +130,7 @@ signals:
     // A press and release on the strip or waveform within 3 px: a click, not a scrub.
     void stripClicked(qint64 positionMs);
     void markChanged();
+    void pausesRequested(bool cut);   // cut them, or play them at 4x
     void maskSelected(quintptr key);
     void maskWindowPreviewed(quintptr key, qint64 fromMs, qint64 toMs);
     void maskWindowEdited(quintptr key, qint64 fromMs, qint64 toMs, qint64 beforeFrom, qint64 beforeTo);

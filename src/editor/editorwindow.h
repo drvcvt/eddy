@@ -195,6 +195,8 @@ private:
     void toggleFragmentCut(int index);   // Delete and the bar's Cut/Restore
     void restoreCut(int index);          // a click on a cut's notch
     void cutMarkedRange();               // Delete with a range marked on the timeline (C1)
+    void findPauses(bool cut);           // C2: cut the clip's pauses, or play them at 4x
+    std::shared_ptr<std::atomic_bool> m_pauseSearch;   // a running freezedetect; set to stop it
     // C3: the playhead on the keyboard, through cuts, as playback shows the clip.
     TimeMap clipMap() const;
     QVector<qint64> playheadEdges() const;

@@ -238,4 +238,47 @@ LoadMediaResult loadMediaInput(const InputSpec &spec) {
 }
 
 
+QVector<std::pair<qint64, qint64>> parseFreezes(const QByteArray &ffmpegLog, qint64 fromMs, qint64 toMs) {
+    // freezedetect logs "lavfi.freezedetect.freeze_start: 3.0" and "...freeze_end: 5.0";
+    // a freeze still open at the end runs to the end.
+    static const QRegularExpression mark(QStringLiteral("freeze_(start|end): ?([0-9.]+)"));
+    QVector<std::pair<qint64, qint64>> out;
+    qint64 open = -1;
+    auto it = mark.globalMatch(QString::fromUtf8(ffmpegLog));
+    while (it.hasNext()) {
+        const auto m = it.next();
+        const qint64 at = fromMs + qRound64(m.captured(2).toDouble() * 1000.0);
+        if (m.captured(1) == QLatin1String("start")) open = at;
+        else if (open >= 0) { out.append({open, std::min(at, toMs)}); open = -1; }
+    }
+    if (open >= 0 && open < toMs) out.append({open, toMs});
+    return out;
+}
+
+std::optional<QVector<std::pair<qint64, qint64>>> detectFreezes(const QString &path, qint64 fromMs, qint64 toMs,
+                                                               const std::function<bool()> &cancelled) {
+    const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+    if (ffmpeg.isEmpty() || toMs <= fromMs) return std::nullopt;
+    QProcess p;
+    p.start(ffmpeg, {QStringLiteral("-v"), QStringLiteral("info"), QStringLiteral("-nostdin"),
+                     QStringLiteral("-ss"), QString::number(fromMs / 1000.0, 'f', 3),
+                     QStringLiteral("-t"), QString::number((toMs - fromMs) / 1000.0, 'f', 3),
+                     QStringLiteral("-i"), path, QStringLiteral("-an"),
+                     QStringLiteral("-vf"), QStringLiteral("fps=10,scale=320:-2,freezedetect=n=0.003:d=1"),
+                     QStringLiteral("-f"), QStringLiteral("null"), QStringLiteral("-")});
+    QByteArray log;
+    while (!p.waitForFinished(100)) {
+        log += p.readAllStandardError();
+        if (p.state() == QProcess::NotRunning) break;
+        if (cancelled && cancelled()) {
+            p.kill();
+            p.waitForFinished(2000);
+            return std::nullopt;
+        }
+    }
+    log += p.readAllStandardError();
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) return std::nullopt;
+    return parseFreezes(log, fromMs, toMs);
+}
+
 }
