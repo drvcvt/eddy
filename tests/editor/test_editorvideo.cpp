@@ -692,6 +692,49 @@ private slots:
         QVERIFY2(w.close(), "window stayed blocked after cancelling the export");
 #endif
     }
+    void copyRightAfterCancelExportsAgain() {
+#ifdef Q_OS_WIN
+        QSKIP("POSIX fake ffmpeg helper is not available on Windows");
+#else
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString calls = dir.filePath(QStringLiteral("calls"));
+        QFile script(dir.filePath(QStringLiteral("ffmpeg")));
+        QVERIFY(script.open(QIODevice::WriteOnly));
+        script.write(QStringLiteral("#!/bin/sh\ncase \"$*\" in *lavfi*) exit 1;; esac\n"
+                                    "echo $$ >> '%1'\nwhile :; do sleep 0.05; done\n").arg(calls).toUtf8());
+        script.close();
+        QVERIFY(script.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const QByteArray oldPath = qgetenv("PATH");
+        qputenv("PATH", QFile::encodeName(dir.path()) + ':' + oldPath);
+        const auto encoders = [&] {
+            QFile file(calls);
+            return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts) : QStringList();
+        };
+        MediaDocument doc;
+        doc.kind = MediaKind::Video;
+        doc.path = QStringLiteral("/tmp/eddy-copy-after-cancel.mp4");
+        doc.video = {QSize(64, 48), 1000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow w(doc, cfg, CliOptions());
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *cancel = w.findChild<QToolButton *>(QStringLiteral("VideoExportCancel"));
+        auto *toast = w.findChild<Toast *>();
+        timeline->setPosition(200);
+        QTest::keyClick(&w, Qt::Key_I);
+        w.sendToShelf();
+        QTRY_COMPARE_WITH_TIMEOUT(encoders().size(), 1, 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
+        QTest::mouseClick(cancel, Qt::LeftButton);
+        w.copy();   // before the cancelled export has wound down
+        QTRY_COMPARE_WITH_TIMEOUT(encoders().size(), 2, 5000);
+        QVERIFY2(!toast->text().startsWith(QStringLiteral("Video export failed")), qPrintable(toast->text()));
+        QTRY_VERIFY_WITH_TIMEOUT(!cancel->isHidden(), 5000);
+        QTest::mouseClick(cancel, Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(w.close(), 5000);
+        qputenv("PATH", oldPath);
+#endif
+    }
     void runningVideoExportCanBeCancelled() {
 #ifdef Q_OS_WIN
         QSKIP("POSIX fake ffmpeg helper is not available on Windows");

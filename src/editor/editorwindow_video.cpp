@@ -453,7 +453,9 @@ void EditorWindow::finishVideoExportCache(int revision, const QString &path, con
         }
     }
 
-    if (revision == m_videoRevision && m_videoStatusRequested) {
+    // A cancelled run fails nothing: Cancel already answered the requests it had, and one
+    // made since (Copy right after Cancel) is served by the export scheduled below.
+    if (revision == m_videoRevision && m_videoStatusRequested && !cancelled) {
         if (result.ok)
             completePendingVideoActions(m_cachedVideoPath, true);
         else
