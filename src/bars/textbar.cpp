@@ -1,4 +1,5 @@
 #include "bars/textbar.h"
+#include "app/fills.h"
 #include "app/theme.h"
 #include <QHBoxLayout>
 #include <QToolButton>
@@ -35,11 +36,13 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         sizes->addButton(m_sizes[i]); layout->addWidget(m_sizes[i]);
         connect(m_sizes[i], &QToolButton::clicked, this, [this, size=points[i]]{ emit sizeChosen(size); });
     }
+    new SelectionGlide(sizes, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     m_bold = textButton(this, QString());
     m_bold->setObjectName(QStringLiteral("TextBold"));
     m_bold->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
     m_bold->setToolTip(QStringLiteral("Bold text"));
     m_bold->setAccessibleName(theme::spokenName(m_bold->toolTip()));
+    easeToggle(m_bold);
     connect(m_bold, &QToolButton::toggled, this, &TextBar::boldChosen);
     layout->addWidget(m_bold);
 
@@ -55,11 +58,13 @@ TextBar::TextBar(QWidget *parent) : QWidget(parent) {
         alignments->addButton(m_align[i]); layout->addWidget(m_align[i]);
         connect(m_align[i], &QToolButton::clicked, this, [this, value=values[i]]{ emit alignmentChosen(value); });
     }
+    new SelectionGlide(alignments, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     m_filled = textButton(this, QString());
     m_filled->setObjectName(QStringLiteral("TextFill"));
     m_filled->setToolTip(QStringLiteral("Filled label background"));
     m_filled->setAccessibleName(theme::spokenName(m_filled->toolTip()));
     m_filled->setIconSize(QSize(theme::kFloatIcon, theme::kFloatIcon));
+    easeToggle(m_filled);
     connect(m_filled, &QToolButton::toggled, this, [this](bool on){
         emit styleChosen(on ? TextLabelStyle::Filled : TextLabelStyle::Plain);
     });

@@ -1,4 +1,5 @@
 #include "bars/redactbar.h"
+#include "app/fills.h"
 #include "app/theme.h"
 #include <QHBoxLayout>
 #include <QToolButton>
@@ -34,6 +35,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
         connect(b, &QToolButton::clicked, this, [this, mode = m.mode] { emit modeChosen(mode); });
         lay->addWidget(b);
     }
+    new SelectionGlide(group, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     // Videos: the whole clip or from the playhead on (studio plan 6.7, E5).
     auto *scopes = new QButtonGroup(this);
     for (int i = 0; i < 2; ++i) {
@@ -52,6 +54,7 @@ RedactBar::RedactBar(QWidget *parent) : QWidget(parent) {
         lay->addWidget(b);
         m_scopes[i] = b;
     }
+    new SelectionGlide(scopes, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     connect(scopes, &QButtonGroup::idClicked, this, [this](int id) { emit timeScopeChosen(id == 1); });
 }
 

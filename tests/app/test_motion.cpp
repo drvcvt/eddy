@@ -2,6 +2,7 @@
 #include <QButtonGroup>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include "app/fills.h"
 #include "app/spring.h"
 using namespace eddy;
@@ -81,6 +82,68 @@ private slots:
         const qreal midway = glide.fillRect().top();
         QVERIFY2(midway > buttons[0]->y() && midway < buttons[2]->y(), qPrintable(QString::number(midway)));
         QTRY_COMPARE_WITH_TIMEOUT(glide.fillRect().topLeft(), QPointF(buttons[2]->pos()), 2000);
+    }
+    void glideTakesTheWidthAndFadesWhenNothingIsChosen() {
+        // Segments differ in width (Auto, 16:9); a mixed selection checks none of them.
+        Spring::setEnabled(true);
+        QWidget row;
+        auto *layout = new QHBoxLayout(&row);
+        QButtonGroup group;
+        QList<QToolButton *> buttons;
+        for (int width : {30, 80}) {
+            auto *b = new QToolButton(&row);
+            b->setCheckable(true);
+            b->setFixedSize(width, 26);
+            group.addButton(b);
+            layout->addWidget(b);
+            buttons << b;
+        }
+        buttons[0]->setChecked(true);
+        SelectionGlide glide(&group, &row, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
+        row.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&row));
+        QTRY_COMPARE(glide.fillRect(), QRectF(buttons[0]->geometry()));
+        buttons[1]->click();
+        QTest::qWait(30);
+        const qreal width = glide.fillRect().width();
+        QVERIFY2(width > 30 && width < 80, qPrintable(QString::number(width)));
+        QTRY_COMPARE_WITH_TIMEOUT(glide.fillRect(), QRectF(buttons[1]->geometry()), 2000);
+        group.setExclusive(false);
+        buttons[1]->setChecked(false);
+        QTest::qWait(30);
+        QVERIFY(glide.opacity() > 0 && glide.opacity() < 1);   // fades, not gone at once
+        QTRY_COMPARE_WITH_TIMEOUT(glide.opacity(), 0.0, 2000);
+        // Chosen again from nothing, it shows where it is instead of flying in.
+        buttons[0]->setChecked(true);
+        QCOMPARE(glide.fillRect(), QRectF(buttons[0]->geometry()));
+        QTRY_COMPARE_WITH_TIMEOUT(glide.opacity(), 1.0, 2000);
+    }
+    void aToggleEasesItsFillInAndOut() {
+        Spring::setEnabled(true);
+        HoverFills::install();
+        QWidget window;
+        auto *button = new QToolButton(&window);
+        button->setCheckable(true);
+        button->setFixedSize(26, 26);
+        easeToggle(button);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        button->repaint();
+        QCOMPARE(HoverFills::checkedLevel(button), 0.0);
+        button->setChecked(true);
+        button->repaint();
+        QTest::qWait(30);
+        const qreal midway = HoverFills::checkedLevel(button);
+        QVERIFY2(midway > 0 && midway < 1, qPrintable(QString::number(midway)));
+        QTRY_COMPARE_WITH_TIMEOUT(HoverFills::checkedLevel(button), 1.0, 2000);
+        button->setChecked(false);
+        QTRY_COMPARE_WITH_TIMEOUT(HoverFills::checkedLevel(button), 0.0, 2000);
+        // Reduced motion: it lands on the next paint.
+        Spring::setEnabled(false);
+        button->setChecked(true);
+        button->repaint();
+        QCOMPARE(HoverFills::checkedLevel(button), 1.0);
+        Spring::setEnabled(true);
     }
 };
 

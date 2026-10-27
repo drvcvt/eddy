@@ -272,6 +272,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_loopButton = new QToolButton(bar);
     m_loopButton->setObjectName(QStringLiteral("PlaybackLoop"));
     m_loopButton->setCheckable(true);
+    easeToggle(m_loopButton);
     m_loopButton->setAutoRaise(true);
     m_loopButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/loop.svg"), iconColor, iconColor));
     m_loopButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));

@@ -25,6 +25,8 @@ public:
     static void install();
     // The fill shown on a button right now, 0 to 1; for tests.
     static qreal level(const QToolButton *button);
+    // How far an eased toggle shows its checked fill, 0 to 1; for tests.
+    static qreal checkedLevel(const QToolButton *button);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -32,10 +34,15 @@ protected:
 private:
     explicit HoverFills(QObject *parent) : QObject(parent) {}
     Spring *springFor(QToolButton *button);
+    Spring *checkSpringFor(QToolButton *button);
     void aim(QToolButton *button, bool hovered);
-    QHash<const QToolButton *, Spring *> m_springs;
-    QHash<const QToolButton *, qreal> m_levels;
+    QHash<const QToolButton *, Spring *> m_springs, m_checkSprings;
+    QHash<const QToolButton *, qreal> m_levels, m_checkLevels;
 };
+
+// A toggle (Bold, Studio, Loop) whose checked fill eases in and out with
+// motion::kFast; HoverFills paints it, the stylesheet leaves it off.
+void easeToggle(QToolButton *button);
 
 // The checked button of an exclusive group shows one fill that glides to the
 // next choice (motion::kFast), instead of one fill going out and another coming on.
@@ -50,19 +57,25 @@ void keepOpenOnToggle(QMenu *menu);
 class SelectionGlide : public QObject {
     Q_OBJECT
 public:
-    SelectionGlide(QButtonGroup *group, QWidget *surface, theme::Tone tone);
+    // Mark: the inset squircle of the top bar and tool rail. Chip: the button's own
+    // rounded box, for the floating bars, popovers and segmented rows.
+    enum class Shape { Mark, Chip };
+    SelectionGlide(QButtonGroup *group, QWidget *surface, theme::Tone tone, Shape shape = Shape::Mark);
     QRectF fillRect() const;   // where the fill shows now, in surface coordinates; for tests
+    qreal opacity() const;     // 0 while nothing is chosen (a mixed selection); for tests
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void follow(bool animate);
+    QAbstractButton *checkedButton() const;
     QButtonGroup *m_group;
     QWidget *m_surface;
     QWidget *m_layer;
     theme::Tone m_tone;
-    Spring *m_x, *m_y;
+    Shape m_shape;
+    Spring *m_x, *m_y, *m_w, *m_h, *m_a;
     QPointer<QAbstractButton> m_shown;
 };
 

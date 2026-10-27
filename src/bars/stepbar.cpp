@@ -1,4 +1,5 @@
 #include "bars/stepbar.h"
+#include "app/fills.h"
 #include "app/theme.h"
 #include <QApplication>
 #include <QButtonGroup>
@@ -46,6 +47,7 @@ StepBar::StepBar(QWidget *parent) : QWidget(parent) {
         connect(button, &QToolButton::clicked, this, [this, size = values[i]] { emit sizeChosen(size); });
         m_sizes[i] = button;
     }
+    new SelectionGlide(sizes, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
 
     m_more = theme::floatButton(this, QStringLiteral("StepMore"), tr("More step actions"));
     m_more->setPopupMode(QToolButton::InstantPopup);

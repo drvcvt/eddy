@@ -1,4 +1,5 @@
 #include "popovers/studiopopover.h"
+#include "app/fills.h"
 #include "chrome/motionicon.h"
 #include "app/theme.h"
 #include <QApplication>
@@ -99,6 +100,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         });
         m_backgrounds.append(b);
     }
+    new SelectionGlide(backgrounds, stylePage, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     auto *image = new QToolButton(stylePage);
     image->setObjectName(QStringLiteral("StudioImage"));
     image->setText(tr("Image…"));
@@ -151,6 +153,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         connect(b, &QToolButton::clicked, this, [this, ratio] { m_style.aspect = ratio; apply(); });
         m_ratios.append(b);
     }
+    new SelectionGlide(ratios, stylePage, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     ratioRow->addStretch(1);
     // Studio grows the file beyond the original; say by how much.
     m_size = new QLabel(stylePage);
@@ -191,6 +194,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             tabs->addWidget(tab);
         }
         tabs->addStretch(1);
+        new SelectionGlide(tabGroup, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
 
         auto *cameraPage = new QWidget(this);
         auto *rows = new QGridLayout(cameraPage);
@@ -223,8 +227,9 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
             rows->addWidget(b, 0, column++);
             connect(b, &QToolButton::clicked, this, [this, motion] { emit motionChosen(motion); });
         }
-        // Mixed motions: nothing is checked until the user picks one.
+        // Mixed motions: nothing is checked until the user picks one, and no fill shows.
         motions->setExclusive(camera.motion.has_value());
+        new SelectionGlide(motions, cameraPage, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
         connect(motions, &QButtonGroup::buttonClicked, this, [motions] { motions->setExclusive(true); });
         rowLabel(tr("Zoom"), 1);
         m_keep = new QToolButton(cameraPage);
@@ -232,6 +237,7 @@ StudioPopover::StudioPopover(const StudioStyle &style, QSize content, const Stud
         m_keep->setText(tr("Keep zoomed in"));
         m_keep->setCheckable(true);
         m_keep->setChecked(camera.keepZoomedIn);
+        easeToggle(m_keep);
         m_keep->setFixedHeight(theme::kCtl);
         m_keep->setCursor(Qt::PointingHandCursor);
         rows->addWidget(m_keep, 1, 1, 1, 3, Qt::AlignLeft);

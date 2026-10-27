@@ -1,4 +1,5 @@
 #include "bars/spotlightbar.h"
+#include "app/fills.h"
 #include "app/theme.h"
 #include <QHBoxLayout>
 #include <QToolButton>
@@ -34,6 +35,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
             emit shapeChosen(i ? SpotlightShape::Ellipse : SpotlightShape::RoundedRect);
         });
     }
+    new SelectionGlide(shapeGroup, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
 
     auto *levelGroup = new QButtonGroup(this);
     levelGroup->setExclusive(true);
@@ -45,6 +47,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
             emit intensityChosen(i + 1);
         });
     }
+    new SelectionGlide(levelGroup, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     // Videos: the whole clip or from the playhead on (studio plan 6.7, E5).
     auto *scopes = new QButtonGroup(this);
     for (int i = 0; i < 2; ++i) {
@@ -63,6 +66,7 @@ SpotlightBar::SpotlightBar(QWidget *parent) : QWidget(parent) {
         layout->addWidget(b);
         m_scopes[i] = b;
     }
+    new SelectionGlide(scopes, this, theme::Tone::Raise3, SelectionGlide::Shape::Chip);
     connect(scopes, &QButtonGroup::idClicked, this, [this](int id) { emit timeScopeChosen(id == 1); });
 }
 

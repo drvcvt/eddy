@@ -82,8 +82,6 @@ QMenu#PlaybackRateMenu, QMenu#ZoomScaleMenu, QMenu#FragmentSpeedMenu { font-fami
 /* Carries the export panel, which draws its own surface. */
 QMenu#ExportMenu { background: transparent; border: none; padding: 0; }
 
-/* Studio being on is a document state, not the primary action: one step up. */
-QToolButton#Studio:checked, QToolButton#Studio:checked:hover { background-color: @raise3; color: @fg; }
 
 QWidget#ColorPopover {
     background-color: @raise1;
@@ -334,4 +332,19 @@ QWidget#ExportPanel QToolButton#ProjectResume:hover { color: @fg; }
 QWidget#ExportPanel QToolButton#ExportSave {
     background: @fg; color: @bg; border: none; border-radius: @r-chip;
     padding: 0 @s3; font-size: @fs-ui; font-weight: 600;
+}
+
+/* Choices a SelectionGlide marks and toggles whose fill HoverFills eases in (app/fills.h):
+   the stylesheet's checked fill would switch at once under the moving one. */
+QWidget#RedactBar QToolButton[glided="true"]:checked, QWidget#RedactBar QToolButton[glided="true"]:checked:hover,
+QWidget#TextBar QToolButton[glided="true"]:checked, QWidget#TextBar QToolButton[glided="true"]:checked:hover,
+QWidget#SpotlightBar QToolButton[glided="true"]:checked, QWidget#SpotlightBar QToolButton[glided="true"]:checked:hover,
+QWidget#StepBar QToolButton[glided="true"]:checked, QWidget#StepBar QToolButton[glided="true"]:checked:hover,
+QWidget#StudioPopover QToolButton[glided="true"]:checked, QWidget#StudioPopover QToolButton[glided="true"]:checked:hover,
+QWidget#ExportPanel QToolButton#ExportSegment[glided="true"]:checked, QWidget#ExportPanel QToolButton#ExportSegment[glided="true"]:checked:hover,
+QWidget#Toolbar QToolButton[easedToggle="true"]:checked, QWidget#Toolbar QToolButton[easedToggle="true"]:checked:hover,
+QWidget#TextBar QToolButton[easedToggle="true"]:checked, QWidget#TextBar QToolButton[easedToggle="true"]:checked:hover,
+QWidget#StudioPopover QToolButton[easedToggle="true"]:checked, QWidget#StudioPopover QToolButton[easedToggle="true"]:checked:hover,
+QWidget#PlaybackBar QToolButton[easedToggle="true"]:checked, QWidget#PlaybackBar QToolButton[easedToggle="true"]:checked:hover {
+    background-color: transparent;
 }

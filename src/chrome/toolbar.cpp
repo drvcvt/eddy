@@ -197,6 +197,7 @@ Toolbar::Toolbar(QWidget *parent) : QWidget(parent) {
     m_studioBtn->setIcon(theme::tintedIcon(QStringLiteral(":/icons/studio.svg"), iconRest, iconHover));
     m_studioBtn->setIconSize(QSize(theme::kLabelIcon, theme::kLabelIcon));
     m_studioBtn->setText(QStringLiteral("Studio"));
+    easeToggle(m_studioBtn);   // on: the width marks' squircle and tone, eased in
     m_studioBtn->setToolTip(QStringLiteral("Studio background and framing"));
     m_studioBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     connect(m_studioBtn, &QToolButton::clicked, this, [this] {

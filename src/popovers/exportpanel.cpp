@@ -1,4 +1,5 @@
 #include "popovers/exportpanel.h"
+#include "app/fills.h"
 #include "video/mediaio.h"
 #include "app/theme.h"
 #include <QAbstractButton>
@@ -125,6 +126,7 @@ QButtonGroup *ExportPanel::addRow(const QString &label, const QStringList &choic
         group->addButton(b, i);
         row->addWidget(b);
     }
+    new SelectionGlide(group, groove, theme::Tone::SegmentOn, SelectionGlide::Shape::Chip);
     grid->addWidget(groove, m_row++, 1, Qt::AlignLeft);
     m_videoOnly << groove;
     return group;

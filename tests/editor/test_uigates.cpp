@@ -163,6 +163,37 @@ private slots:
         QVERIFY2(off.isEmpty(), qPrintable(off.join(QStringLiteral("\n   "))));
     }
 
+    void studioOnWearsTheWidthMark() {
+        // Two "on" marks in one bar: the same inset squircle rows and the same tone.
+        QImage image(800, 500, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        Config cfg; cfg.animations = false;
+        EditorWindow window(image, cfg, CliOptions());
+        window.resize(1000, 680);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        auto *studio = window.findChild<QToolButton *>(QStringLiteral("Studio"));
+        auto *width = window.findChild<QToolButton *>(QStringLiteral("WidthM"));
+        QVERIFY(studio && width && width->isChecked());
+        studio->setChecked(true);
+        QApplication::processEvents();
+        const QImage bar = window.findChild<QWidget *>(QStringLiteral("Toolbar"))->grab().toImage();
+        const QColor background = bar.pixelColor(1, 1);
+        auto mark = [&](QToolButton *b) {
+            const QPoint at = b->mapTo(window.findChild<QWidget *>(QStringLiteral("Toolbar")), QPoint());
+            const int x = at.x() + b->width() / 2;
+            int top = -1, bottom = -1;
+            for (int y = at.y(); y < at.y() + b->height(); ++y)
+                if (bar.pixelColor(x, y) != background) { if (top < 0) top = y - at.y(); bottom = y - at.y(); }
+            return std::tuple{top, bottom, bar.pixelColor(x, at.y() + theme::kMarkInset + 1)};
+        };
+        const auto [studioTop, studioBottom, studioTone] = mark(studio);
+        const auto [widthTop, widthBottom, widthTone] = mark(width);
+        QCOMPARE(studioTop, widthTop);
+        QCOMPARE(studioBottom, widthBottom);
+        QCOMPARE(studioTone, widthTone);
+    }
+
     void videoControlsShareTheirAxes() {
         QTemporaryDir dir;
         auto window = openVideo(dir.filePath(QStringLiteral("axes.mp4")), QSize(1080, 700));

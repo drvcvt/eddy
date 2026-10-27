@@ -8,6 +8,8 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
+#include <QStyle>
 #include <QToolButton>
 #include <QWidget>
 #include <functional>
@@ -28,6 +30,16 @@ qreal HoverFills::level(const QToolButton *button) {
     return g_fills ? g_fills->m_levels.value(button) : 0;
 }
 
+qreal HoverFills::checkedLevel(const QToolButton *button) {
+    return g_fills ? g_fills->m_checkLevels.value(button) : 0;
+}
+
+void easeToggle(QToolButton *button) {
+    button->setProperty("easedToggle", true);   // eddy.qss leaves its checked fill off
+    button->style()->unpolish(button);
+    button->style()->polish(button);
+}
+
 namespace {
 // Buttons drawn on their own fill: the primary actions and swatches.
 bool ownsItsBackground(const QToolButton *button) {
@@ -43,6 +55,31 @@ bool inChromeBar(const QToolButton *button) {
     return false;
 }
 
+// The marks of the top bar and tool rail: a squircle inset from the button, its
+// ends as round as a square button's mark when the button is wider.
+QPainterPath chromeMark(const QRectF &button) {
+    const qreal inset = theme::kMarkInset;
+    const QRectF mark = button.adjusted(inset, inset, -inset, -inset);
+    return qFuzzyCompare(mark.width(), mark.height()) ? theme::squircle(mark)
+                                                      : theme::squircleRect(mark, mark.height() / 2);
+}
+
+QPainterPath chip(const QRectF &button) {
+    QPainterPath path;
+    path.addRoundedRect(button, theme::kRChip, theme::kRChip);
+    return path;
+}
+
+// A checked toggle: the step its surface uses for a choice.
+QColor checkedFillFor(const QToolButton *button) {
+    for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget()) {
+        const QString name = w->objectName();
+        if (name == QLatin1String("Toolbar")) return theme::tone(theme::Tone::Raise2, dark());
+        if (name == QLatin1String("PlaybackBar")) return theme::tone(theme::Tone::BarActive, dark());
+    }
+    return theme::tone(theme::Tone::Raise3, dark());
+}
+
 // One step above the surface the button sits on.
 QColor fillFor(const QToolButton *button) {
     for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget()) {
@@ -54,6 +91,21 @@ QColor fillFor(const QToolButton *button) {
     }
     return theme::tone(theme::Tone::Raise2, dark());
 }
+}
+
+Spring *HoverFills::checkSpringFor(QToolButton *button) {
+    if (Spring *spring = m_checkSprings.value(button)) return spring;
+    auto *spring = new Spring(motion::kFast, [this, button](qreal level) {
+        m_checkLevels[button] = level;
+        button->update();
+    }, button);
+    m_checkSprings.insert(button, spring);
+    connect(button, &QObject::destroyed, this, [this, button] {
+        m_checkSprings.remove(button);
+        m_checkLevels.remove(button);
+    });
+    spring->jumpTo(button->isChecked() ? 1 : 0);   // the state it starts in shows at once
+    return spring;
 }
 
 Spring *HoverFills::springFor(QToolButton *button) {
@@ -90,24 +142,34 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
     case QEvent::Hide:
         // A hidden button keeps no hover: it would show it on the next show.
         if (Spring *spring = m_springs.value(button)) spring->jumpTo(0);
+        if (Spring *spring = m_checkSprings.value(button)) spring->jumpTo(button->isChecked() ? 1 : 0);
         break;
     case QEvent::Paint: {
-        const qreal level = m_levels.value(button);
-        if (level <= 0.001 || button->isChecked()) break;
+        const bool toggle = button->property("easedToggle").toBool();
+        qreal checked = 0;
+        if (toggle) {
+            // A toggle repaints when it flips: the paint is where its fill turns.
+            Spring *spring = checkSpringFor(button);
+            const qreal target = button->isChecked() ? 1 : 0;
+            if (spring->target() != target) spring->setTarget(target);
+            checked = qBound<qreal>(0, m_checkLevels.value(button), 1);
+        }
+        const qreal level = (!toggle && button->isChecked()) ? 0 : m_levels.value(button);
+        if (level <= 0.001 && checked <= 0.001) break;
         // Wayland reports no Leave after a popup grab; a paint without the pointer ends it.
-        if (!button->underMouse()) aim(button, false);
+        if (level > 0.001 && !button->underMouse()) aim(button, false);
         QPainter painter(button);
         painter.setRenderHint(QPainter::Antialiasing);
-        QColor fill = fillFor(button);
-        fill.setAlphaF(fill.alphaF() * qMin<qreal>(1, level));
         painter.setPen(Qt::NoPen);
-        painter.setBrush(fill);
-        if (button->width() == button->height() && inChromeBar(button)) {
-            const qreal inset = theme::kMarkInset;
-            painter.drawPath(theme::squircle(QRectF(button->rect()).adjusted(inset, inset, -inset, -inset)));
-        } else {
-            painter.drawRoundedRect(QRectF(button->rect()), theme::kRChip, theme::kRChip);
-        }
+        const QRectF box(button->rect());
+        const QPainterPath shape = inChromeBar(button) ? chromeMark(box) : chip(box);
+        // The hover gives way as the checked fill comes in, so the two never stack.
+        QColor hover = fillFor(button);
+        hover.setAlphaF(hover.alphaF() * qMin<qreal>(1, level) * (1 - checked));
+        if (hover.alphaF() > 0.001) painter.fillPath(shape, hover);
+        QColor on = checkedFillFor(button);
+        on.setAlphaF(on.alphaF() * checked);
+        if (on.alphaF() > 0.001) painter.fillPath(shape, on);
         break;
     }
     default:
@@ -136,43 +198,64 @@ private:
 };
 }
 
-SelectionGlide::SelectionGlide(QButtonGroup *group, QWidget *surface, theme::Tone tone)
-    : QObject(surface), m_group(group), m_surface(surface), m_tone(tone) {
+SelectionGlide::SelectionGlide(QButtonGroup *group, QWidget *surface, theme::Tone tone, Shape shape)
+    : QObject(surface), m_group(group), m_surface(surface), m_tone(tone), m_shape(shape) {
     m_layer = new GlideLayer(surface, [this](QPainter &painter) {
         const QRectF rect = fillRect();
-        if (rect.isEmpty()) return;
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(theme::tone(m_tone, dark()));
-        const qreal inset = theme::kMarkInset;
-        painter.drawPath(theme::squircle(rect.adjusted(inset, inset, -inset, -inset)));
+        if (rect.isEmpty() || m_a->value() <= 0.001) return;
+        QColor fill = theme::tone(m_tone, dark());
+        fill.setAlphaF(qMin<qreal>(1, m_a->value()));
+        painter.fillPath(m_shape == Shape::Mark ? chromeMark(rect) : chip(rect), fill);
     });
     m_layer->lower();
-    m_x = new Spring(motion::kFast, [this](qreal) { m_layer->update(); }, this);
-    m_y = new Spring(motion::kFast, [this](qreal) { m_layer->update(); }, this);
-    connect(group, &QButtonGroup::buttonToggled, this, [this](QAbstractButton *, bool checked) {
-        if (checked) follow(true);
-    });
+    const auto repaint = [this](qreal) { m_layer->update(); };
+    m_x = new Spring(motion::kFast, repaint, this);
+    m_y = new Spring(motion::kFast, repaint, this);
+    m_w = new Spring(motion::kFast, repaint, this);   // segments differ in width
+    m_h = new Spring(motion::kFast, repaint, this);
+    m_a = new Spring(motion::kFast, repaint, this);
+    m_a->jumpTo(0);
+    // Off as well as on: a mixed selection leaves nothing checked, and the fill goes.
+    connect(group, &QButtonGroup::buttonToggled, this, [this] { follow(true); });
     surface->installEventFilter(this);
-    for (QAbstractButton *button : group->buttons()) button->installEventFilter(this);
+    for (QAbstractButton *button : group->buttons()) {
+        button->installEventFilter(this);
+        button->setProperty("glided", true);   // eddy.qss leaves their checked fill off
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+    }
+    follow(false);
 }
 
 QRectF SelectionGlide::fillRect() const {
     if (!m_shown || !m_shown->isVisible()) return {};
-    return QRectF(QPointF(m_x->value(), m_y->value()), QSizeF(m_shown->size()));
+    return QRectF(m_x->value(), m_y->value(), m_w->value(), m_h->value());
+}
+
+qreal SelectionGlide::opacity() const { return m_a->value(); }
+
+QAbstractButton *SelectionGlide::checkedButton() const {
+    for (QAbstractButton *button : m_group->buttons())
+        if (button->isChecked()) return button;
+    return nullptr;
 }
 
 void SelectionGlide::follow(bool animate) {
-    QAbstractButton *checked = m_group->checkedButton();
-    m_shown = checked;
-    if (!checked) { m_layer->update(); return; }
-    const QPointF at = checked->mapTo(m_surface, QPoint());
-    if (animate && m_layer->isVisible()) {
-        m_x->setTarget(at.x());
-        m_y->setTarget(at.y());
-    } else {
-        m_x->jumpTo(at.x());
-        m_y->jumpTo(at.y());
+    animate = animate && m_layer->isVisible();
+    QAbstractButton *checked = checkedButton();
+    if (!checked) {
+        // Keep the last place: the fill fades where it was.
+        if (animate) m_a->setTarget(0); else m_a->jumpTo(0);
+        return;
     }
+    const QRectF at(checked->mapTo(m_surface, QPoint()), QSizeF(checked->size()));
+    // From nothing, the fill appears in place rather than flying in from the old spot.
+    const bool travel = animate && m_shown && m_a->value() > 0.05;
+    m_shown = checked;
+    for (auto [spring, value] : {std::pair{m_x, at.x()}, {m_y, at.y()}, {m_w, at.width()}, {m_h, at.height()}}) {
+        if (travel) spring->setTarget(value); else spring->jumpTo(value);
+    }
+    if (animate) m_a->setTarget(1); else m_a->jumpTo(1);
 }
 
 bool SelectionGlide::eventFilter(QObject *watched, QEvent *event) {
