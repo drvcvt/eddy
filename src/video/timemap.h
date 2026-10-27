@@ -33,4 +33,15 @@ private:
     QVector<TimePiece> m_pieces;
 };
 
+// Playhead steps for the keyboard (C3), on a map of the whole clip (no trim) so every
+// kept frame is reachable. Frames sit on J/L's grid, ms = round(index * 1000 / fps); a
+// step into a cut goes on to the first frame after it (forwards) or the last one before
+// it (backwards). Results stay in [0, durationMs - 1].
+qint64 stepFrames(const TimeMap &clip, qint64 durationMs, double fps, qint64 sourceMs, int frames);
+// One stretch of output time (Shift+arrow: a second as it plays), snapped to the grid.
+qint64 stepOutput(const TimeMap &clip, qint64 durationMs, double fps, qint64 sourceMs, double outputDeltaMs);
+// The nearest edge strictly before (direction < 0) or after (> 0) `sourceMs`, compared in
+// output time so edges inside a cut count as its seam; none left: nullopt.
+std::optional<qint64> nextEdge(const TimeMap &clip, const QVector<qint64> &edges, qint64 sourceMs, int direction);
+
 }

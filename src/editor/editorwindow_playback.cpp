@@ -381,7 +381,7 @@ void EditorWindow::ensureVideoPlayer() {
             // The seek in flight has shown a frame: a target waiting behind it goes now.
             if (m_seekInFlight) {
                 m_seekInFlight = false;
-                if (m_timelineActive && m_seekTimer->isActive()) flushVideoSeek();
+                if ((m_timelineActive || m_keyStepping) && m_seekTimer->isActive()) flushVideoSeek();
             }
             m_videoBackgroundCurrent = false;
             // Pixels only where something reads them: a blur samples the frame, OCR reads it,

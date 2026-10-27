@@ -203,18 +203,18 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             break;
         case Qt::Key_J:
         case Qt::Key_L:
-            if (isVideo() && m_timeline) {
-                ensureVideoPlayer();
-                if (m_player) m_player->pause();
-                m_resumeAfterSeek = false;
-                const qreal fps = m_media.video.fps > 0 ? m_media.video.fps : 30.0;
-                const qint64 frame = qRound64(m_timeline->position() * fps / 1000.0)
-                    + (e->key() == Qt::Key_J ? -1 : 1);
-                const qint64 position = qBound<qint64>(0, qRound64(frame * 1000.0 / fps),
-                    qMax<qint64>(0, m_timeline->duration() - 1));
-                m_timeline->setPosition(position);
-                requestVideoSeek(position);
-                flushVideoSeek();
+            if (isVideo() && m_timeline) {   // the same frame steps as the arrows, cuts skipped
+                stepPlayhead(stepFrames(clipMap(), m_media.video.durationMs, m_media.video.fps,
+                                        m_timeline->position(), e->key() == Qt::Key_J ? -1 : 1), e->isAutoRepeat());
+                break;
+            }
+            QWidget::keyPressEvent(e);
+            break;
+        case Qt::Key_Home:
+        case Qt::Key_End:
+            if (isVideo() && m_timeline && e->modifiers() == Qt::NoModifier) {
+                // Start, or the last frame of the range, where playback parks.
+                stepPlayhead(e->key() == Qt::Key_Home ? m_trimInMs : qMax(m_trimInMs, lastFrameMs()), false);
                 break;
             }
             QWidget::keyPressEvent(e);
@@ -244,7 +244,23 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             if (e->key() == Qt::Key_Right) delta.setX(distance);
             if (e->key() == Qt::Key_Up) delta.setY(-distance);
             if (e->key() == Qt::Key_Down) delta.setY(distance);
-            if (!m_tools->nudgeSelection(delta)) QWidget::keyPressEvent(e);
+            if (m_tools->nudgeSelection(delta)) break;
+            // Nothing to nudge: on a video the arrows move the playhead. Left and Right a
+            // frame (Shift: a second as it plays), Up and Down to the previous or next edge.
+            if (isVideo() && m_timeline && (e->modifiers() & ~Qt::ShiftModifier & ~Qt::KeypadModifier) == 0) {
+                const qint64 at = m_timeline->position();
+                const bool shift = e->modifiers().testFlag(Qt::ShiftModifier);
+                const int sign = e->key() == Qt::Key_Left || e->key() == Qt::Key_Up ? -1 : 1;
+                if (e->key() == Qt::Key_Left || e->key() == Qt::Key_Right) {
+                    stepPlayhead(shift ? stepOutput(clipMap(), m_media.video.durationMs, m_media.video.fps, at, sign * 1000.0)
+                                       : stepFrames(clipMap(), m_media.video.durationMs, m_media.video.fps, at, sign),
+                                 e->isAutoRepeat());
+                } else if (const auto edge = nextEdge(clipMap(), playheadEdges(), at, sign)) {
+                    stepPlayhead(*edge, e->isAutoRepeat());
+                }
+                break;
+            }
+            QWidget::keyPressEvent(e);
             break;
         }
         case Qt::Key_0: m_canvas->fitMedia(); break;
@@ -312,7 +328,42 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
     }
 }
 
+TimeMap EditorWindow::clipMap() const {
+    return TimeMap(m_media.video.durationMs, 0, m_media.video.durationMs, m_studio.fragments);
+}
+
+// Where Up and Down stop: the clip's ends, Start and End, every seam between pieces, and
+// the ends of every zoom and timed mask.
+QVector<qint64> EditorWindow::playheadEdges() const {
+    const double fps = m_media.video.fps > 0 ? m_media.video.fps : 30.0;
+    const qint64 lastFrame = qRound64((std::ceil(m_media.video.durationMs * fps / 1000.0) - 1) * 1000.0 / fps);
+    QVector<qint64> edges{0, qMax<qint64>(0, lastFrame), m_trimInMs, qMax(m_trimInMs, lastFrameMs())};
+    for (const Fragment &f : m_studio.fragments) if (f.startMs > 0) edges.append(f.startMs);
+    for (const ZoomSegment &z : m_studio.zooms) edges << z.startMs << z.endMs;
+    for (QGraphicsItem *item : m_scene->items())
+        if (auto *annotation = dynamic_cast<AnnotationItem *>(item); annotation && annotation->timeWindow())
+            edges << annotation->timeWindow()->first << annotation->timeWindow()->second;
+    return edges;
+}
+
+// Pauses, moves the playhead and keeps it in view. Held down, the seeks queue behind the
+// frame in flight; the key's release seeks the last one.
+void EditorWindow::stepPlayhead(qint64 target, bool held) {
+    ensureVideoPlayer();
+    if (m_player) m_player->pause();
+    m_resumeAfterSeek = false;
+    m_keyStepping = held;
+    m_timeline->setPosition(target);
+    m_timeline->ensureVisible(target);
+    requestVideoSeek(target);
+    if (!held) flushVideoSeek();
+}
+
 void EditorWindow::keyReleaseEvent(QKeyEvent *e) {
+    if (m_keyStepping && !e->isAutoRepeat()) {
+        m_keyStepping = false;
+        flushVideoSeek();
+    }
     if (e->key() == Qt::Key_Space) {
         if (e->isAutoRepeat()) { e->accept(); return; }
         m_canvas->setSpacePan(false);

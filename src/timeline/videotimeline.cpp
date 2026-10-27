@@ -29,7 +29,7 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(QStringLiteral("Video timeline"));
     setToolTip(QStringLiteral("Drag to seek or pull the ends to trim\nMark a range to cut\tShift+drag\n"
-                              "Fine trim\tShift on an end\nZoom\tCtrl+wheel"));
+                              "Fine trim\tShift on an end\nZoom\tWheel\nPan\tShift+wheel"));
     m_edgePan.setInterval(33);
     connect(&m_edgePan, &QTimer::timeout, this, [this] {
         if (!interacting()) return;
@@ -792,11 +792,14 @@ void VideoTimeline::keyPressEvent(QKeyEvent *event) {
 }
 
 void VideoTimeline::wheelEvent(QWheelEvent *event) {
+    // The wheel zooms at the pointer (C3; at once, like the canvas); Shift or a mostly
+    // sideways touchpad swipe pans.
     const QPoint delta = event->pixelDelta().isNull() ? event->angleDelta() : event->pixelDelta() * 2;
-    if (event->modifiers().testFlag(Qt::ControlModifier))
-        zoomAt(std::pow(1.2, delta.y() / 120.0), timeForX(event->position().x()));
-    else if (event->modifiers().testFlag(Qt::ShiftModifier) || delta.x())
+    const bool pan = event->modifiers().testFlag(Qt::ShiftModifier) || qAbs(delta.x()) > qAbs(delta.y());
+    if (pan)
         panBy(qRound64(-(delta.x() ? delta.x() : delta.y()) * (m_viewEnd - m_viewStart) / 1200.0));
+    else if (delta.y())
+        zoomAt(std::pow(1.2, delta.y() / 120.0), timeForX(event->position().x()));
     event->accept();
 }
 

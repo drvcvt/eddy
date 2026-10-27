@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QSignalSpy>
+#include <QWheelEvent>
 #include <QScopeGuard>
 #include "timeline/videotimeline.h"
 #include "app/spring.h"
@@ -223,6 +224,25 @@ private slots:
         const int fading = lift();
         QVERIFY2(fading > 0 && fading < marked, qPrintable(QString::number(fading)));
         QTRY_COMPARE_WITH_TIMEOUT(lift(), 0, 2000);
+    }
+    void aPlainWheelZoomsAtThePointer() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.show();
+        const auto wheel = [&](QPoint angle, Qt::KeyboardModifiers modifiers = Qt::NoModifier) {
+            QWheelEvent event(QPointF(156, 36), timeline.mapToGlobal(QPointF(156, 36)), QPoint(), angle,
+                              Qt::NoButton, modifiers, Qt::NoScrollPhase, false);
+            QApplication::sendEvent(&timeline, &event);
+        };
+        wheel(QPoint(0, 120));
+        QVERIFY(qAbs(timeline.visibleEnd() - timeline.visibleStart() - 8333) <= 1);
+        QVERIFY(qAbs(timeline.visibleStart() - 833) <= 1);   // 5 s stays under the pointer
+        const qint64 start = timeline.visibleStart();
+        wheel(QPoint(0, -120), Qt::ShiftModifier);
+        QVERIFY(qAbs(timeline.visibleStart() - (start + 833)) <= 1);   // Shift pans
+        wheel(QPoint(120, 0));                                         // so does a sideways swipe
+        QVERIFY(qAbs(timeline.visibleStart() - start) <= 1);
     }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;

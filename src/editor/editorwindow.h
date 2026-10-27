@@ -195,6 +195,11 @@ private:
     void toggleFragmentCut(int index);   // Delete and the bar's Cut/Restore
     void restoreCut(int index);          // a click on a cut's notch
     void cutMarkedRange();               // Delete with a range marked on the timeline (C1)
+    // C3: the playhead on the keyboard, through cuts, as playback shows the clip.
+    TimeMap clipMap() const;
+    QVector<qint64> playheadEdges() const;
+    void stepPlayhead(qint64 target, bool held);
+    bool m_keyStepping = false;   // an arrow held down: seeks wait for the frame in flight
     void refreshMasks();
     void applyTimeWindows(qint64 sourceMs);
     void setTimeScope(AnnotationItem *item, bool fromPlayhead);

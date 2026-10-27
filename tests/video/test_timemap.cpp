@@ -71,6 +71,33 @@ private slots:
         QCOMPARE(map.toSource(100), 0.0);
         QCOMPARE(map.toOutputAfter(100), 0.0);
     }
+    void playheadStepsSkipCutsAndStayOnTheGrid() {
+        const TimeMap plain(10000, 0, 10000, {});
+        QCOMPARE(stepFrames(plain, 10000, 25, 1000, 1), qint64(1040));
+        QCOMPARE(stepFrames(plain, 10000, 25, 1000, -1), qint64(960));
+        QCOMPARE(stepFrames(plain, 10000, 25, 0, -1), qint64(0));        // clamped at the start
+        QCOMPARE(stepFrames(plain, 10000, 25, 9960, 1), qint64(9999));    // and before the end
+        const TimeMap long_(20000, 0, 20000, {});
+        qint64 at = 0;                                                    // 29.97 fps: no drift
+        for (int i = 0; i < 300; ++i) at = stepFrames(long_, 20000, 29.97, at, 1);
+        QCOMPARE(at, qRound64(300 * 1000.0 / 29.97));
+        const TimeMap cut(10000, 0, 10000, {part(0), part(2000, 1, true), part(5000)});
+        QCOMPARE(stepFrames(cut, 10000, 25, 1960, 1), qint64(5000));     // over the cut
+        QCOMPARE(stepFrames(cut, 10000, 25, 5000, -1), qint64(1960));    // and back
+        const TimeMap fast(10000, 0, 10000, {part(0, 2.0)});
+        QCOMPARE(stepOutput(fast, 10000, 25, 0, 1000), qint64(2000));    // a played second at 2x
+        const TimeMap slow(10000, 0, 10000, {part(0, 0.5)});
+        QCOMPARE(stepOutput(slow, 10000, 25, 2000, 1000), qint64(2520));   // 2500 is frame 62.5: rounds up
+        QCOMPARE(stepOutput(cut, 10000, 25, 1500, 1000), qint64(5520));  // 500 before the cut, 500 after
+        const QVector<qint64> edges{0, 3000, 5000, 9960};
+        QCOMPARE(*nextEdge(plain, edges, 0, 1), qint64(3000));
+        QCOMPARE(*nextEdge(plain, edges, 3000, 1), qint64(5000));
+        QCOMPARE(*nextEdge(plain, edges, 5000, -1), qint64(3000));
+        QVERIFY(!nextEdge(plain, edges, 9960, 1));
+        // An edge inside a cut is its seam: 3000 lands on 5000 and counts once with it.
+        QCOMPARE(*nextEdge(cut, edges, 0, 1), qint64(5000));
+        QCOMPARE(*nextEdge(cut, edges, 5000, 1), qint64(9960));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTimeMap)

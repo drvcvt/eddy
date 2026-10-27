@@ -273,7 +273,7 @@ void EditorWindow::flushVideoSeek() {
     // Dragging: a seek sent before the last one showed a frame cancels it, and the
     // picture freezes. Wait for that frame (at most 150 ms); the release always seeks.
     constexpr qint64 kSeekPatienceMs = 150;
-    if (m_timelineActive && m_seekInFlight && m_seekFlight.elapsed() < kSeekPatienceMs) {
+    if ((m_timelineActive || m_keyStepping) && m_seekInFlight && m_seekFlight.elapsed() < kSeekPatienceMs) {
         m_seekTimer->start();
         return;
     }
