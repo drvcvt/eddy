@@ -124,10 +124,21 @@ void EditorWindow::togglePlayback() {
     if (m_player->playbackState() == QMediaPlayer::PlayingState) {
         m_player->pause();
     } else {
-        if (m_player->position() < m_trimInMs || m_player->position() >= m_trimOutMs)
+        // Parked on the last frame (where playback ends) or outside the range: from the top.
+        if (m_player->position() < m_trimInMs || m_player->position() >= lastFrameMs())
             m_player->setPosition(m_trimInMs);
         m_player->play();
     }
+}
+
+// Where playback ends: the trim's end, or earlier where a cut runs up to it;
+// it parks on the frame before.
+qint64 EditorWindow::lastFrameMs() const {
+    const QVector<TimePiece> &pieces = m_timeMap.pieces();
+    const qint64 end = pieces.isEmpty() ? m_trimOutMs : qMin(m_trimOutMs, qRound64(pieces.last().srcEnd));
+    return m_media.video.fps > 0
+        ? qRound64((qCeil(end * m_media.video.fps / 1000.0) - 1) * 1000.0 / m_media.video.fps)
+        : end - 1;
 }
 
 void EditorWindow::handlePlaybackEnd() {
@@ -135,10 +146,7 @@ void EditorWindow::handlePlaybackEnd() {
     m_player->pause();
     m_loopSeeking = true;
     m_resumeAfterSeek = m_loopButton->isChecked();
-    const qint64 lastFrame = m_media.video.fps > 0
-        ? qRound64((qCeil(m_trimOutMs * m_media.video.fps / 1000.0) - 1) * 1000.0 / m_media.video.fps)
-        : m_trimOutMs - 1;
-    requestVideoSeek(m_resumeAfterSeek ? m_trimInMs : qMax(m_trimInMs, lastFrame));
+    requestVideoSeek(m_resumeAfterSeek ? m_trimInMs : qMax(m_trimInMs, lastFrameMs()));
     m_timeline->setPosition(m_seekTarget);
     flushVideoSeek();
 }

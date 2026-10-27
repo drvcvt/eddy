@@ -1,4 +1,5 @@
 #include "editortest.h"
+#include "studio/studiodocument.h"
 
 class TestEditorVideo : public QObject {
     Q_OBJECT
@@ -214,6 +215,34 @@ private slots:
         // Actual size stays an exact copy of the frame.
         canvas->resetZoom();
         QVERIFY2(difference() == 0, qPrintable(QString::number(difference())));
+    }
+    void playAfterATrailingCutStartsOver() {
+        // The last second is cut: playback ends at 2 s, and Play then starts from the top
+        // instead of parking in the cut and stopping again at once.
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString path = dir.filePath("tail.mp4");
+        QVERIFY(runProcess("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "color=blue:s=96x64:r=25:d=3",
+            "-c:v", "libx264", "-g", "10", "-pix_fmt", "yuv420p", path}));
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = path;
+        doc.video = {QSize(96, 64), 3000, 25};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        QTRY_VERIFY(window.findChild<QMediaPlayer *>());
+        auto *player = window.findChild<QMediaPlayer *>();
+        auto *play = window.findChild<QToolButton *>("PlaybackPlay");
+        QTRY_VERIFY(player->isSeekable());
+        StudioDocument studio = window.studioDocument();
+        studio.fragments = {{0, 1.0, false}, {2000, 1.0, true}};
+        window.setStudioDocument(studio);
+        play->click();
+        QTRY_COMPARE_WITH_TIMEOUT(player->playbackState(), QMediaPlayer::PlayingState, 3000);
+        QTRY_COMPARE_WITH_TIMEOUT(player->playbackState(), QMediaPlayer::PausedState, 6000);
+        play->click();
+        QTRY_VERIFY2_WITH_TIMEOUT(player->playbackState() == QMediaPlayer::PlayingState && player->position() < 1500,
+            qPrintable(QStringLiteral("state %1 at %2 ms").arg(player->playbackState()).arg(player->position())), 4000);
+        player->pause();
     }
     void realVideoScrubCopyLoopAndStop() {
         if (!have("ffmpeg")) QSKIP("ffmpeg not available");

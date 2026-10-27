@@ -261,8 +261,11 @@ void EditorWindow::finishVideoSeek() {
             m_copyFramePending = false;
             copyVideoFrame();
         }
-        if (m_resumeAfterSeek && m_seekTarget >= m_trimInMs && m_seekTarget < m_trimOutMs)
+        if (m_resumeAfterSeek && m_seekTarget >= m_trimInMs && m_seekTarget < m_trimOutMs) {
+            // Play pressed while the end-of-playback seek settled: from the top, not one frame.
+            if (m_seekTarget >= lastFrameMs()) m_player->setPosition(m_trimInMs);
             m_player->play();
+        }
         m_resumeAfterSeek = false;
     }
 }

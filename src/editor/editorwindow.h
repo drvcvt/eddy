@@ -153,6 +153,7 @@ private:
     bool updateVideoBackground();
     void showVideoStill();
     void togglePlayback();
+    qint64 lastFrameMs() const;
     void handlePlaybackEnd();
     void scheduleVideoLoad();
     void scheduleStripLoad();
