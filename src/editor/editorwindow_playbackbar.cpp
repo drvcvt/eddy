@@ -296,7 +296,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         connect(action, &QAction::triggered, this, [this, rate] {
             ensureVideoPlayer();
             m_previewRate = rate;
-            theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate));
+            theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate), kWidestRate);
             for (auto *other : m_speedButton->menu()->actions())
                 other->setChecked(qFuzzyCompare(other->data().toDouble(), rate));
             if (m_player) m_player->setPlaybackRate(rate);
@@ -308,6 +308,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     }
     m_speedButton->setMenu(rates);
     theme::setMenuArrow(m_speedButton);
+    theme::setMenuLabel(m_speedButton, m_speedButton->text(), kWidestRate);
     rightGroup->addWidget(m_loopButton);
     rightGroup->addWidget(m_speedButton);
     rightGroup->addWidget(m_noAudio);

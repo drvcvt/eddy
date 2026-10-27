@@ -218,6 +218,21 @@ private slots:
         QVERIFY(pairs[0] > captions[0] + theme::kS1);   // pairs read as pairs
     }
 
+    void choosingARateMovesNothing() {
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("rates.mp4")), QSize(1080, 700));
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        auto *speed = window->findChild<QToolButton *>(QStringLiteral("PlaybackSpeed"));
+        auto *loop = window->findChild<QWidget *>(QStringLiteral("PlaybackLoop"));
+        const int width = speed->width(), x = loop->mapTo(window.get(), QPoint()).x();
+        for (QAction *rate : speed->menu()->actions()) {
+            rate->trigger();
+            QApplication::processEvents();
+            QCOMPARE(speed->width(), width);
+            QCOMPARE(loop->mapTo(window.get(), QPoint()).x(), x);
+        }
+    }
+
     void readoutShowsThePositionOnly() {
         // The length is End's and the ruler's; the readout keeps one width for every position.
         QTemporaryDir dir;

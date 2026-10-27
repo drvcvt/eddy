@@ -79,6 +79,9 @@ private:
 void applyWindowsTitleBarTheme(QWidget *window, bool dark);
 #endif
 
+// The preview rate's longest label: the rate button keeps its width.
+inline const QString kWidestRate = QStringLiteral("0.25×");
+
 // Above the item if there is room, else below, else wherever it covers less of it.
 QPoint contextBarPosition(const QRect &item, const QSize &bar, const QSize &viewport);
 DeliverResult copyVideoAtomically(const QString &sourcePath, const QString &destinationPath);

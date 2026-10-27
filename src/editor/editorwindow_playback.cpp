@@ -435,7 +435,7 @@ void EditorWindow::ensureVideoPlayer() {
     });
     connect(m_player, &QMediaPlayer::playbackRateChanged, this, [this](qreal) {
         // The label shows the preview rate; a fragment's own speed multiplies it.
-        theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(m_previewRate));
+        theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(m_previewRate), kWidestRate);
         for (auto *action : m_speedButton->menu()->actions())
             action->setChecked(qFuzzyCompare(action->data().toDouble(), m_previewRate));
     });
