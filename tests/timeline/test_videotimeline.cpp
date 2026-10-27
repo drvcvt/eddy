@@ -265,6 +265,39 @@ private slots:
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
         QCOMPARE(add.count(), 1);   // nor does one let go after Esc
     }
+    void gripHoverEasesAndKeyZoomGlides() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.setTrimRange(3000, 10000);
+        timeline.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&timeline));
+        Spring::setEnabled(true);
+        const auto off = qScopeGuard([] { Spring::setEnabled(false); });
+        // The In grip's face at x 93 (3 s, just left of the range): its grey eases up.
+        const auto grip = [&] { return qGray(timeline.grab().toImage().pixel(93, 30)); };
+        timeline.repaint();
+        const int rest = grip();
+        QTest::mouseMove(&timeline, QPoint(93, 36));
+        QTest::qWait(30);
+        const int midway = grip();
+        QTRY_VERIFY_WITH_TIMEOUT(grip() > midway, 1000);
+        QTest::qWait(300);
+        const int hovered = grip();
+        QVERIFY2(midway > rest && midway < hovered,
+                 qPrintable(QStringLiteral("%1 %2 %3").arg(rest).arg(midway).arg(hovered)));
+        // `+` glides the view to half its span; the wheel jumps.
+        timeline.setFocus();
+        QTest::keyClick(&timeline, Qt::Key_Plus);
+        QTest::qWait(40);
+        const qint64 span = timeline.visibleEnd() - timeline.visibleStart();
+        QVERIFY2(span < 10000 && span > 5000, qPrintable(QString::number(span)));
+        QTRY_COMPARE_WITH_TIMEOUT(timeline.visibleEnd() - timeline.visibleStart(), qint64(5000), 1000);
+        QWheelEvent wheel(QPointF(156, 36), timeline.mapToGlobal(QPointF(156, 36)), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(&timeline, &wheel);
+        QVERIFY(qAbs(timeline.visibleEnd() - timeline.visibleStart() - 4167) <= 1);   // at once
+    }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;
         timeline.resize(312, 84);

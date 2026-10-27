@@ -81,6 +81,7 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
 }
 
 void VideoTimeline::paintEvent(QPaintEvent *) {
+    syncStates();   // every state change repaints: here its spring is aimed
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     const QRectF track = trackRect();
@@ -99,7 +100,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     clip.addRoundedRect(track, 6, 6);
     painter.save();
     painter.setClipPath(clip);
-    painter.fillRect(track, ink(hasFocus() ? 0.18 : 0.12));   // focus shows as a brighter track, not a ring
+    painter.fillRect(track, ink(0.12 + 0.06 * m_states->value(kFocus)));   // focus: a brighter track, not a ring
     const auto times = thumbnailTimes();
     for (int i = 0; i < times.size(); ++i) {
         const QRectF slot(track.left() + i * track.width() / times.size(), track.top(),
@@ -119,16 +120,16 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
                            qMax(0.0, track.right() - outX), track.height()), shade);
     if (!m_fragments.isEmpty()) {
         const QVector<Fragment> parts = fragments::expanded(m_fragments);
-        const bool pickedKept = m_selectedFragment >= 0 && m_selectedFragment < parts.size()
-            && !parts[m_selectedFragment].removed;
-        QColor quiet = background;
-        quiet.setAlpha(110);
         for (const TimePiece &piece : m_axis.pieces()) {
             const qreal x0 = xForTime(qRound64(piece.srcStart));
             const qreal x1 = track.left() + track.width() * (piece.outEnd() - m_viewStart) / (m_viewEnd - m_viewStart);
-            // The other fragments step back while one is selected.
-            if (pickedKept && fragments::indexAt(m_fragments, qRound64(piece.srcStart)) != m_selectedFragment)
+            // The other fragments step back while one is selected, easing in and out.
+            const qreal dim = m_states->value(stateKey(kDim, quint64(fragments::indexAt(m_fragments, qRound64(piece.srcStart)))));
+            if (dim > 0.001) {
+                QColor quiet = background;
+                quiet.setAlphaF(110 / 255.0 * dim);
                 painter.fillRect(QRectF(x0, track.top(), x1 - x0, track.height()), quiet);
+            }
             // A 2 px seam between fragments.
             if (piece.outStart > 0) painter.fillRect(QRectF(x0 - 1, track.top(), 2, track.height()), background);
         }
@@ -171,7 +172,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
             if (x1 < lane.left() || x0 > lane.right()) continue;
             painter.fillRect(QRectF(x0, lane.top(), qMax<qreal>(2, x1 - x0), lane.height()),
-                             ink(z.id == m_selectedZoom ? 0.2 : 0.13));
+                             ink(0.13 + 0.07 * m_states->value(stateKey(kZoom, z.id))));
         }
         if (m_zoomLevel && !m_zooms.isEmpty()) {
             // The camera's actual zoom over time, ramps and all (Q1 = C).
@@ -196,7 +197,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         for (const ZoomSegment &z : std::as_const(m_zooms)) {
             const qreal x0 = xForTime(z.startMs), x1 = xForTime(z.endMs);
             if (x1 < lane.left() || x0 > lane.right()) continue;
-            const bool selected = z.id == m_selectedZoom;
+            const qreal chosen = m_states->value(stateKey(kZoom, z.id));
             // The level in mono, the motion a step quieter in the UI face; a gap
             // separates them, no glyph (studio plan 6.1).
             const QString scale = QString::number(z.scale, 'g', 3) + QStringLiteral("×");
@@ -206,21 +207,23 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             const qreal left = qMax(x0, lane.left()) + 8;
             const qreal room = qMin(x1, lane.right()) - 8 - left;
             if (room >= scaleWidth) {
-                painter.setPen(ink(selected ? 0.92 : 0.76));
+                painter.setPen(ink(0.76 + 0.16 * chosen));
                 painter.setFont(mono);
                 painter.drawText(QRectF(left, lane.top(), scaleWidth, lane.height()), Qt::AlignVCenter, scale);
             }
             if (room >= scaleWidth + 6 + motionWidth) {
-                painter.setPen(ink(selected ? 0.7 : 0.55));
+                painter.setPen(ink(0.55 + 0.15 * chosen));
                 painter.setFont(label);
                 painter.drawText(QRectF(left + scaleWidth + 6, lane.top(), motionWidth, lane.height()),
                                  Qt::AlignVCenter, motion);
             }
-            if (selected) {
+            if (chosen > 0.001) {
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(ink(0.7));
+                painter.setOpacity(chosen);
                 for (qreal x : {x0 + 3, x1 - 5})
                     painter.drawRoundedRect(QRectF(x, lane.center().y() - 6, 2, 12), 1, 1);
+                painter.setOpacity(1);
             }
         }
         if (m_zooms.isEmpty()) {
@@ -247,19 +250,22 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             if (x1 < lane.left() || x0 > lane.right()) continue;
             const QRectF block(x0, lane.top(), qMax<qreal>(2, x1 - x0), lane.height());
             painter.setPen(Qt::NoPen);
-            painter.setBrush(ink(mask.selected ? 0.22 : 0.15));
+            const qreal chosen = m_states->value(stateKey(kMask, mask.key));
+            painter.setBrush(ink(0.15 + 0.07 * chosen));
             painter.drawRoundedRect(block, 4, 4);
             const qreal left = qMax(x0, lane.left()) + 8;
             const qreal room = qMin(x1, lane.right()) - 8 - left;
             if (room >= QFontMetricsF(label).horizontalAdvance(mask.label)) {
-                painter.setPen(ink(mask.selected ? 0.9 : 0.7));
+                painter.setPen(ink(0.7 + 0.2 * chosen));
                 painter.drawText(QRectF(left, lane.top(), room, lane.height()), Qt::AlignVCenter, mask.label);
             }
-            if (mask.selected) {
+            if (chosen > 0.001) {
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(ink(0.7));
+                painter.setOpacity(chosen);
                 for (qreal x : {x0 + 3, x1 - 5})
                     painter.drawRoundedRect(QRectF(x, lane.center().y() - 5, 2, 10), 1, 1);
+                painter.setOpacity(1);
             }
         }
         painter.restore();
@@ -270,12 +276,12 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     // cover a kept frame; the track's inset leaves them room at the clip's ends.
     auto handle = [&](qreal x, Drag kind) {
         if (x < track.left() || x > track.right()) return;
-        const bool active = m_drag == kind || m_hover == kind;
+        const qreal active = m_states->value(kind == Drag::In ? kGripIn : kGripOut);
         const QRectF grip(kind == Drag::In ? x - kInset : x, track.top(), kInset, track.height());
         painter.setPen(Qt::NoPen);
-        painter.setBrush(ink(active ? 0.5 : 0.34));
+        painter.setBrush(ink(0.34 + 0.16 * active));
         painter.drawRoundedRect(grip, 3, 3);
-        painter.setBrush(ink(active ? 0.95 : 0.78));
+        painter.setBrush(ink(0.78 + 0.17 * active));
         painter.drawRoundedRect(QRectF(grip.center().x() - 1, grip.center().y() - 6, 2, 12), 1, 1);
     };
     handle(inX, Drag::In);
@@ -350,14 +356,14 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         if (!parts[i].removed) continue;
         const qreal x = xForTime(parts[i].startMs);
         if (x < track.left() - 4 || x > track.right() + 4) continue;
-        const bool lit = i == m_hoverCut || i == m_selectedFragment;
+        const qreal lit = m_states->value(stateKey(kNotch, quint64(i)));
         QPainterPath notch;
         notch.moveTo(x - 4, track.top() - 6);
         notch.lineTo(x + 4, track.top() - 6);
         notch.lineTo(x, track.top() - 1);
         notch.closeSubpath();
         painter.setPen(Qt::NoPen);
-        painter.fillPath(notch, ink(lit ? 0.95 : 0.6));
+        painter.fillPath(notch, ink(0.6 + 0.35 * lit));
     }
     if (!cutHint.isEmpty()) {
         painter.fillRect(cutBox, background);

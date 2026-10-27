@@ -61,4 +61,20 @@ void Spring::updateCurrentTime(int) {
     if (m_apply) m_apply(x);
 }
 
+void SpringLevels::aim(quint64 key, bool on) {
+    const qreal target = on ? 1 : 0;
+    Spring *spring = m_springs.value(key);
+    if (!spring) {
+        spring = new Spring(m_duration, [this, key](qreal level) {
+            m_values[key] = level;
+            if (m_changed) m_changed();
+        }, this);
+        m_springs.insert(key, spring);
+        m_values.insert(key, target);
+        spring->jumpTo(target);
+        return;
+    }
+    if (spring->target() != target) spring->setTarget(target);
+}
+
 }

@@ -22,6 +22,13 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     m_height = new Spring(motion::kSlow, [this](qreal height) { setFixedHeight(qRound(height)); }, this);
     m_markFade = new Spring(motion::kFast, [this](qreal) { update(); }, this);   // a cleared mark goes on `fast`
     m_markFade->jumpTo(0);
+    m_states = new SpringLevels(motion::kFast, [this] { update(); }, this);
+    m_glide = new Spring(motion::kBase, [this](qreal t) {
+        m_gliding = true;
+        setViewRange(qRound64(m_glideFrom.first + (m_glideTo.first - m_glideFrom.first) * t),
+                     qRound64(m_glideFrom.second + (m_glideTo.second - m_glideFrom.second) * t));
+        m_gliding = false;
+    }, this);
     m_height->jumpTo(kBaseH);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setCursor(Qt::PointingHandCursor);
@@ -64,9 +71,9 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
             menu.addAction(tr("Add zoom here"), this, [this, time] { emit zoomAddRequested(time); });
             menu.addSeparator();
         }
-        menu.addAction(tr("Zoom in\t+"), this, [this] { zoomAt(2, m_position); });
-        menu.addAction(tr("Zoom out\t−"), this, [this] { zoomAt(0.5, m_position); });
-        menu.addAction(tr("Fit clip\t0"), this, &VideoTimeline::fitClip);
+        menu.addAction(tr("Zoom in\t+"), this, [this] { glideView([this] { zoomAt(2, m_position); }); });
+        menu.addAction(tr("Zoom out\t−"), this, [this] { glideView([this] { zoomAt(0.5, m_position); }); });
+        menu.addAction(tr("Fit clip\t0"), this, [this] { glideView([this] { fitClip(); }); });
         menu.exec(mapToGlobal(pos));
     });
 }
@@ -130,6 +137,7 @@ int VideoTimeline::cutAt(QPointF pos) const {
 }
 
 void VideoTimeline::setViewRange(qint64 startMs, qint64 endMs) {
+    if (!m_gliding && m_glide && m_glide->state() == QAbstractAnimation::Running) m_glide->stop();   // the wheel takes over
     const qint64 total = editedDuration();
     const qint64 span = qBound<qint64>(qMin(total, m_minimumRange * 10), endMs - startMs, total);
     const qint64 start = qBound<qint64>(0, startMs, total - span);
@@ -680,6 +688,36 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     event->accept();
 }
 
+// Runs the change at once to learn where it ends, then glides there from here.
+void VideoTimeline::glideView(const std::function<void()> &change) {
+    const std::pair<qint64, qint64> from{m_viewStart, m_viewEnd};
+    change();
+    const std::pair<qint64, qint64> to{m_viewStart, m_viewEnd};
+    if (!isVisible() || !Spring::enabled() || from == to) return;
+    m_glideFrom = from;
+    m_glideTo = to;
+    m_gliding = true;
+    setViewRange(from.first, from.second);
+    m_gliding = false;
+    m_glide->jumpTo(0);
+    m_glide->setTarget(1);
+}
+
+void VideoTimeline::syncStates() {
+    m_states->aim(kGripIn, m_drag == Drag::In || m_hover == Drag::In);
+    m_states->aim(kGripOut, m_drag == Drag::Out || m_hover == Drag::Out);
+    m_states->aim(kFocus, hasFocus());
+    for (const ZoomSegment &z : std::as_const(m_zooms)) m_states->aim(stateKey(kZoom, z.id), z.id == m_selectedZoom);
+    for (const MaskBlock &mask : std::as_const(m_masks)) m_states->aim(stateKey(kMask, mask.key), mask.selected);
+    const QVector<Fragment> parts = fragments::expanded(m_fragments);
+    const bool pickedKept = m_selectedFragment >= 0 && m_selectedFragment < parts.size()
+        && !parts[m_selectedFragment].removed;
+    for (int i = 0; i < parts.size(); ++i) {
+        m_states->aim(stateKey(kNotch, quint64(i)), i == m_hoverCut || i == m_selectedFragment);
+        m_states->aim(stateKey(kDim, quint64(i)), pickedKept && i != m_selectedFragment);
+    }
+}
+
 bool VideoTimeline::hasMark() const {
     const auto [from, to] = markRange();
     return to > from;
@@ -796,9 +834,9 @@ void VideoTimeline::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_Escape:
         if (!interacting()) { QWidget::keyPressEvent(event); return; }
         cancelInteraction(); break;
-    case Qt::Key_Plus: case Qt::Key_Equal: zoomAt(2, m_position); break;
-    case Qt::Key_Minus: zoomAt(0.5, m_position); break;
-    case Qt::Key_0: fitClip(); break;
+    case Qt::Key_Plus: case Qt::Key_Equal: glideView([this] { zoomAt(2, m_position); }); break;
+    case Qt::Key_Minus: glideView([this] { zoomAt(0.5, m_position); }); break;
+    case Qt::Key_0: glideView([this] { fitClip(); }); break;
     default: QWidget::keyPressEvent(event); return;
     }
     event->accept();
@@ -821,7 +859,13 @@ void VideoTimeline::resizeEvent(QResizeEvent *event) {
     emit viewRangeChanged();
 }
 
+void VideoTimeline::focusInEvent(QFocusEvent *event) {
+    update();   // the track brightens on kFast
+    QWidget::focusInEvent(event);
+}
+
 void VideoTimeline::focusOutEvent(QFocusEvent *event) {
+    update();
     cancelInteraction();
     emit hoverLeft();
     QWidget::focusOutEvent(event);

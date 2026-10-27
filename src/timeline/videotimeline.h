@@ -13,6 +13,7 @@ namespace eddy {
 
 class AudioWaveformProvider;
 class Spring;
+class SpringLevels;
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
@@ -186,6 +187,22 @@ private:
     void showMark();
     qint64 m_markAnchor = -1, m_markHead = -1, m_markClickAnchor = -1;
     qint64 m_zoomAddAt = 0;   // a press on the empty zoom lane adds there on a still release
+    // Every small state eases on motion::kFast (C9): grips, focus, chosen zooms and masks,
+    // lit notches, the fragments stepping back. Aimed while painting, read for the inks.
+    SpringLevels *m_states = nullptr;
+    void syncStates();
+    // Keys for the eased states: one space per kind, the item's own id below.
+    static constexpr quint64 kGripIn = 1, kGripOut = 2, kFocus = 3;
+    static constexpr quint64 kZoom = 1, kMask = 2, kNotch = 3, kDim = 4;
+    static constexpr quint64 stateKey(quint64 kind, quint64 id) {
+        return (kind << 56) | (id & ((quint64(1) << 56) - 1));
+    }
+    // `+`, `-`, `0` and the menu glide the view on motion::kBase; the wheel stays direct.
+    void glideView(const std::function<void()> &change);
+    Spring *m_glide = nullptr;
+    std::pair<qint64, qint64> m_glideFrom{0, 0}, m_glideTo{0, 0};
+    bool m_gliding = false;
+    void focusInEvent(QFocusEvent *event) override;
     bool m_markOpen = false;
     struct { qint64 anchor = -1, head = -1; bool open = false; } m_markBefore;   // Esc mid-drag
     std::pair<qint64, qint64> m_markShown{0, 0};   // painted, also while it fades out

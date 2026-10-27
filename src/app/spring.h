@@ -1,6 +1,7 @@
 #pragma once
 #include <QAbstractAnimation>
 #include <QElapsedTimer>
+#include <QHash>
 #include <functional>
 
 namespace eddy {
@@ -37,6 +38,23 @@ private:
     qreal m_from = 0, m_velocity = 0, m_target = 0;
     QElapsedTimer m_clock;   // since the last target
     std::function<void(qreal)> m_apply;
+};
+
+// One spring per key for the many small states of one widget (a timeline's grips,
+// zooms, notches): aim a key on or off, read its level while painting. A key seen for
+// the first time takes its state at once; after that every change eases.
+class SpringLevels : public QObject {
+public:
+    SpringLevels(int durationMs, std::function<void()> changed, QObject *parent = nullptr)
+        : QObject(parent), m_duration(durationMs), m_changed(std::move(changed)) {}
+    void aim(quint64 key, bool on);
+    qreal value(quint64 key) const { return m_values.value(key); }
+
+private:
+    int m_duration;
+    std::function<void()> m_changed;
+    QHash<quint64, Spring *> m_springs;
+    QHash<quint64, qreal> m_values;
 };
 
 }
