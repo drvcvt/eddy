@@ -62,7 +62,9 @@ inline constexpr int kFloatIcon = 20;
 QPainterPath squircle(const QRectF &rect);
 // A rectangle whose corners are quarter superellipses `radius` across: the
 // curvature grows into the corner instead of an arc meeting a straight edge.
-QPainterPath squircleRect(const QRectF &rect, qreal radius);
+// Only the corners in `rounded` curve; the rest stay square.
+enum Corner { TopLeft = 1, TopRight = 2, BottomLeft = 4, BottomRight = 8, AllCorners = 15 };
+QPainterPath squircleRect(const QRectF &rect, qreal radius, int rounded = AllCorners);
 
 QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active,
                  int size = kIconSize);

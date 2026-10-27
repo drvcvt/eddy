@@ -284,7 +284,7 @@ QPainterPath squircle(const QRectF &rect) {
     return path;
 }
 
-QPainterPath squircleRect(const QRectF &rect, qreal radius) {
+QPainterPath squircleRect(const QRectF &rect, qreal radius, int rounded) {
     constexpr int kSteps = 96;   // per full turn: 24 per corner
     // 4, not the marks' 5: a corner this large at 5 stays nearly square. At 4 a
     // 24 px corner reads like a 12 px arc, with curvature that eases in.
@@ -296,6 +296,11 @@ QPainterPath squircleRect(const QRectF &rect, qreal radius) {
         const qreal t = 2 * M_PI * (i + 0.5) / kSteps, c = std::cos(t), s = std::sin(t);
         // Each quadrant curves about its own corner's centre; the jumps between
         // quadrants are the straight sides.
+        const int corner = c >= 0 ? (s >= 0 ? BottomRight : TopRight) : (s >= 0 ? BottomLeft : TopLeft);
+        if (!(rounded & corner)) {
+            outline << QPointF(c >= 0 ? rect.right() : rect.left(), s >= 0 ? rect.bottom() : rect.top());
+            continue;
+        }
         const QPointF centre(c >= 0 ? rect.right() - radius : rect.left() + radius,
                              s >= 0 ? rect.bottom() - radius : rect.top() + radius);
         outline << QPointF(centre.x() + radius * std::copysign(std::pow(std::abs(c), 2 / kExponent), c),

@@ -208,13 +208,14 @@ void Canvas::fitMedia() {
     emit viewChanged();
 }
 
-// The workspace meets the frame on squircle corners; the frame's grey fills what
-// lies outside them. Drawn by the view only, so no export carries it.
+// Where the workspace meets the frame (the tool rail on the left, a bar above and
+// below) it turns on squircle corners; on the right it runs into the window edge,
+// so those stay square. Drawn by the view only, so no export carries it.
 void Canvas::drawWorkspaceCorners(QPainter *painter) {
     const QRectF view(viewport()->rect());
     QPainterPath outside;
     outside.addRect(view);
-    outside = outside.subtracted(theme::squircleRect(view, theme::kS6));
+    outside = outside.subtracted(theme::squircleRect(view, theme::kS6, theme::TopLeft | theme::BottomLeft));
     painter->save();
     painter->resetTransform();
     painter->setRenderHint(QPainter::Antialiasing);
