@@ -1,4 +1,5 @@
 #include "app/theme.h"
+#include "app/fills.h"
 #include <QDebug>
 #include <QApplication>
 #include <QPainter>
@@ -254,15 +255,28 @@ void CapButton::paintEvent(QPaintEvent *) {
     const qreal capMiddle = baseline - metrics.capHeight() / 2;
     // Centred as a whole when the button is wider than its content (a fixed width).
     qreal x = snap((width() - contentWidth()) / 2);
+    // Hover blends in with HoverFills' spring: the resting icon and label, then their
+    // hovered look on top at that level, instead of switching when the pointer arrives.
+    const qreal level = isEnabled() ? HoverFills::level(this) : 0;
     const QRectF ink = inkRect(dpr);
     if (!ink.isNull()) {
-        const QIcon::Mode mode = !isEnabled() ? QIcon::Disabled : underMouse() ? QIcon::Active : QIcon::Normal;
-        p.drawPixmap(QPointF(snap(x - ink.left()), snap(capMiddle - ink.center().y())),
-                     icon().pixmap(iconSize(), dpr, mode, isChecked() ? QIcon::On : QIcon::Off));
+        const QPointF at(snap(x - ink.left()), snap(capMiddle - ink.center().y()));
+        const QIcon::State state = isChecked() ? QIcon::On : QIcon::Off;
+        p.drawPixmap(at, icon().pixmap(iconSize(), dpr, isEnabled() ? QIcon::Normal : QIcon::Disabled, state));
+        if (level > 0.001) {
+            p.setOpacity(qMin<qreal>(1, level));
+            p.drawPixmap(at, icon().pixmap(iconSize(), dpr, QIcon::Active, state));
+            p.setOpacity(1);
+        }
         x += ink.width() + kS2;
         if (text().isEmpty()) return;
     }
-    p.setPen(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText));
+    const QColor rest = palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled, QPalette::ButtonText);
+    const QColor hover = QApplication::palette().color(QPalette::WindowText);   // every label's hover is @fg
+    const qreal t = qMin<qreal>(1, level);
+    p.setPen(QColor::fromRgbF(rest.redF() + (hover.redF() - rest.redF()) * t,
+                              rest.greenF() + (hover.greenF() - rest.greenF()) * t,
+                              rest.blueF() + (hover.blueF() - rest.blueF()) * t, rest.alphaF()));
     p.drawText(QPointF(x, baseline), text());
 }
 

@@ -13,6 +13,8 @@
 #include <QPainterPath>
 #include <QStyle>
 #include <QToolButton>
+#include <QStylePainter>
+#include <QStyleOptionToolButton>
 #include <QWidget>
 #include <functional>
 #include <optional>
@@ -158,9 +160,35 @@ void HoverFills::aim(QToolButton *button, bool hovered) {
     if (spring->target() != target) spring->setTarget(target);
 }
 
+namespace {
+// QToolButton keeps its style option to itself; the paint below needs it.
+struct OptionAccess : QToolButton {
+    using QToolButton::initStyleOption;
+};
+
+// The button as the style draws it, at rest and then hovered on top at `level`: label
+// and icon blend with the fill under them instead of switching when the pointer
+// arrives. Padding, arrows and states stay the stylesheet's own.
+void paintLabels(QToolButton *button, qreal level) {
+    QStyleOptionToolButton option;
+    static_cast<OptionAccess *>(button)->initStyleOption(&option);
+    QStylePainter painter(button);
+    QStyleOptionToolButton rest = option;
+    rest.state &= ~QStyle::State_MouseOver;
+    painter.drawComplexControl(QStyle::CC_ToolButton, rest);
+    if (level <= 0.001) return;
+    QStyleOptionToolButton hovered = option;
+    hovered.state |= QStyle::State_MouseOver;
+    painter.setOpacity(qMin<qreal>(1, level));
+    painter.drawComplexControl(QStyle::CC_ToolButton, hovered);
+}
+}
+
 bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
     auto *button = qobject_cast<QToolButton *>(watched);
-    if (!button || ownsItsBackground(button)) return false;
+    if (!button) return false;
+    // CapButton paints its own label and blends it with level(); the rest are painted here.
+    const bool paintsItself = dynamic_cast<theme::CapButton *>(button) != nullptr;
     switch (event->type()) {
     case QEvent::Enter:
         aim(button, true);
@@ -175,6 +203,11 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
         if (Spring *spring = m_checkSprings.value(button)) spring->jumpTo(button->isChecked() ? 1 : 0);
         break;
     case QEvent::Paint: {
+        if (ownsItsBackground(button)) {   // the glide draws the fill; the label still blends
+            if (paintsItself) break;
+            paintLabels(button, qBound<qreal>(0, m_levels.value(button), 1));
+            return true;
+        }
         if (const std::optional<QColor> rest = restingFill(button)) {
             const qreal level = button->isEnabled() ? qBound<qreal>(0, m_levels.value(button), 1) : 0;
             if (level > 0.001 && !button->underMouse()) aim(button, false);
@@ -187,7 +220,10 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
                              QColor::fromRgbF(base.redF() + (top.redF() - base.redF()) * level,
                                               base.greenF() + (top.greenF() - base.greenF()) * level,
                                               base.blueF() + (top.blueF() - base.blueF()) * level));
-            break;
+            painter.end();
+            if (paintsItself) break;
+            paintLabels(button, level);
+            return true;
         }
         const bool toggle = button->property("easedToggle").toBool();
         qreal checked = 0;
@@ -200,23 +236,26 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
         }
         // Chosen while hovered: the hover fades out as the glide arrives, it never cuts to nothing.
         if (showsChoice(button) && springFor(button)->target() != 0) aim(button, false);
-        const qreal level = m_levels.value(button);
-        if (level <= 0.001 && checked <= 0.001) break;
+        const qreal level = qBound<qreal>(0, m_levels.value(button), 1);
         // Wayland reports no Leave after a popup grab; a paint without the pointer ends it.
         if (level > 0.001 && !button->underMouse()) aim(button, false);
-        QPainter painter(button);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(Qt::NoPen);
-        const QRectF box(button->rect());
-        const QPainterPath shape = inChromeBar(button) ? chromeMark(box) : chip(box);
-        // The hover gives way as the checked fill comes in, so the two never stack.
-        QColor hover = fillFor(button);
-        hover.setAlphaF(hover.alphaF() * qMin<qreal>(1, level) * (1 - checked));
-        if (hover.alphaF() > 0.001) painter.fillPath(shape, hover);
-        QColor on = checkedFillFor(button);
-        on.setAlphaF(on.alphaF() * checked);
-        if (on.alphaF() > 0.001) painter.fillPath(shape, on);
-        break;
+        if (level > 0.001 || checked > 0.001) {
+            QPainter painter(button);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(Qt::NoPen);
+            const QRectF box(button->rect());
+            const QPainterPath shape = inChromeBar(button) ? chromeMark(box) : chip(box);
+            // The hover gives way as the checked fill comes in, so the two never stack.
+            QColor hover = fillFor(button);
+            hover.setAlphaF(hover.alphaF() * qMin<qreal>(1, level) * (1 - checked));
+            if (hover.alphaF() > 0.001) painter.fillPath(shape, hover);
+            QColor on = checkedFillFor(button);
+            on.setAlphaF(on.alphaF() * checked);
+            if (on.alphaF() > 0.001) painter.fillPath(shape, on);
+        }
+        if (paintsItself) break;
+        paintLabels(button, level);
+        return true;
     }
     default:
         break;

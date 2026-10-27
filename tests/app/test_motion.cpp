@@ -220,6 +220,51 @@ private slots:
         QVERIFY(bar->isHidden());
         Spring::setEnabled(true);
     }
+    void labelsBlendWithTheirHover() {
+        // The label used to jump to @fg the moment the pointer arrived, under a fill that eased in.
+        Spring::setEnabled(true);
+        HoverFills::install();
+        qApp->setPalette(theme::palette(true));
+        qApp->setStyleSheet(theme::styleSheet(true));
+        const auto plain = qScopeGuard([] { qApp->setStyleSheet({}); });
+        QWidget window;
+        QToolButton *plainButton = new QToolButton(&window);
+        QToolButton *capButton = new theme::CapButton(&window);
+        for (QToolButton *b : {plainButton, capButton}) {
+            b->setText(QStringLiteral("Hover me"));
+            b->setFixedSize(120, 26);
+            b->setFocusPolicy(Qt::NoFocus);   // focus brightens the label on its own
+        }
+        capButton->move(0, 40);
+        window.resize(140, 80);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const auto brightest = [](QToolButton *b) {
+            QImage image(b->size(), QImage::Format_ARGB32_Premultiplied);
+            image.fill(Qt::black);
+            b->render(&image);
+            int most = 0;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x) most = std::max(most, qGray(image.pixel(x, y)));
+            return most;
+        };
+        for (QToolButton *b : {plainButton, capButton}) {
+            const int rest = brightest(b);
+            QEvent enter(QEvent::Enter);
+            QApplication::sendEvent(b, &enter);
+            QTest::qWait(40);
+            const qreal level = HoverFills::level(b);
+            const int midway = brightest(b);
+            QTRY_COMPARE_WITH_TIMEOUT(HoverFills::level(b), 1.0, 2000);
+            const int hovered = brightest(b);
+            qInfo("%s: rest %d, at %.2f %d, hovered %d", b->metaObject()->className(), rest, level, midway, hovered);
+            QVERIFY(hovered > rest + 20);
+            QVERIFY2(midway > rest && midway < hovered, qPrintable(QString::number(midway)));
+            QEvent leave(QEvent::Leave);
+            QApplication::sendEvent(b, &leave);
+            QTRY_COMPARE_WITH_TIMEOUT(HoverFills::level(b), 0.0, 2000);
+        }
+    }
 };
 
 QTEST_MAIN(TestMotion)
