@@ -1,4 +1,5 @@
 #include "canvas/selectionhandles.h"
+#include "app/theme.h"
 #include "items/annotationitem.h"
 #include "items/shapes/arrowitem.h"
 #include "items/labels/textitem.h"
@@ -121,18 +122,14 @@ public:
     HandleItem(SelectionHandles *owner, QGraphicsItem *target, int role, QUndoStack *undo)
         : QGraphicsRectItem(-6, -6, 12, 12), m_owner(owner), m_target(target),
           m_role(role), m_undo(undo) {
-        // 12x12 bounds with a 10x10 visible, constant-size squircle grip.
+        // 12x12 bounds: the 10x10 grip and its 1 px ring, constant on screen.
         setZValue(10000);
         setFlag(ItemIgnoresTransformations, true);   // constant on-screen size
         setAcceptedMouseButtons(Qt::LeftButton);
         setCursor(cursorForRole(role));
     }
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override {
-        p->setRenderHint(QPainter::Antialiasing, true);
-        const QRectF face = rect().adjusted(1, 1, -1, -1);
-        p->setPen(Qt::NoPen);
-        p->setBrush(QApplication::palette().color(QPalette::Highlight));
-        p->drawRoundedRect(face, 4, 4);
+        theme::paintGrip(p, rect().center());   // the crop's grip: one look for one role
     }
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *e) override { captureBefore(); e->accept(); }

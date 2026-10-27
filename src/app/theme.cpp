@@ -284,6 +284,32 @@ QPainterPath squircle(const QRectF &rect) {
     return path;
 }
 
+void paintGrip(QPainter *painter, QPointF centre) {
+    const QPalette palette = QApplication::palette();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+    painter->setPen(QPen(palette.color(QPalette::Window), 1));
+    painter->setBrush(palette.color(QPalette::WindowText));
+    painter->drawPath(squircle(QRectF(centre - QPointF(5, 5), QSizeF(10, 10))));
+    painter->restore();
+}
+
+void paintSelectionFrame(QPainter *painter, const QRectF &rect) {
+    const QPalette palette = QApplication::palette();
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing, false);
+    painter->setBrush(Qt::NoBrush);
+    QPen ring(palette.color(QPalette::Window), 3);
+    ring.setCosmetic(true);
+    painter->setPen(ring);
+    painter->drawRect(rect);
+    QPen line(palette.color(QPalette::WindowText), 1);
+    line.setCosmetic(true);
+    painter->setPen(line);
+    painter->drawRect(rect);
+    painter->restore();
+}
+
 QPainterPath squircleRect(const QRectF &rect, qreal radius, int rounded) {
     constexpr int kSteps = 96;   // per full turn: 24 per corner
     // 4, not the marks' 5: a corner this large at 5 stays nearly square. At 4 a

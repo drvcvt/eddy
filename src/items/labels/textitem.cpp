@@ -1,4 +1,6 @@
 #include "items/labels/textitem.h"
+#include "app/theme.h"
+#include <QStyleOptionGraphicsItem>
 #include <QFont>
 #include <QTextDocument>
 #include <QTextOption>
@@ -83,6 +85,12 @@ void TextItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, 
         painter->setBrush(m_color);
         painter->drawRoundedRect(boundingRect(), 9, 9);
     }
-    QGraphicsTextItem::paint(painter, option, widget);
+    // Qt's dashed black-and-white box is not ours: the view draws the canvas frame
+    // instead, and an export (no widget) draws none.
+    QStyleOptionGraphicsItem plain(*option);
+    plain.state &= ~(QStyle::State_Selected | QStyle::State_HasFocus);
+    QGraphicsTextItem::paint(painter, &plain, widget);
+    if (widget && (option->state & (QStyle::State_Selected | QStyle::State_HasFocus)))
+        theme::paintSelectionFrame(painter, boundingRect());
 }
 }

@@ -363,12 +363,7 @@ void Canvas::drawFrame(QPainter *painter) {
         painter->setPen(QPen(QColor(255, 255, 255, 210), 1));
         painter->setBrush(Qt::NoBrush);
         painter->drawRect(frame);
-        painter->setPen(QPen(palette().color(QPalette::Window), 1));
-        painter->setBrush(palette().color(QPalette::WindowText));
-        for (const auto &point : m_crop->handles()) {
-            const QPointF p = viewportTransform().map(point);
-            painter->drawRoundedRect(QRectF(p - QPointF(5, 5), QSizeF(10, 10)), 3, 3);
-        }
+        for (const auto &point : m_crop->handles()) theme::paintGrip(painter, viewportTransform().map(point));
     }
     painter->restore();
 }

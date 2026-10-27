@@ -9,6 +9,8 @@
 
 class QWidget;
 
+class QPainter;
+
 namespace eddy {
 
 enum class ThemeMode { System, Dark, Light };
@@ -65,6 +67,11 @@ QPainterPath squircle(const QRectF &rect);
 // Only the corners in `rounded` curve; the rest stay square.
 enum Corner { TopLeft = 1, TopRight = 2, BottomLeft = 4, BottomRight = 8, AllCorners = 15 };
 QPainterPath squircleRect(const QRectF &rect, qreal radius, int rounded = AllCorners);
+// The one grip of the canvas (resize, crop): a 10 px squircle in the text colour on a
+// 1 px ring of the window colour, so it holds on light and dark content alike.
+void paintGrip(QPainter *painter, QPointF centre);
+// The frame of a selected or edited text: the grip's two colours as a 1 px line.
+void paintSelectionFrame(QPainter *painter, const QRectF &rect);
 
 QIcon tintedIcon(const QString &svgPath, const QColor &rest, const QColor &active,
                  int size = kIconSize);
