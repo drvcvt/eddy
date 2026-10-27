@@ -170,6 +170,18 @@ bool EditorWindow::hasVideoEdits() const {
         || (!m_studio.audio && m_media.video.hasAudio);
 }
 
+// Start or End at the playhead. Past the other bound, that bound moves to the clip's
+// edge, so the range opens up instead of squeezing to a single frame.
+void EditorWindow::setTrimStartAtPlayhead() {
+    const qint64 at = m_timeline->position();
+    applyTrimRange(at, at < m_timeline->trimOut() ? m_timeline->trimOut() : m_timeline->duration());
+}
+
+void EditorWindow::setTrimEndAtPlayhead() {
+    const qint64 at = m_timeline->position();
+    applyTrimRange(at > m_timeline->trimIn() ? m_timeline->trimIn() : 0, at);
+}
+
 void EditorWindow::applyTrimRange(qint64 inMs, qint64 outMs) {
     if (!isVideo() || !m_timeline) return;
     m_timeline->setTrimRange(inMs, outMs);

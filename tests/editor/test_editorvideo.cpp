@@ -216,6 +216,23 @@ private slots:
         canvas->resetZoom();
         QVERIFY2(difference() == 0, qPrintable(QString::number(difference())));
     }
+    void startPastTheEndOpensTheRangeToTheClipsEnd() {
+        // I behind the out point (or O before the in point) moves the other bound to the
+        // clip's edge instead of squeezing the range to a single frame.
+        MediaDocument doc; doc.kind = MediaKind::Video; doc.path = QStringLiteral("/tmp/eddy-io-past.mp4");
+        doc.video = {QSize(64, 48), 10000, 25.0};
+        Config cfg; cfg.animations = false;
+        EditorWindow window(doc, cfg, {});
+        window.show();
+        auto *timeline = window.findChild<VideoTimeline *>();
+        timeline->setPosition(2000); QTest::keyClick(&window, Qt::Key_I);
+        timeline->setPosition(5000); QTest::keyClick(&window, Qt::Key_O);
+        QCOMPARE(timeline->trimIn(), 2000); QCOMPARE(timeline->trimOut(), 5000);
+        timeline->setPosition(8000); QTest::keyClick(&window, Qt::Key_I);
+        QCOMPARE(timeline->trimIn(), 8000); QCOMPARE(timeline->trimOut(), 10000);
+        timeline->setPosition(1000); QTest::keyClick(&window, Qt::Key_O);
+        QCOMPARE(timeline->trimIn(), 0); QCOMPARE(timeline->trimOut(), 1000);
+    }
     void aTrimThatKeepsNothingIsRefused() {
         // The second half is cut; a start inside it would leave nothing to play or export.
         MediaDocument doc; doc.kind = MediaKind::Video; doc.path = QStringLiteral("/tmp/eddy-no-kept-piece.mp4");

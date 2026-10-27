@@ -121,6 +121,8 @@ private:
     bool hasVideoAnnotations() const;
     bool hasVideoEdits() const;
     bool hasTrim() const;
+    void setTrimStartAtPlayhead();
+    void setTrimEndAtPlayhead();
     void applyTrimRange(qint64 inMs, qint64 outMs);
     void setTrimRangeState(qint64 inMs, qint64 outMs);
     void updateTrimTimeLabels(qint64 inMs, qint64 outMs);

@@ -187,11 +187,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
     }
     switch (e->key()) {
         case Qt::Key_I:
-            if (isVideo() && m_timeline) {
-                m_timeline->setTrimRange(m_timeline->position(), m_timeline->trimOut());
-                applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
-                break;
-            }
+            if (isVideo() && m_timeline) { setTrimStartAtPlayhead(); break; }
             QWidget::keyPressEvent(e);
             break;
         case Qt::Key_J:
@@ -273,11 +269,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             break;
         case Qt::Key_O:
             if (e->modifiers() & Qt::ControlModifier) { openProjectDialog(); break; }
-            if (isVideo() && m_timeline) {
-                m_timeline->setTrimRange(m_timeline->trimIn(), m_timeline->position());
-                applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
-                break;
-            }
+            if (isVideo() && m_timeline) { setTrimEndAtPlayhead(); break; }
             QWidget::keyPressEvent(e);
             break;
         case Qt::Key_Return: case Qt::Key_Enter: save(); break;

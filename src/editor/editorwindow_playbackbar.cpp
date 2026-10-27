@@ -507,14 +507,8 @@ QWidget *EditorWindow::createPlaybackBar() {
                 [this, id] { removeZoom(id); });
         menu.exec(global);
     });
-    connect(setIn, &QToolButton::clicked, this, [this]{
-        m_timeline->setTrimRange(m_timeline->position(), m_timeline->trimOut());
-        applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
-    });
-    connect(setOut, &QToolButton::clicked, this, [this]{
-        m_timeline->setTrimRange(m_timeline->trimIn(), m_timeline->position());
-        applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
-    });
+    connect(setIn, &QToolButton::clicked, this, &EditorWindow::setTrimStartAtPlayhead);
+    connect(setOut, &QToolButton::clicked, this, &EditorWindow::setTrimEndAtPlayhead);
     connect(reset, &QToolButton::clicked, this, [this]{
         m_timeline->setTrimRange(0, m_timeline->duration());
         applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
