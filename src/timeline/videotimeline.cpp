@@ -1,6 +1,7 @@
 #include "timeline/videotimeline.h"
 #include "timeline/audiowaveform.h"
 #include "app/theme.h"
+#include "app/spring.h"
 #include "timeline/zoomlane.h"
 #include "chrome/motionicon.h"
 #include "video/fragments.h"
@@ -18,7 +19,8 @@ namespace eddy {
 
 VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("VideoTimeline"));
-    setFixedHeight(kBaseH);
+    m_height = new Spring(motion::kSlow, [this](qreal height) { setFixedHeight(qRound(height)); }, this);
+    m_height->jumpTo(kBaseH);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setCursor(Qt::PointingHandCursor);
     setMouseTracking(true);
@@ -276,8 +278,14 @@ void VideoTimeline::setSelectedZoom(quint32 id) {
     update();
 }
 
+// A lane opens and closes like a section: the strip grows on motion::kSlow while the
+// lanes keep their places, so the new one is uncovered rather than slid in.
+// Unseen, it just takes the height.
 void VideoTimeline::updateHeight() {
-    setFixedHeight(kBaseH + (waveformShown() ? kWaveStep : 0) + (m_laneVisible ? kLaneStep : 0) + (m_masks.isEmpty() ? 0 : kMaskStep));
+    const int height = kBaseH + (waveformShown() ? kWaveStep : 0) + (m_laneVisible ? kLaneStep : 0)
+                     + (m_masks.isEmpty() ? 0 : kMaskStep);
+    if (isVisible()) m_height->setTarget(height);
+    else m_height->jumpTo(height);
 }
 
 bool VideoTimeline::inZoomLane(QPointF pos) const {

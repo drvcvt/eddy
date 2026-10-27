@@ -12,6 +12,7 @@
 namespace eddy {
 
 class AudioWaveformProvider;
+class Spring;
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
@@ -164,6 +165,7 @@ private:
     Drag m_drag = Drag::None;
     Drag m_hover = Drag::None;
     bool m_laneVisible = false;
+    Spring *m_height = nullptr;   // lanes come and go on motion::kSlow
     QVector<ZoomSegment> m_zooms, m_zoomsBefore;
     std::function<double(qint64)> m_zoomLevel;
     quint32 m_selectedZoom = 0, m_dragZoom = 0;

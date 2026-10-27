@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QSignalSpy>
 #include "timeline/videotimeline.h"
+#include "app/spring.h"
 #include "timeline/audiowaveform.h"
 #include <QPainter>
 #include <QProcess>
@@ -12,6 +13,28 @@ using namespace eddy;
 class TestVideoTimeline : public QObject {
     Q_OBJECT
 private slots:
+    void initTestCase() { Spring::setEnabled(false); }   // heights land at once unless a test says otherwise
+    void lanesOpenOnTheSlowSpring() {
+        Spring::setEnabled(true);
+        const auto off = qScopeGuard([] { Spring::setEnabled(false); });
+        VideoTimeline timeline;
+        timeline.resize(300, VideoTimeline::kBaseH);
+        timeline.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&timeline));
+        timeline.setZoomLaneVisible(true);
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH);   // no jump on the first frame
+        QTest::qWait(80);
+        QVERIFY2(timeline.height() > VideoTimeline::kBaseH
+                 && timeline.height() < VideoTimeline::kBaseH + VideoTimeline::kLaneStep,
+                 qPrintable(QString::number(timeline.height())));
+        QTRY_COMPARE_WITH_TIMEOUT(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep, 1000);
+        // Closed mid-way, it turns back from where it is.
+        timeline.setZoomLaneVisible(false);
+        QTest::qWait(40);
+        timeline.setZoomLaneVisible(true);
+        QVERIFY(timeline.height() > VideoTimeline::kBaseH);
+        QTRY_COMPARE_WITH_TIMEOUT(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep, 1000);
+    }
     void offscreenHandlesCannotBeGrabbedAndZeroDurationIsSafe() {
         VideoTimeline timeline;
         timeline.resize(300, 52); timeline.setDuration(0); timeline.fitClip();
