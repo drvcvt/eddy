@@ -163,6 +163,18 @@ private slots:
         QVERIFY(qAbs(p.rectAt(8500).center().x() - (1500 - 192)) < 1);
         QVERIFY(qAbs(p.rectAt(9800).width() - 1920) < 20);   // back out after the zoom
     }
+    void anInstantCursorZoomKeepsFollowing() {
+        // Instant means no travel, not no following: after the jump in the camera
+        // still tracks the pointer, and a following base view does after it.
+        CursorTrack track;
+        track.videoSize = QSize(1920, 1080);
+        track.samples = {{0, QPointF(960, 540), true}, {3000, QPointF(1500, 540), true}};
+        ZoomSegment z = zoom(1000, 9000, 2.0, QPointF(0, 0), ZoomSegment::Motion::Instant);
+        z.target = ZoomSegment::Target::Cursor;
+        const CameraPath p({z}, TimeMap(10000, 0, 10000, {}), CameraFrame{kContent, 0, {}, &track, false});
+        QVERIFY2(qAbs(p.rectAt(6000).center().x() - (1500 - 192)) < 1,
+                 qPrintable(QString::number(p.rectAt(6000).center().x())));
+    }
     void aFollowingBaseViewKeepsThePointerInIt() {
         CursorTrack track;
         track.videoSize = QSize(1920, 1080);

@@ -83,7 +83,12 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
     for (int i = 0; i < count; ++i) {
         // The step into sample i follows the target that held before it, so a
         // zoom starts moving at its start, not one step early.
-        if (i > 0) {
+        if (i > 0 && omega == 0) {
+            // Instant: no travel, but it still follows a moving target (the pointer, or a
+            // base view that follows it); a spring with omega 0 would never move again.
+            x = tx; y = ty; ls = tls;
+            vx = vy = vls = 0;
+        } else if (i > 0) {
             springStep(omega, tx, dt, x, vx);
             springStep(omega, ty, dt, y, vy);
             springStep(omega, tls, dt, ls, vls);
