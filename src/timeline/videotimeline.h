@@ -16,7 +16,7 @@ class Spring;
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
-    enum class Drag { None, In, Out, Seek, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
+    enum class Drag { None, In, Out, Seek, Mark, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
 public:
     // Geometry (docs/design.md): a caption-high ruler, the film strip, then each
     // optional lane below it, all kS1 apart.
@@ -70,6 +70,16 @@ public:
     QVector<qint64> thumbnailTimes() const;
     QImage thumbnailNear(qint64 time, qint64 *sampleTime) const;
     bool interacting() const { return m_drag != Drag::None; }
+    // A range marked to cut (C1): Shift-drag or Shift-click on the strip, or Shift+I and
+    // Shift+O at the playhead. Source time, not part of the document; the window cuts it.
+    bool hasMark() const;
+    std::pair<qint64, qint64> markRange() const;   // sorted, inside the trim; {0, 0} without one
+    bool marking() const { return m_drag == Drag::Mark; }
+    bool markOpen() const { return m_markOpen; }   // Shift+I given, Shift+O not yet
+    void setMark(qint64 anchorMs, qint64 headMs);
+    void markFromPlayhead();   // an open mark: its head follows the playhead
+    void markToPlayhead();
+    void clearMark();
     bool trimming() const { return m_drag == Drag::In || m_drag == Drag::Out; }
 
     qint64 duration() const { return m_duration; }
@@ -117,6 +127,7 @@ signals:
     void cutClicked(int fragment);
     // A press and release on the strip or waveform within 3 px: a click, not a scrub.
     void stripClicked(qint64 positionMs);
+    void markChanged();
     void maskSelected(quintptr key);
     void maskWindowPreviewed(quintptr key, qint64 fromMs, qint64 toMs);
     void maskWindowEdited(quintptr key, qint64 fromMs, qint64 toMs, qint64 beforeFrom, qint64 beforeTo);
@@ -171,6 +182,16 @@ private:
     Spring *m_height = nullptr;   // lanes come and go on motion::kSlow
     qreal m_pressX = 0;           // where a strip press began, for click versus scrub
     bool m_pressMoved = false;
+    qint64 snapMark(qint64 timeMs) const;
+    void showMark();
+    qint64 m_markAnchor = -1, m_markHead = -1, m_markClickAnchor = -1;
+    bool m_markOpen = false;
+    struct { qint64 anchor = -1, head = -1; bool open = false; } m_markBefore;   // Esc mid-drag
+    std::pair<qint64, qint64> m_markShown{0, 0};   // painted, also while it fades out
+    Spring *m_markFade = nullptr;
+    // One brightness step (the ladder's bg -> raise1 is about 0.03 L): the marked range is
+    // lifted towards the text colour, no line, no edge.
+    static constexpr qreal kMarkLift = 0.10;
     QVector<ZoomSegment> m_zooms, m_zoomsBefore;
     std::function<double(qint64)> m_zoomLevel;
     quint32 m_selectedZoom = 0, m_dragZoom = 0;

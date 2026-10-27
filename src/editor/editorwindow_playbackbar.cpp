@@ -443,7 +443,8 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_timelineTrimming = trimming;
         ensureVideoPlayer();
         m_timelineActive = true;
-        m_resumeAfterSeek = !trimming && m_player
+        // A mark pauses for good: the next step is Delete, not watching on.
+        m_resumeAfterSeek = !trimming && !m_timeline->marking() && m_player
             && m_player->playbackState() == QMediaPlayer::PlayingState;
         if (m_player) m_player->pause();
         if (m_videoExportTimer) m_videoExportTimer->stop();
@@ -467,6 +468,13 @@ QWidget *EditorWindow::createPlaybackBar() {
         if (m_studio.fragments.size() > 1) selectFragment(fragments::indexAt(m_studio.fragments, at));
     });
     connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::restoreCut);
+    // One target at a time: a mark lets go of annotations, a zoom and a fragment.
+    connect(m_timeline, &VideoTimeline::markChanged, this, [this] {
+        if (!m_timeline->hasMark() && !m_timeline->marking()) return;
+        m_scene->clearSelection();
+        if (m_selectedZoom) selectZoom(0);
+        if (m_selectedFragment >= 0) selectFragment(-1);
+    });
     auto itemFor = [this](quintptr key) -> AnnotationItem * {
         for (QGraphicsItem *item : m_scene->items())
             if (quintptr(item) == key) return dynamic_cast<AnnotationItem *>(item);

@@ -298,7 +298,7 @@ void EditorWindow::doRedo() { cancelGestures(); m_undo->redo(); refreshRedactBar
 void EditorWindow::cancelGestures() {
     if (m_crop && m_crop->active()) m_crop->cancel();
     m_ocr->cancel();
-    if (m_timeline && m_timeline->zoomDragging()) m_timeline->cancelInteraction();
+    if (m_timeline && (m_timeline->zoomDragging() || m_timeline->marking())) m_timeline->cancelInteraction();
     if (m_canvas->cameraDragging()) m_canvas->cancelCameraDrag();
     finishCameraGesture(true);
 }

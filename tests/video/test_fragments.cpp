@@ -57,6 +57,41 @@ private slots:
         QCOMPARE(list.size(), 2);
         QVERIFY(!list[1].removed);
     }
+    void cuttingARangeIsOneEditThatMeltsCuts() {
+        const auto f = [](qint64 start, double speed, bool removed) {
+            Fragment x;
+            x.startMs = start;
+            x.speed = speed;
+            x.removed = removed;
+            return x;
+        };
+        using List = QVector<Fragment>;
+        List list;
+        QVERIFY(fragments::cutRange(list, 2000, 4000, 10000));
+        QCOMPARE(list, (List{f(0, 1, false), f(2000, 1, true), f(4000, 1, false)}));
+        list = {f(0, 1, false), f(3000, 1, true), f(3500, 1, false)};   // a cut inside melts in
+        QVERIFY(fragments::cutRange(list, 2000, 5000, 10000));
+        QCOMPARE(list, (List{f(0, 1, false), f(2000, 1, true), f(5000, 1, false)}));
+        list = {f(0, 1, false), f(2000, 1, true), f(4000, 1, false)};   // a cut beside melts on
+        QVERIFY(fragments::cutRange(list, 4000, 6000, 10000));
+        QCOMPARE(list, (List{f(0, 1, false), f(2000, 1, true), f(6000, 1, false)}));
+        list = {f(0, 1, false), f(2000, 2, false)};                     // speeds stay outside the cut
+        QVERIFY(fragments::cutRange(list, 3000, 4000, 10000));
+        QCOMPARE(list, (List{f(0, 1, false), f(2000, 2, false), f(3000, 2, true), f(4000, 2, false)}));
+        list = {};                                                       // 50 ms from the start: snapped
+        QVERIFY(fragments::cutRange(list, 50, 3000, 10000));
+        QCOMPARE(list, (List{f(0, 1, true), f(3000, 1, false)}));
+        list = {f(0, 1, false), f(5000, 1, false)};                     // 50 ms from a seam: snapped
+        QVERIFY(fragments::cutRange(list, 2000, 4950, 10000));
+        QCOMPARE(list[1], f(2000, 1, true));
+        QCOMPARE(list[2].startMs, 5000);
+        list = {};
+        QVERIFY(fragments::cutRange(list, 2000, 2040, 10000));          // a frame is enough
+        list = {};
+        QVERIFY(!fragments::cutRange(list, 0, 10000, 10000));           // nothing kept: refused
+        QVERIFY(list.isEmpty());
+        QVERIFY(!fragments::cutRange(list, 3000, 3000, 10000));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestFragments)

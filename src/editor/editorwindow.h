@@ -194,6 +194,7 @@ private:
     void selectFragment(int index);
     void toggleFragmentCut(int index);   // Delete and the bar's Cut/Restore
     void restoreCut(int index);          // a click on a cut's notch
+    void cutMarkedRange();               // Delete with a range marked on the timeline (C1)
     void refreshMasks();
     void applyTimeWindows(qint64 sourceMs);
     void setTimeScope(AnnotationItem *item, bool fromPlayhead);

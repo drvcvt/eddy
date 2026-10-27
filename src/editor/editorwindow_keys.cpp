@@ -148,6 +148,12 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
         e->accept();
         return;
     }
+    if (isVideo() && m_timeline && (m_timeline->hasMark() || m_timeline->markOpen())
+        && m_scene->selectedItems().isEmpty() && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
+        cutMarkedRange();   // an open mark of no width yet cuts nothing; the key is still taken
+        e->accept();
+        return;
+    }
     if (m_selectedFragment >= 0 && !m_selectedZoom && m_scene->selectedItems().isEmpty()
         && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
         toggleFragmentCut(m_selectedFragment);   // cut, and on a cut piece restore
@@ -182,11 +188,16 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Escape) {
         if (m_canvas->cameraDragging()) { m_canvas->cancelCameraDrag(); e->accept(); return; }
         if (m_timeline && m_timeline->zoomDragging()) { m_timeline->cancelInteraction(); e->accept(); return; }
+        if (m_timeline && m_timeline->marking()) { m_timeline->cancelInteraction(); e->accept(); return; }
+        if (m_timeline && (m_timeline->hasMark() || m_timeline->markOpen())) {
+            m_timeline->clearMark(); e->accept(); return;
+        }
         if (m_selectedZoom) { selectZoom(0); e->accept(); return; }
         if (m_selectedFragment >= 0) { selectFragment(-1); e->accept(); return; }
     }
     switch (e->key()) {
         case Qt::Key_I:
+            if (isVideo() && m_timeline && e->modifiers() == Qt::ShiftModifier) { m_timeline->markFromPlayhead(); break; }
             if (isVideo() && m_timeline) { setTrimStartAtPlayhead(); break; }
             QWidget::keyPressEvent(e);
             break;
@@ -269,6 +280,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
             break;
         case Qt::Key_O:
             if (e->modifiers() & Qt::ControlModifier) { openProjectDialog(); break; }
+            if (isVideo() && m_timeline && e->modifiers() == Qt::ShiftModifier) { m_timeline->markToPlayhead(); break; }
             if (isVideo() && m_timeline) { setTrimEndAtPlayhead(); break; }
             QWidget::keyPressEvent(e);
             break;

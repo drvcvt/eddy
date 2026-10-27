@@ -112,6 +112,9 @@ On videos:
 | `J` / `L` | Step back / forward one frame |
 | `I` / `O` | Set start / end at the playhead |
 | `S` | Split at the playhead |
+| `Shift` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |
+| `Delete` | Cut the marked range, or cut / restore the selected piece |
+| Click on a cut's notch | Restore the cut |
 | `Z` | Add a zoom at the playhead |
 | `Ctrl` + wheel, `Shift` + wheel | Zoom / pan the timeline |
 

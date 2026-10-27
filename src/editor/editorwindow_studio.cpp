@@ -389,6 +389,7 @@ void EditorWindow::updateCamera() {
 
 void EditorWindow::selectZoom(quint32 id) {
     if (zoomlane::indexOf(m_studio.zooms, id) < 0) id = 0;
+    if (id && m_timeline) m_timeline->clearMark();   // one target at a time
     m_selectedZoom = id;
     if (id && m_selectedFragment >= 0) {
         m_selectedFragment = -1;
@@ -418,6 +419,7 @@ void EditorWindow::addZoomAt(qint64 sourceMs) {
 
 void EditorWindow::selectFragment(int index) {
     if (m_studio.fragments.isEmpty() || index >= m_studio.fragments.size()) index = -1;
+    if (index >= 0 && m_timeline) m_timeline->clearMark();
     if (index >= 0 && m_selectedZoom) {
         m_selectedZoom = 0;
         if (m_timeline) m_timeline->setSelectedZoom(0);
@@ -446,6 +448,35 @@ void EditorWindow::toggleFragmentCut(int index) {
 void EditorWindow::restoreCut(int index) {
     if (index >= 0 && index < m_studio.fragments.size() && m_studio.fragments[index].removed)
         toggleFragmentCut(index);
+}
+
+// One undo step: the marked range becomes one cut, melted with cuts beside it. The
+// playhead lands on the first kept frame after it (or the last before, at the end).
+void EditorWindow::cutMarkedRange() {
+    if (!m_timeline || !m_timeline->hasMark()) return;
+    auto [from, to] = m_timeline->markRange();
+    // Ends within kMinFragmentMs of the trim go onto it: no sliver of kept output there.
+    if (from - m_trimInMs < fragments::kMinFragmentMs) from = m_trimInMs;
+    if (m_trimOutMs - to < fragments::kMinFragmentMs) to = m_trimOutMs;
+    QVector<Fragment> list = m_studio.fragments;
+    if (!fragments::cutRange(list, from, to, m_media.video.durationMs)
+        || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
+        m_toast->showMessage(tr("Keep at least part of the clip"));
+        return;
+    }
+    ensureVideoPlayer();
+    if (m_player) m_player->pause();
+    m_resumeAfterSeek = false;
+    m_timeline->clearMark();
+    editStudio([&](StudioDocument &d) { d.fragments = list; });
+    selectFragment(-1);
+    const TimeMap map(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments);
+    qint64 at = qRound64(map.toSource(map.toOutputAfter(to)));
+    if (at >= m_trimOutMs) at = qMax(m_trimInMs, lastFrameMs());
+    m_timeline->setPosition(at);
+    m_timeline->ensureVisible(at);
+    requestVideoSeek(at);
+    flushVideoSeek();
 }
 
 // S splits at the playhead and selects the part after it (studio plan 6.6).

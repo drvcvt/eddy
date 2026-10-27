@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QSignalSpy>
+#include <QScopeGuard>
 #include "timeline/videotimeline.h"
 #include "app/spring.h"
 #include "timeline/audiowaveform.h"
@@ -126,6 +127,102 @@ private slots:
         QTest::mouseMove(&timeline, QPoint(102, 36));
         QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(102, 36));
         QCOMPARE(clicks.count(), 2);   // a hand's tremor is still a click
+    }
+    // C1: a timeline 312 px wide shows 10 s on 300 px of track: x = 6 + t * 0.03.
+    void shiftDragMarksARangeAndThePlayheadFollows() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.show();
+        QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(66, 36));
+        QTest::mouseMove(&timeline, QPoint(126, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(126, 36));
+        QVERIFY(timeline.hasMark());
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{2000, 4000}));
+        QCOMPARE(timeline.position(), 4000);   // the frame where the cut would end
+        QCOMPARE(seeks.last().first().toLongLong(), 4000);
+        QVERIFY(!timeline.interacting());
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(200, 36));
+        QVERIFY(!timeline.hasMark());
+    }
+    void shiftClickMarksFromThePlayhead() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.setMinimumRange(33);
+        timeline.show();
+        timeline.setPosition(1000);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(96, 36));
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{1000, 3000}));
+        QCOMPARE(timeline.position(), 3000);
+        timeline.clearMark();
+        timeline.setPosition(2000);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(66, 36));   // no width
+        QVERIFY(!timeline.hasMark());
+    }
+    void escapeRestoresTheMarkBeforeTheDrag() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.show();
+        timeline.setPosition(500);
+        timeline.setMark(1000, 2000);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(156, 36));
+        QTest::mouseMove(&timeline, QPoint(216, 36));
+        QVERIFY(timeline.marking());
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{1000, 2000}));
+        QCOMPARE(timeline.position(), 500);
+        QVERIFY(!timeline.interacting());
+    }
+    void aMarkStaysInsideTheTrimAndShiftAtAGripStillTrims() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.setTrimRange(3000, 10000);
+        timeline.show();
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(66, 36));
+        QTest::mouseMove(&timeline, QPoint(126, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(126, 36));
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{3000, 4000}));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(93, 36));   // the In grip
+        QVERIFY(timeline.trimming() && !timeline.marking());
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(93, 36));
+    }
+    void anOpenMarkFollowsThePlayhead() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.setPosition(2000);
+        timeline.markFromPlayhead();
+        timeline.setPosition(3000);
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{2000, 3000}));
+        timeline.markToPlayhead();
+        timeline.setPosition(5000);
+        QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{2000, 3000}));
+    }
+    void aMarkLiftsTheStripOneStepAndFadesOnTheFastSpring() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&timeline));
+        const auto lift = [&] {
+            const QImage shot = timeline.grab().toImage();
+            return std::abs(qGray(shot.pixel(96, 36)) - qGray(shot.pixel(216, 36)));
+        };
+        QCOMPARE(lift(), 0);
+        timeline.setMark(2000, 4000);
+        const int marked = lift();
+        QVERIFY2(marked >= 4 && marked <= 40, qPrintable(QString::number(marked)));
+        Spring::setEnabled(true);
+        const auto off = qScopeGuard([] { Spring::setEnabled(false); });
+        timeline.clearMark();
+        QTest::qWait(40);
+        const int fading = lift();
+        QVERIFY2(fading > 0 && fading < marked, qPrintable(QString::number(fading)));
+        QTRY_COMPARE_WITH_TIMEOUT(lift(), 0, 2000);
     }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;

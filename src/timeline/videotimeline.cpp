@@ -20,13 +20,16 @@ namespace eddy {
 VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     setObjectName(QStringLiteral("VideoTimeline"));
     m_height = new Spring(motion::kSlow, [this](qreal height) { setFixedHeight(qRound(height)); }, this);
+    m_markFade = new Spring(motion::kFast, [this](qreal) { update(); }, this);   // a cleared mark goes on `fast`
+    m_markFade->jumpTo(0);
     m_height->jumpTo(kBaseH);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setCursor(Qt::PointingHandCursor);
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setAccessibleName(QStringLiteral("Video timeline"));
-    setToolTip(QStringLiteral("Drag to seek or pull the ends to trim\nFine trim\tShift\nZoom\tCtrl+wheel"));
+    setToolTip(QStringLiteral("Drag to seek or pull the ends to trim\nMark a range to cut\tShift+drag\n"
+                              "Fine trim\tShift on an end\nZoom\tCtrl+wheel"));
     m_edgePan.setInterval(33);
     connect(&m_edgePan, &QTimer::timeout, this, [this] {
         if (!interacting()) return;
@@ -92,6 +95,10 @@ void VideoTimeline::setFragments(const QVector<Fragment> &fragments) {
     const qint64 sourceStart = source(m_viewStart), sourceEnd = source(m_viewEnd);
     m_fragments = fragments;
     rebuildAxis();
+    // Any edit of the pieces ends a mark: it was drawn against the old ones.
+    m_markAnchor = m_markHead = -1;
+    m_markOpen = false;
+    m_markFade->jumpTo(0);
     if (m_selectedFragment >= fragments::expanded(m_fragments).size()) m_selectedFragment = -1;
     m_hoverCut = -1;
     if (fullView) fitClip();
@@ -184,6 +191,9 @@ void VideoTimeline::setDuration(qint64 durationMs) {
     const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
     m_duration = qMax<qint64>(0, durationMs);
     rebuildAxis();
+    m_markAnchor = m_markHead = -1;
+    m_markOpen = false;
+    m_markFade->jumpTo(0);
     m_position = qBound<qint64>(0, m_position, m_duration);
     if (m_out == 0 || m_out > m_duration) m_out = m_duration;
     setTrimRange(m_in, m_out);
@@ -200,6 +210,14 @@ void VideoTimeline::setPosition(qint64 positionMs) {
     if (interacting()) return;
     const qint64 position = qBound<qint64>(0, positionMs, m_duration);
     if (position == m_position) return;
+    if (m_markOpen) {   // an open mark grows with the playhead
+        m_markHead = position;
+        m_position = position;
+        showMark();
+        emit markChanged();
+        update();
+        return;
+    }
     // Only the playhead moves: repaint its old and new column, not the whole
     // timeline, which playback would otherwise redraw with every frame.
     for (const qint64 at : {m_position, position}) {
@@ -485,12 +503,21 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     const qreal inDistance = edited(m_in) < m_viewStart || edited(m_in) > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_in) - kInset / 2));
     const qreal outDistance = edited(m_out) < m_viewStart || edited(m_out) > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_out) + kInset / 2));
     if (qMin(inDistance, outDistance) <= kGripReach)
-        m_drag = inDistance <= outDistance ? Drag::In : Drag::Out;
+        m_drag = inDistance <= outDistance ? Drag::In : Drag::Out;   // Shift there stays fine trim
     else
-        m_drag = Drag::Seek;
+        m_drag = event->modifiers().testFlag(Qt::ShiftModifier) ? Drag::Mark : Drag::Seek;
     m_beforeIn = m_in; m_beforeOut = m_out; m_beforePosition = m_position;
     m_dragX = m_pressX = x;
     m_pressMoved = false;
+    if (m_drag == Drag::Mark) {
+        m_markBefore = {m_markAnchor, m_markHead, m_markOpen};
+        // A Shift-click marks from the mark's anchor, or from the playhead without one.
+        m_markClickAnchor = m_markAnchor >= 0 ? m_markAnchor : m_position;
+        m_markAnchor = m_markHead = snapMark(timeForX(x));
+        m_markOpen = false;
+    } else if (m_drag == Drag::Seek) {
+        clearMark();
+    }
     m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
     m_fine = event->modifiers().testFlag(Qt::ShiftModifier);
     emit interactionStarted(trimming());
@@ -537,7 +564,8 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
             m_hover = hover;
             update();
         }
-        setCursor(hover == Drag::None ? Qt::PointingHandCursor : Qt::SizeHorCursor);
+        setCursor(hover != Drag::None ? Qt::SizeHorCursor
+                  : event->modifiers().testFlag(Qt::ShiftModifier) ? Qt::IBeamCursor : Qt::PointingHandCursor);
         emit hoverRequested(timeForX(x), event->pos());
         return;
     }
@@ -551,6 +579,16 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     if (zoomDragging()) { moveZoomDrag(x); return; }
     if (maskDragging()) { moveMaskDrag(x); return; }
     if (qAbs(x - m_pressX) >= 3) m_pressMoved = true;
+    if (m_drag == Drag::Mark) {
+        if (!m_pressMoved) return;   // a Shift-click is decided on release
+        m_markHead = snapMark(timeForX(x));
+        m_position = m_markHead;   // the playhead rides the moving edge: the frame where the cut ends
+        showMark();
+        emit seekRequested(m_position);
+        emit markChanged();
+        update();
+        return;
+    }
     const bool fine = modifiers.testFlag(Qt::ShiftModifier);
     if (fine != m_fine) {
         m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
@@ -598,6 +636,25 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
         event->accept();
         return;
     }
+    if (m_drag == Drag::Mark) {
+        moveDrag(event->position().x(), event->modifiers());
+        if (!m_pressMoved) {   // Shift-click: from the old anchor or the playhead to here
+            m_markAnchor = m_markClickAnchor;
+            m_markHead = snapMark(timeForX(event->position().x()));
+            m_position = m_markHead;
+            emit seekRequested(m_position);
+        }
+        if (hasMark()) showMark();
+        else { m_markAnchor = m_markHead = -1; m_markFade->jumpTo(0); }   // under a frame: nothing
+        m_drag = Drag::None;
+        m_edgePan.stop();
+        emit markChanged();
+        emit interactionFinished(false);
+        emit hoverLeft();
+        update();
+        event->accept();
+        return;
+    }
     moveDrag(event->position().x(), event->modifiers());
     const bool trimmed = m_drag == Drag::In || m_drag == Drag::Out;
     const bool clicked = m_drag == Drag::Seek && !m_pressMoved;
@@ -609,6 +666,72 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     emit hoverLeft();
     update();
     event->accept();
+}
+
+bool VideoTimeline::hasMark() const {
+    const auto [from, to] = markRange();
+    return to > from;
+}
+
+std::pair<qint64, qint64> VideoTimeline::markRange() const {
+    if (m_markAnchor < 0 || m_markHead < 0) return {0, 0};
+    const qint64 from = qBound(m_in, qMin(m_markAnchor, m_markHead), m_out);
+    const qint64 to = qBound(m_in, qMax(m_markAnchor, m_markHead), m_out);
+    if (to - from < m_minimumRange) return {0, 0};   // under a frame cuts nothing
+    return {from, to};
+}
+
+void VideoTimeline::showMark() {
+    m_markShown = markRange();
+    m_markFade->jumpTo(1);   // a new mark shows at once; only clearing fades
+}
+
+void VideoTimeline::setMark(qint64 anchorMs, qint64 headMs) {
+    m_markAnchor = qBound<qint64>(0, anchorMs, m_duration);
+    m_markHead = qBound<qint64>(0, headMs, m_duration);
+    m_markOpen = false;
+    showMark();
+    emit markChanged();
+    update();
+}
+
+void VideoTimeline::markFromPlayhead() {
+    m_markAnchor = m_markHead = m_position;
+    m_markOpen = true;
+    showMark();
+    emit markChanged();
+    update();
+}
+
+void VideoTimeline::markToPlayhead() {
+    if (m_markAnchor < 0) return;
+    m_markHead = m_position;
+    m_markOpen = false;
+    showMark();
+    emit markChanged();
+    update();
+}
+
+void VideoTimeline::clearMark() {
+    if (m_markAnchor < 0 && !m_markOpen) return;
+    m_markShown = markRange();
+    m_markAnchor = m_markHead = -1;
+    m_markOpen = false;
+    if (isVisible()) m_markFade->setTarget(0); else m_markFade->jumpTo(0);
+    emit markChanged();
+    update();
+}
+
+// Ends snap to the trim, the clip's ends and the playhead from before the press within
+// 6 px, and to seams within at least kMinFragmentMs, so no sliver is left beside one.
+qint64 VideoTimeline::snapMark(qint64 timeMs) const {
+    const qreal msPerPx = qreal(m_viewEnd - m_viewStart) / qMax<qreal>(1, trackRect().width());
+    const qint64 reach = qRound64(6 * msPerPx);
+    QVector<qint64> seams;
+    for (const Fragment &f : fragments::expanded(m_fragments)) if (f.startMs > 0) seams.append(f.startMs);
+    const qint64 onSeam = zoomlane::snap(timeMs, seams, qMax(reach, fragments::kMinFragmentMs));
+    if (onSeam != timeMs) return onSeam;
+    return zoomlane::snap(timeMs, {m_in, m_out, 0, m_duration, m_beforePosition}, reach);
 }
 
 void VideoTimeline::leaveEvent(QEvent *event) {
@@ -637,6 +760,13 @@ void VideoTimeline::cancelInteraction() {
         emit zoomsPreviewed(m_zooms);
         update();
         return;
+    }
+    if (marking()) {   // Esc mid-drag: the mark and playhead from before the press
+        m_markAnchor = m_markBefore.anchor;
+        m_markHead = m_markBefore.head;
+        m_markOpen = m_markBefore.open;
+        if (hasMark()) showMark(); else m_markFade->jumpTo(0);
+        emit markChanged();
     }
     m_drag = Drag::None;
     m_edgePan.stop();

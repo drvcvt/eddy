@@ -22,6 +22,10 @@ bool split(QVector<Fragment> &list, qint64 sourceMs, qint64 durationMs);
 void setSpeed(QVector<Fragment> &list, int index, double speed);
 // Cutting the last kept fragment is refused: the output never goes empty.
 bool setRemoved(QVector<Fragment> &list, int index, bool removed);
+// Cuts [fromMs, toMs) in one go (C1): ends within kMinFragmentMs of a seam or the clip's
+// ends move onto it, everything between is cut and melts with cut neighbours into one
+// fragment. False when nothing would be cut or nothing kept would remain.
+bool cutRange(QVector<Fragment> &list, qint64 fromMs, qint64 toMs, qint64 durationMs);
 // Merges kept fragment `index` into the kept one before it, which keeps its
 // speed. Restoring a cut merges it with equal neighbours on its own.
 bool join(QVector<Fragment> &list, int index);

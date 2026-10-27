@@ -13,6 +13,7 @@
 #include <QContextMenuEvent>
 #include "popovers/exportpanel.h"
 #include "editor/editorwindow.h"
+#include "chrome/toast.h"
 #include "app/theme.h"
 #include "output/exportsettings.h"
 #include "timeline/fragmentbar.h"
@@ -290,6 +291,48 @@ private slots:
         QVERIFY(w.studioDocument().fragments.isEmpty());
         QCOMPARE(undo->count(), steps + 2);
         QVERIFY(!bar->isVisible());
+    }
+    void markingARangeAndDeleteCutsItInOneStep() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        w.show();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *undo = w.findChild<QUndoStack *>();
+        auto *bar = w.findChild<FragmentBar *>();
+        const auto f = [](qint64 start, bool removed) { Fragment x; x.startMs = start; x.removed = removed; return x; };
+        const int steps = undo->count();
+        timeline->setMark(1000, 2000);
+        QTest::keyClick(&w, Qt::Key_Delete);
+        QCOMPARE(w.studioDocument().fragments, (QVector<Fragment>{f(0, false), f(1000, true), f(2000, false)}));
+        QCOMPARE(w.findChild<QLabel *>(QStringLiteral("TrimDuration"))->text(), QStringLiteral("0:03.000"));
+        QCOMPARE(undo->count(), steps + 1);
+        QVERIFY(!timeline->hasMark());
+        QCOMPARE(timeline->position(), 2000);   // the first kept frame after the cut
+        QVERIFY(!bar->isVisible());
+        undo->undo();
+        QVERIFY(w.studioDocument().fragments.isEmpty());
+        // From the keyboard: Shift+I, the playhead moves on, Delete.
+        timeline->setPosition(1000);
+        QTest::keyClick(&w, Qt::Key_I, Qt::ShiftModifier);
+        timeline->setPosition(2500);
+        QTest::keyClick(&w, Qt::Key_Delete);
+        QCOMPARE(w.studioDocument().fragments.size(), 3);
+        QCOMPARE(w.studioDocument().fragments[1], f(1000, true));
+        QCOMPARE(w.studioDocument().fragments[2].startMs, 2500);
+        QCOMPARE(timeline->trimIn(), 0);   // Shift+I marks, it does not trim
+        // Esc lets go of a mark before anything else.
+        timeline->setMark(500, 900);
+        QTest::keyClick(&w, Qt::Key_Escape);
+        QVERIFY(!timeline->hasMark());
+        QVERIFY(w.isVisible());
+        // A cut that would keep nothing is refused, the mark stays.
+        const int before = undo->count();
+        timeline->setMark(0, 4000);
+        QTest::keyClick(&w, Qt::Key_Delete);
+        QCOMPARE(w.findChild<Toast *>()->text(), QStringLiteral("Keep at least part of the clip"));
+        QCOMPARE(undo->count(), before);
+        QVERIFY(timeline->hasMark());
     }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;

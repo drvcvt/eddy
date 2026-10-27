@@ -2,6 +2,7 @@
 #include "timeline/audiowaveform.h"
 #include "app/theme.h"
 #include "timeline/zoomlane.h"
+#include "app/spring.h"
 #include "chrome/motionicon.h"
 #include "video/fragments.h"
 #include <QFontDatabase>
@@ -132,8 +133,30 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             if (piece.outStart > 0) painter.fillRect(QRectF(x0 - 1, track.top(), 2, track.height()), background);
         }
     }
+    // The marked range (C1): one step lighter on the strip and the waveform, no line.
+    const qreal markOpacity = m_markFade->value();
+    QRectF markColumns;
+    if (markOpacity > 0.001 && m_markShown.second > m_markShown.first) {
+        const qreal x0 = qMax(track.left(), xForTime(m_markShown.first));
+        const qreal x1 = qMin(track.right(), xForTime(m_markShown.second));
+        markColumns = QRectF(x0, 0, qMax<qreal>(0, x1 - x0), height());
+        QColor lift = foreground;
+        lift.setAlphaF(kMarkLift * markOpacity);
+        painter.fillRect(QRectF(x0, track.top(), markColumns.width(), track.height()), lift);
+    }
     painter.restore();
     if (waveformShown()) paintWaveform(painter, inX, outX, ink);
+    if (!markColumns.isEmpty() && waveformShown()) {
+        QColor lift = foreground;
+        lift.setAlphaF(kMarkLift * markOpacity);
+        const QRectF lane = waveformRect();
+        QPainterPath laneShape;
+        laneShape.addRoundedRect(lane, 6, 6);
+        painter.save();
+        painter.setClipPath(laneShape);
+        painter.fillRect(QRectF(markColumns.left(), lane.top(), markColumns.width(), lane.height()), lift);
+        painter.restore();
+    }
 
     if (m_laneVisible) {
         const QRectF lane = zoomLaneRect();
@@ -283,11 +306,31 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.drawRoundedRect(QRectF(playX - 4, track.top() - 6, 8, 6), 2, 2);
     }
 
+    // Hints in the ruler (a hovered cut, the mark's length) are placed first: a tick
+    // label under one is left out rather than shown cut in half.
+    QFont ruler = font(); ruler.setPixelSize(theme::kFsCaption);
+    const QFontMetricsF rulerMetrics(ruler);
+    const QVector<Fragment> parts = fragments::expanded(m_fragments);
+    QString cutHint, markHint;
+    QRectF cutBox, markBox;
+    if (m_hoverCut >= 0 && m_hoverCut < parts.size() && parts[m_hoverCut].removed) {
+        const qreal x = xForTime(parts[m_hoverCut].startMs);
+        const double ms = double(fragments::endOf(m_fragments, m_hoverCut, m_duration) - parts[m_hoverCut].startMs);
+        cutHint = tr("Cut %1\u00a0s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
+        const qreal w = rulerMetrics.horizontalAdvance(cutHint) + 8;
+        cutBox = QRectF(qBound(0.0, x + 6, width() - w), 0, w, kRulerH);
+    } else if (!markColumns.isEmpty()) {
+        const double seconds = (edited(m_markShown.second) - edited(m_markShown.first)) / 1000.0;
+        markHint = tr("%1\u00a0s, Delete cuts").arg(seconds, 0, 'f', 1);
+        const qreal w = rulerMetrics.horizontalAdvance(markHint) + 8;
+        markBox = QRectF(qBound(0.0, markColumns.center().x() - w / 2, width() - w), 0, w, kRulerH);
+    }
+    const QRectF hintBox = (cutBox.isEmpty() ? markBox : cutBox).adjusted(-theme::kS1, 0, theme::kS1, 0);
+
     // Time labels only: each needs its own width plus kS3 of air, and none is cut
     // at the widget's edge. The grips mark the kept range; the fields below name it.
     painter.setPen(ink(0.6));
-    QFont ruler = font(); ruler.setPixelSize(theme::kFsCaption); painter.setFont(ruler);
-    const QFontMetricsF rulerMetrics(ruler);
+    painter.setFont(ruler);
     const auto ticks = rulerTicks();
     const qint64 step = ticks.size() > 1 ? ticks[1].second - ticks[0].second : 1000;
     qreal lastRight = -1e9;
@@ -298,11 +341,11 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         const qreal w = rulerMetrics.horizontalAdvance(label);
         const QRectF tickLabel(x - w / 2, 0, w, kRulerH);
         if (tickLabel.left() < 0 || tickLabel.right() > width() || tickLabel.left() < lastRight + theme::kS3) continue;
+        if (!hintBox.isEmpty() && tickLabel.intersects(hintBox)) continue;
         painter.drawText(tickLabel, Qt::AlignCenter, label);
         lastRight = tickLabel.right();
     }
     // A cut is a notch in the ruler over its seam (E3); hover names it.
-    const QVector<Fragment> parts = fragments::expanded(m_fragments);
     for (int i = 0; i < parts.size(); ++i) {
         if (!parts[i].removed) continue;
         const qreal x = xForTime(parts[i].startMs);
@@ -315,18 +358,19 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         notch.closeSubpath();
         painter.setPen(Qt::NoPen);
         painter.fillPath(notch, ink(lit ? 0.95 : 0.6));
-        if (i == m_hoverCut) {
-            const double ms = double(fragments::endOf(m_fragments, i, m_duration) - parts[i].startMs);
-            const QString text = tr("Cut %1\u00a0s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
-            QFont hint = font();
-            hint.setPixelSize(theme::kFsCaption);
-            painter.setFont(hint);
-            const qreal w = QFontMetricsF(hint).horizontalAdvance(text) + 8;
-            const QRectF box(qBound(0.0, x + 6, width() - w), 0, w, kRulerH);
-            painter.fillRect(box, background);
-            painter.setPen(ink(0.9));
-            painter.drawText(box, Qt::AlignCenter, text);
-        }
+    }
+    if (!cutHint.isEmpty()) {
+        painter.fillRect(cutBox, background);
+        painter.setPen(ink(0.9));
+        painter.drawText(cutBox, Qt::AlignCenter, cutHint);
+    }
+    // The mark's length in the output, over it in the ruler: what Delete takes out.
+    if (!markHint.isEmpty()) {
+        painter.setOpacity(markOpacity);
+        painter.fillRect(markBox, background);
+        painter.setPen(ink(0.9));
+        painter.drawText(markBox, Qt::AlignCenter, markHint);
+        painter.setOpacity(1);
     }
 }
 

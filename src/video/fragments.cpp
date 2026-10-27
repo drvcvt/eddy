@@ -62,6 +62,40 @@ bool setRemoved(QVector<Fragment> &list, int index, bool removed) {
     return true;
 }
 
+bool cutRange(QVector<Fragment> &list, qint64 fromMs, qint64 toMs, qint64 durationMs) {
+    QVector<Fragment> parts = expanded(list);
+    qint64 from = std::clamp<qint64>(std::min(fromMs, toMs), 0, durationMs);
+    qint64 to = std::clamp<qint64>(std::max(fromMs, toMs), 0, durationMs);
+    // No sliver under kMinFragmentMs is left next to a seam or an end: what shows is what goes.
+    QVector<qint64> seams{0, durationMs};
+    for (const Fragment &f : std::as_const(parts)) seams.append(f.startMs);
+    const auto snap = [&](qint64 t) {
+        for (const qint64 s : std::as_const(seams))
+            if (std::abs(t - s) < kMinFragmentMs) return s;
+        return t;
+    };
+    from = snap(from);
+    to = snap(to);
+    if (to <= from) return false;
+    // Boundaries copy the piece they fall in (split() refuses short pieces on purpose).
+    for (const qint64 at : {from, to}) {
+        if (at >= durationMs) continue;
+        const int i = indexAt(parts, at);
+        if (parts[i].startMs == at) continue;
+        Fragment next = parts[i];
+        next.startMs = at;
+        parts.insert(i + 1, next);
+    }
+    for (Fragment &f : parts)
+        if (f.startMs >= from && f.startMs < to) f.removed = true;
+    QVector<Fragment> melted;
+    for (const Fragment &f : std::as_const(parts))
+        if (melted.isEmpty() || !(melted.last().removed && f.removed)) melted.append(f);
+    if (std::none_of(melted.cbegin(), melted.cend(), [](const Fragment &f) { return !f.removed; })) return false;
+    list = simplified(melted);
+    return true;
+}
+
 bool join(QVector<Fragment> &list, int index) {
     QVector<Fragment> parts = expanded(list);
     // Only two kept fragments join; joining into a cut would cut what was kept.
