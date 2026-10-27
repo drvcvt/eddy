@@ -145,6 +145,46 @@ private slots:
         QCOMPARE(HoverFills::checkedLevel(button), 1.0);
         Spring::setEnabled(true);
     }
+    void primaryFillsEaseOneStepOnHover() {
+        // Save, the toast's action, Resume and Crop's Apply ignored the pointer, or
+        // (Apply) jumped to an inverted white fill.
+        Spring::setEnabled(true);
+        HoverFills::install();
+        // As in the app: the stylesheet leaves their fill to HoverFills.
+        const bool dark = true;
+        qApp->setPalette(theme::palette(dark));
+        qApp->setStyleSheet(theme::styleSheet(dark));
+        const auto plain = qScopeGuard([] { qApp->setStyleSheet({}); });
+        for (const char *name : {"ExportSave", "CropApply"}) {
+            QWidget window;
+            window.setObjectName(QLatin1String(name) == QLatin1String("CropApply") ? QStringLiteral("CropBar")
+                                                                                  : QStringLiteral("ExportPanel"));
+            auto *button = new QToolButton(&window);
+            button->setObjectName(QString::fromLatin1(name));
+            button->setFixedSize(80, 26);
+            window.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&window));
+            const auto shown = [button] {
+                QImage image(button->size(), QImage::Format_ARGB32_Premultiplied);
+                image.fill(Qt::transparent);
+                button->render(&image);
+                return image.pixelColor(40, 13);
+            };
+            const QColor rest = shown();
+            QCOMPARE(rest.alpha(), 255);   // the fill is there at rest
+            QEvent enter(QEvent::Enter);
+            QApplication::sendEvent(button, &enter);
+            QTest::qWait(30);
+            const qreal midway = HoverFills::level(button);
+            QVERIFY2(midway > 0 && midway < 1, qPrintable(QString::number(midway)));
+            QTRY_COMPARE_WITH_TIMEOUT(HoverFills::level(button), 1.0, 2000);
+            const QColor hover = shown();
+            const int step = std::abs(hover.lightness() - rest.lightness());
+            QVERIFY2(step >= 8 && step <= 60, qPrintable(QStringLiteral("%1: %2 -> %3").arg(name, rest.name(), hover.name())));
+            if (QLatin1String(name) == QLatin1String("CropApply"))
+                QVERIFY(hover != theme::tone(theme::Tone::Fg, dark) || rest == theme::tone(theme::Tone::Fg, dark));
+        }
+    }
 };
 
 QTEST_MAIN(TestMotion)

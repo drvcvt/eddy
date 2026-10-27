@@ -114,8 +114,8 @@ QWidget#RedactBar QToolButton:checked, QWidget#TextBar QToolButton:checked, QWid
 QWidget#StepBar QToolButton:checked, QWidget#ZoomBar QToolButton#ZoomTarget:checked { background-color: @raise3; color: @fg; }
 QWidget#ZoomBar QToolButton#ZoomTarget:disabled { color: @faint; }
 QWidget#ZoomBar QToolButton#ZoomScale, QWidget#FragmentBar QToolButton#FragmentSpeed { font-family: @font-mono; font-weight: 400; }
-QWidget#CropBar QToolButton#CropApply { background: @chip-on; color: @chip-on-fg; }
-QWidget#CropBar QToolButton#CropApply:hover { background: @fg; color: @bg; }
+/* Primary actions: HoverFills (app/fills.cpp) paints their fill and eases its hover. */
+QWidget#CropBar QToolButton#CropApply, QWidget#CropBar QToolButton#CropApply:hover { background: transparent; color: @chip-on-fg; }
 QWidget#CropBar QLabel { color: @sub; font-family: @font-mono; font-size: @fs-caption; padding: 0 @s2; }
 QLineEdit#StepNumber {
     background-color: @raise2;
@@ -206,7 +206,7 @@ QLabel#ToastText {
     font-size: @fs-ui;
 }
 QToolButton#ToastAction {
-    background: @fg; color: @bg; border: none; border-radius: @r-chip;
+    background: transparent; color: @bg; border: none; border-radius: @r-chip;
     padding: 0 @s3; font-size: @fs-ui; font-weight: 600;
 }
 
@@ -276,9 +276,9 @@ QWidget#ColorPopover QToolButton {
 QWidget#ColorPopover QToolButton#Custom,
 QWidget#ColorPopover QToolButton#Pipette {
     color: @fg;
-    background-color: @raise2;
+    background-color: transparent;   /* raise2, painted by HoverFills with its hover */
 }
-QWidget#ColorPopover QToolButton#Custom:hover, QWidget#ColorPopover QToolButton#Pipette:hover { background-color: @raise3; }
+
 QWidget#ColorPopover QToolButton:checked { background-color: @raise3; }
 
 QWidget#StudioPopover {
@@ -311,7 +311,7 @@ QDialog#ResumeDialog QListWidget::item:selected { background: @raise3; color: @f
 QDialog#ResumeDialog QLabel#ResumeEmpty { color: @sub; font-size: @fs-ui; }
 QDialog#ResumeDialog QToolButton { color: @sub; border: none; border-radius: @r-chip; padding: 0 @s3; font-size: @fs-ui; font-weight: 500; }
 QDialog#ResumeDialog QToolButton:hover { color: @fg; }
-QDialog#ResumeDialog QToolButton#ResumeOpen { background: @fg; color: @bg; font-weight: 600; }
+QDialog#ResumeDialog QToolButton#ResumeOpen { background: transparent; color: @bg; font-weight: 600; }
 /* Export popover at Save: segmented rows, the choice a step brighter. */
 QWidget#ExportPanel { background-color: @raise1; border: none; border-radius: @r-pop; }
 QWidget#ExportPanel QLabel#ExportSection { color: @sub; font-size: @fs-caption; font-weight: 600; }
@@ -332,7 +332,7 @@ QWidget#ExportPanel QToolButton#ProjectResume {
 QWidget#ExportPanel QToolButton#ProjectSave:hover, QWidget#ExportPanel QToolButton#ProjectOpen:hover,
 QWidget#ExportPanel QToolButton#ProjectResume:hover { color: @fg; }
 QWidget#ExportPanel QToolButton#ExportSave {
-    background: @fg; color: @bg; border: none; border-radius: @r-chip;
+    background: transparent; color: @bg; border: none; border-radius: @r-chip;
     padding: 0 @s3; font-size: @fs-ui; font-weight: 600;
 }
 

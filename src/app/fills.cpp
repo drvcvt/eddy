@@ -13,6 +13,7 @@
 #include <QToolButton>
 #include <QWidget>
 #include <functional>
+#include <optional>
 
 namespace eddy {
 
@@ -41,11 +42,33 @@ void easeToggle(QToolButton *button) {
 }
 
 namespace {
-// Buttons drawn on their own fill: the primary actions and swatches.
+// Buttons with a fill at rest (the primary actions, the colour popover's two wide
+// buttons): HoverFills paints that fill and eases it a step on hover, so the
+// stylesheet leaves it off. The rest colour by name.
+std::optional<QColor> restingFill(const QToolButton *button) {
+    const QString name = button->objectName();
+    if (name == QLatin1String("ExportSave") || name == QLatin1String("ToastAction")
+        || name == QLatin1String("ResumeOpen"))
+        return theme::tone(theme::Tone::Fg, dark());
+    if (name == QLatin1String("CropApply"))   // @chip-on
+        return theme::tone(dark() ? theme::Tone::Raise3 : theme::Tone::Fg, dark());
+    if (name == QLatin1String("Custom") || name == QLatin1String("Pipette"))
+        return theme::tone(theme::Tone::Raise2, dark());
+    return std::nullopt;
+}
+
+// A segment of the export rows: its glide owns the fill.
 bool ownsItsBackground(const QToolButton *button) {
-    static const QStringList names{"Custom", "Pipette", "ToastAction", "ExportSave", "ResumeOpen",
-                                   "CropApply", "ExportSegment"};
-    return names.contains(button->objectName());
+    return button->objectName() == QLatin1String("ExportSegment");
+}
+
+// One step from rest: a light fill darkens, a dark one lightens, in either theme.
+QColor hovered(const QColor &rest) {
+    const QColor towards = rest.lightness() > 128 ? QColor(Qt::black) : QColor(Qt::white);
+    constexpr qreal kStep = 0.12;
+    return QColor::fromRgbF(rest.redF() + (towards.redF() - rest.redF()) * kStep,
+                            rest.greenF() + (towards.greenF() - rest.greenF()) * kStep,
+                            rest.blueF() + (towards.blueF() - rest.blueF()) * kStep);
 }
 
 // Icon buttons in the top bar and tool rail take the squircle mark their selection uses.
@@ -145,6 +168,18 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
         if (Spring *spring = m_checkSprings.value(button)) spring->jumpTo(button->isChecked() ? 1 : 0);
         break;
     case QEvent::Paint: {
+        if (const std::optional<QColor> rest = restingFill(button)) {
+            const qreal level = button->isEnabled() ? qBound<qreal>(0, m_levels.value(button), 1) : 0;
+            if (level > 0.001 && !button->underMouse()) aim(button, false);
+            const QColor top = hovered(*rest);
+            QPainter painter(button);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.fillPath(chip(QRectF(button->rect())),
+                             QColor::fromRgbF(rest->redF() + (top.redF() - rest->redF()) * level,
+                                              rest->greenF() + (top.greenF() - rest->greenF()) * level,
+                                              rest->blueF() + (top.blueF() - rest->blueF()) * level));
+            break;
+        }
         const bool toggle = button->property("easedToggle").toBool();
         qreal checked = 0;
         if (toggle) {
