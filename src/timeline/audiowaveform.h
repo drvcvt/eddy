@@ -30,6 +30,8 @@ public:
     ~AudioWaveformProvider() override;
 
     State state() const { return m_state; }
+    // Read to the end and never above -60 dB, where the lane's scale starts: nothing to draw.
+    bool silent() const { return m_state == State::Ready && m_peak <= 0.001f; }
     qint64 binMs() const { return m_binMs; }
     // Over [fromMs, toMs) in source time, from the coarsest level that still
     // has at least two bins in the range.
@@ -60,6 +62,7 @@ private:
     qint64 m_frames = 0;            // samples per channel read so far
     qint64 m_known = 0;             // base bins complete
     qint64 m_levelsKnown = 0;       // base bins the coarser levels cover
+    float m_peak = 0;               // the loudest bin, once read to the end
     QByteArray m_pending;           // a partial frame between reads
     QVector<QVector<Bin>> m_levels; // [0] the base bins, each next one 16 times coarser
 };

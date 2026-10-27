@@ -403,6 +403,25 @@ private slots:
         QCOMPARE(timeline.zoomLaneRect().top(), zoomTop);
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kLaneStep);
     }
+    void aSilentTrackFoldsItsLaneAway() {
+        // Screen recordings often carry a track of pure silence: nothing to show, no lane.
+        if (QStandardPaths::findExecutable(QStringLiteral("ffmpeg")).isEmpty()) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("silent.mkv"));
+        QProcess make;
+        make.start(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i", "color=c=black:s=64x48:d=2:r=25",
+            "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=2", "-c:a", "pcm_s16le", "-shortest", file});
+        QVERIFY(make.waitForFinished(30000) && make.exitCode() == 0);
+        VideoTimeline timeline;
+        timeline.setDuration(2000);
+        AudioWaveformProvider waveform(file, 2000, 0);
+        timeline.setWaveform(&waveform);
+        QVERIFY(timeline.waveformShown());   // while it is read, the lane stays
+        QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
+        QVERIFY(waveform.silent());
+        QVERIFY(!timeline.waveformShown());
+        QCOMPARE(timeline.height(), VideoTimeline::kBaseH);
+    }
     void quietSoundStillShowsInTheWaveform() {
         // Screen recordings sit far below full scale; on a linear scale a tone
         // at -40 dB was a flat line.

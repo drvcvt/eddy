@@ -82,7 +82,8 @@ public:
     // view setting from the context menu, not an edit.
     void setWaveform(AudioWaveformProvider *waveform);
     void setWaveformVisible(bool visible);
-    bool waveformShown() const { return m_waveform && m_waveformVisible; }
+    // A silent track, once read to the end, folds its lane away.
+    bool waveformShown() const;
     QRectF waveformRect() const;
 
     // Zoom lane (studio plan 6.1, Q1 = C): a 28 px row under the film strip on

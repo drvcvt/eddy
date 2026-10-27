@@ -144,6 +144,7 @@ void AudioWaveformProvider::finish(bool ok) {
     stopProcess();
     if (ok) m_known = m_levels[0].size();   // after the sound ends there is silence
     m_state = ok ? State::Ready : State::Failed;
+    for (const Bin &bin : std::as_const(m_levels[0])) m_peak = std::max(m_peak, bin.peak);   // before changed()
     publish();
 }
 

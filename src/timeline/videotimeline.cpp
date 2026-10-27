@@ -231,6 +231,7 @@ void VideoTimeline::setWaveform(AudioWaveformProvider *waveform) {
     // The provider is the timeline's child and goes with it; the QPointer is all it needs.
     if (waveform) connect(waveform, &AudioWaveformProvider::changed, this, [this] {
         ++m_waveRevision;
+        if (m_waveform->state() != AudioWaveformProvider::State::Loading) updateHeight();
         update();
     });
     updateHeight();
@@ -243,6 +244,10 @@ void VideoTimeline::setWaveformVisible(bool visible) {
     m_waveformVisible = visible;
     updateHeight();
     update();
+}
+
+bool VideoTimeline::waveformShown() const {
+    return m_waveform && m_waveformVisible && !m_waveform->silent();
 }
 
 QRectF VideoTimeline::waveformRect() const {
