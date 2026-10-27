@@ -179,6 +179,7 @@ DeliverResult runRenderPipeline(const RenderPipeline &job) {
 
     qint64 index = 0;
     bool aborted = false;
+    bool encoderGone = false;   // it closed its queue: nothing more will be written
     while (!aborted) {
         if ((aborted = interrupted())) break;
         std::optional<QImage> source = decoded.pop(kPollMs);
@@ -189,18 +190,20 @@ DeliverResult runRenderPipeline(const RenderPipeline &job) {
         FrameQueue::Push pushed;
         while ((pushed = rendered.push(output, kPollMs)) == FrameQueue::Push::Full)
             if ((aborted = interrupted())) break;
-        if (pushed == FrameQueue::Push::Closed) break;
+        if (pushed == FrameQueue::Push::Closed) { encoderGone = true; break; }
     }
     rendered.finish();
     while (!aborted && !encoderDone) {
         if ((aborted = interrupted())) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
-    if (aborted) {
+    // Cancelled, or the encoder ended early: the decoder must stop too, or it waits on a
+    // full queue nobody drains and the export never returns.
+    if (aborted || encoderGone) {
         stop = true;
         decoded.close();
-        rendered.close();
     }
+    if (aborted) rendered.close();
     decoder.join();
     encoder.join();
     if (aborted) return result;

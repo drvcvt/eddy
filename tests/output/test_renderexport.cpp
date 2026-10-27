@@ -1,4 +1,7 @@
 #include <QtTest>
+#include <atomic>
+#include <memory>
+#include <thread>
 #include <QElapsedTimer>
 #include <QImage>
 #include <QProcess>
@@ -99,6 +102,24 @@ private slots:
         QVERIFY(!result.ok);
         QVERIFY2(result.error.contains(QStringLiteral("progress")), qPrintable(result.error));
         QVERIFY2(timer.elapsed() < 3000, qPrintable(QString::number(timer.elapsed())));
+    }
+
+    void anEncoderThatQuitsEarlyEndsTheExport() {
+        // A hardware encoder that rejects the real size, a full disk, or -shortest on a short
+        // sound track: the encoder ends while the decoder could go on for minutes.
+        QTemporaryDir dir;
+        auto job = std::make_shared<RenderPipeline>(pipeline(dir.filePath(QStringLiteral("out.mp4"))));
+        job->decodeArgs.replace(job->decodeArgs.indexOf(QStringLiteral("testsrc=s=160x120:d=1:r=30")),
+                                QStringLiteral("testsrc=s=160x120:d=600:r=30"));
+        job->encodeArgs = {"-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "bgra",
+                           "-s", "80x60", "-r", "60", "-i", "-", "-frames:v", "3", "-f", "null", "-"};
+        job->expectedFrames = 36000;
+        auto done = std::make_shared<std::atomic_bool>(false);
+        auto result = std::make_shared<DeliverResult>();
+        // Detached: if the export hangs, the test fails instead of hanging with it.
+        std::thread([job, done, result] { *result = runRenderPipeline(*job); *done = true; }).detach();
+        QTRY_VERIFY_WITH_TIMEOUT(done->load(), 15000);
+        QVERIFY(!result->ok);
     }
 
     void ffmpegErrorsReachTheCaller() {
