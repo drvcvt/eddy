@@ -39,7 +39,7 @@ void VideoTimeline::paintWaveform(QPainter &painter, qreal inX, qreal outX, cons
             QFont label = font();
             label.setPixelSize(theme::kFsCaption);
             p.setFont(label);
-            p.setPen(ink(0.45));
+            p.setPen(palette().color(QPalette::PlaceholderText));   // sub: 6:1 where 0.45 gave 3.4:1
             p.drawText(lane, Qt::AlignCenter, tr("Waveform unavailable"));
         } else {
             const qreal middle = lane.center().y(), reach = lane.height() / 2 - 2;
@@ -225,7 +225,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         }
         if (m_zooms.isEmpty()) {
             painter.setFont(label);
-            painter.setPen(ink(0.45));
+            painter.setPen(palette().color(QPalette::PlaceholderText));   // sub: 6:1 where 0.45 gave 3.4:1
             painter.drawText(lane, Qt::AlignCenter, tr("Click or press Z to add a zoom"));
         }
         painter.restore();

@@ -344,7 +344,8 @@ void EditorWindow::rebuildCamera() {
     }
     m_timeline->setFragments(m_studio.fragments);
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
-    m_timeline->setZoomLaneVisible(m_studio.style.active() || !m_studio.zooms.isEmpty());
+    // A recording with its pointer is made for zooms: the lane shows from the start (C5).
+    m_timeline->setZoomLaneVisible(m_studio.style.active() || !m_studio.zooms.isEmpty() || m_cursorTrack);
     m_timeline->setZooms(m_studio.zooms, [this](qint64 source) {
         const auto out = m_timeMap.toOutput(double(source));
         return out ? m_cameraPath.zoomAt(*out) : 1.0;
@@ -410,7 +411,17 @@ void EditorWindow::addZoomAt(qint64 sourceMs) {
     z.id = zoomlane::nextId(m_studio.zooms);
     z.startMs = span->first;
     z.endMs = span->second;
-    z.point = m_lastZoomPoint.isNull() ? QRectF(cameraBase()).center() : m_lastZoomPoint;
+    // Where the pointer was (C5): at the asked time, else its first visible sample in the
+    // zoom's span; without a recorded pointer the last point used, else the middle.
+    std::optional<QPointF> pointer;
+    if (m_cursorTrack) {
+        pointer = m_cursorTrack->positionAt(sourceMs);
+        for (const CursorSample &s : m_cursorTrack->samples) {
+            if (pointer) break;
+            if (s.visible && s.ms >= span->first && s.ms < span->second) pointer = s.pos;
+        }
+    }
+    z.point = pointer ? *pointer : m_lastZoomPoint.isNull() ? QRectF(cameraBase()).center() : m_lastZoomPoint;
     z.motion = m_studio.motion;
     if (m_player) m_player->pause();
     editStudio([&](StudioDocument &d) { zoomlane::insert(d.zooms, z); });

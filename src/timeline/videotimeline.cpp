@@ -481,7 +481,11 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
         Drag part = Drag::None;
         const quint32 id = zoomAt(event->position(), &part);
         if (!id) {
-            emit zoomAddRequested(timeForX(event->position().x()));
+            // A zoom comes on release without movement: a press that drags adds nothing (C5).
+            m_drag = Drag::ZoomAdd;
+            m_pressX = event->position().x();
+            m_pressMoved = false;
+            m_zoomAddAt = timeForX(m_pressX);
             event->accept();
             return;
         }
@@ -579,6 +583,7 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     if (zoomDragging()) { moveZoomDrag(x); return; }
     if (maskDragging()) { moveMaskDrag(x); return; }
     if (qAbs(x - m_pressX) >= 3) m_pressMoved = true;
+    if (m_drag == Drag::ZoomAdd) return;
     if (m_drag == Drag::Mark) {
         if (!m_pressMoved) return;   // a Shift-click is decided on release
         m_markHead = snapMark(timeForX(x));
@@ -633,6 +638,13 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
         m_edgePan.stop();
         if (m_zooms != m_zoomsBefore) emit zoomsEdited(m_zoomsBefore, m_zooms);
         update();
+        event->accept();
+        return;
+    }
+    if (m_drag == Drag::ZoomAdd) {
+        moveDrag(event->position().x(), event->modifiers());
+        m_drag = Drag::None;
+        if (!m_pressMoved && inZoomLane(event->position())) emit zoomAddRequested(m_zoomAddAt);
         event->accept();
         return;
     }
@@ -745,6 +757,7 @@ void VideoTimeline::leaveEvent(QEvent *event) {
 
 void VideoTimeline::cancelInteraction() {
     if (!interacting()) return;
+    if (m_drag == Drag::ZoomAdd) { m_drag = Drag::None; return; }   // nothing began yet
     if (maskDragging()) {
         m_drag = Drag::None;
         m_edgePan.stop();

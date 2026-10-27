@@ -301,6 +301,34 @@ private slots:
         QVERIFY(probe.waitForFinished(10000));
         QCOMPARE(probe.readAllStandardOutput().trimmed(), QByteArray("gif,320,180"));
     }
+    void zAimsAtThePointer() {
+        // A recording with its pointer: Z zooms where the pointer was, not on the middle.
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath(QStringLiteral("none.mp4")));
+        CursorTrack track;
+        track.videoSize = QSize(320, 180);
+        track.samples = {{0, QPointF(140, 20), true}, {1000, QPointF(30, 60), true},
+                         {3100, QPointF(0, 0), false}, {3500, QPointF(100, 70), true}};
+        doc.cursorTrack = track;
+        EditorWindow w(doc, cfg, {});
+        w.show();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        QVERIFY(timeline->zoomLaneVisible());   // shown from the start with a pointer
+        timeline->setPosition(1000);
+        QTest::keyClick(&w, Qt::Key_Z);
+        QCOMPARE(w.studioDocument().zooms.first().point, QPointF(30, 60));
+        QCOMPARE(w.studioDocument().zooms.first().target, ZoomSegment::Target::Point);
+        // Hidden at the asked time (a click on the lane): the first visible sample in the span.
+        emit timeline->zoomAddRequested(3200);
+        const auto zooms = w.studioDocument().zooms;
+        QCOMPARE(zooms.size(), 2);
+        QCOMPARE(zooms.last().point, QPointF(100, 70));
+        // Without a pointer the lane waits for Studio or a zoom, and Z aims at the middle.
+        EditorWindow plain(videoDoc(dir.filePath(QStringLiteral("none.mp4"))), cfg, {});
+        plain.show();
+        QVERIFY(!plain.findChild<VideoTimeline *>()->zoomLaneVisible());
+    }
     void followCursorNeedsATrackAndFollowsIt() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;

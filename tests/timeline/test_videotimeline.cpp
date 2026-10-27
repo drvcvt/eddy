@@ -244,6 +244,27 @@ private slots:
         wheel(QPoint(120, 0));                                         // so does a sideways swipe
         QVERIFY(qAbs(timeline.visibleStart() - start) <= 1);
     }
+    void aPressOnTheEmptyLaneWaitsForTheRelease() {
+        VideoTimeline timeline;
+        timeline.resize(312, 84);
+        timeline.setDuration(10000);
+        timeline.setZoomLaneVisible(true);
+        timeline.show();
+        QSignalSpy add(&timeline, &VideoTimeline::zoomAddRequested);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(add.count(), 0);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(add.count(), 1);
+        QCOMPARE(add.first().first().toLongLong(), 5000);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QTest::mouseMove(&timeline, QPoint(200, 66));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(200, 66));
+        QCOMPARE(add.count(), 1);   // a drag adds nothing
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QTest::keyClick(&timeline, Qt::Key_Escape);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 66));
+        QCOMPARE(add.count(), 1);   // nor does one let go after Esc
+    }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;
         timeline.resize(312, 84);

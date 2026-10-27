@@ -16,7 +16,7 @@ class Spring;
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
-    enum class Drag { None, In, Out, Seek, Mark, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
+    enum class Drag { None, In, Out, Seek, Mark, ZoomAdd, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
 public:
     // Geometry (docs/design.md): a caption-high ruler, the film strip, then each
     // optional lane below it, all kS1 apart.
@@ -185,6 +185,7 @@ private:
     qint64 snapMark(qint64 timeMs) const;
     void showMark();
     qint64 m_markAnchor = -1, m_markHead = -1, m_markClickAnchor = -1;
+    qint64 m_zoomAddAt = 0;   // a press on the empty zoom lane adds there on a still release
     bool m_markOpen = false;
     struct { qint64 anchor = -1, head = -1; bool open = false; } m_markBefore;   // Esc mid-drag
     std::pair<qint64, qint64> m_markShown{0, 0};   // painted, also while it fades out
