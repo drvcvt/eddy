@@ -36,7 +36,6 @@ QMenu *Toolbar::enableExportMenu(QWidget *panel) {
     save->setFocusPolicy(Qt::StrongFocus);
     save->setToolTip(tr("Save\tEnter\nExport options\tRight-click"));
     save->setAccessibleName(tr("Save; right-click or press Alt+Down for export options"));
-    markContextMenu(save);
     return menu;
 }
 
@@ -57,7 +56,6 @@ void Toolbar::enableVideoFrameCopy() {
     copy->setFocusPolicy(Qt::StrongFocus);
     copy->setToolTip(tr("Copy video\tCtrl+C\nCopy frame\tCtrl+Shift+C\nMore\tRight-click"));
     copy->setAccessibleName(tr("Copy video; right-click or press Alt+Down for frame copy"));
-    markContextMenu(copy);
 }
 
 static QToolButton *mkBtn(bool checkable, bool square, QToolButton *b = nullptr) {

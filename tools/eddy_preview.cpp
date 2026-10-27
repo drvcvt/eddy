@@ -1,5 +1,6 @@
 // Dev tool: render the editor chrome to a PNG for visual verification (offscreen).
 // Usage: QT_QPA_PLATFORM=offscreen ./build/eddy_preview OUTPUT [dark|light] [image|native|text|arrows|picker|video|video-narrow|video-file|video-file-zoom|video-file-camera] [MEDIA]
+#include "app/fills.h"
 #include "editor/editorwindow.h"
 #include "app/theme.h"
 #include "app/config.h"
@@ -48,6 +49,9 @@ int main(int argc, char **argv) {
     const bool dark = argc < 3 || QString::fromLocal8Bit(argv[2]) != QStringLiteral("light");
     app.setPalette(eddy::theme::palette(dark));
     app.setStyleSheet(eddy::theme::styleSheet(dark));
+    // The stylesheet leaves the primary buttons' fill to HoverFills: before any window,
+    // since Resume can open first.
+    eddy::HoverFills::install();
 
     eddy::Config cfg; eddy::CliOptions cli;
     cfg.strokeColor = QColor(eddy::theme::kStroke);
@@ -61,11 +65,13 @@ int main(int argc, char **argv) {
         return picker.grab().save(QString::fromLocal8Bit(argv[1])) ? 0 : 1;
     }
     if (mode == QStringLiteral("resume")) {
-        // Two kept edits in a scratch folder, one of them open elsewhere.
+        // Kept edits in a scratch folder, one of them open elsewhere; more than fit, so it scrolls.
         QTemporaryDir scratch;
         eddy::RecoveryStore store(scratch.path());
         const QString a = store.create(), b = store.create();
-        for (const QString &id : {a, b}) {
+        QStringList more;
+        for (int i = 0; i < 6; ++i) more << store.create();
+        for (const QString &id : QStringList{a, b} + more) {
             QFile manifest(store.manifestFor(id));
             manifest.open(QIODevice::WriteOnly);
             manifest.write("{}");
@@ -73,6 +79,8 @@ int main(int argc, char **argv) {
         store.touch(a, QStringLiteral("/home/you/Bilder/boltsnap-2026-09-24_16-30-37.mp4"),
                     QStringLiteral("boltsnap-2026-09-24_16-30-37.mp4"));
         store.touch(b, QStringLiteral("/home/you/Bilder/screenshot.png"), QStringLiteral("screenshot.png"));
+        for (int i = 0; i < more.size(); ++i)
+            store.touch(more[i], QStringLiteral("/home/you/Bilder/clip-%1.mp4").arg(i), QStringLiteral("clip-%1.mp4").arg(i));
         QLockFile held(store.lockFileFor(a));
         held.tryLock(0);
         eddy::ResumeDialog dialog(store);

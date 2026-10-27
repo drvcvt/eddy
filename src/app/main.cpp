@@ -1,3 +1,4 @@
+#include "app/fills.h"
 #include "app/cli.h"
 #include "app/config.h"
 #include "video/mediaio.h"
@@ -81,6 +82,9 @@ int main(int argc, char **argv) {
     const bool dark = eddy::theme::resolveDark(cfg.theme, systemPalette);
     app.setPalette(eddy::theme::palette(dark));
     app.setStyleSheet(eddy::theme::styleSheet(dark));
+    // The stylesheet leaves the primary buttons' fill to HoverFills: before any window,
+    // since Resume can open first.
+    eddy::HoverFills::install();
 
     // Kept edits are an app feature; tests and tools leave them off.
     eddy::EditorWindow::setRecoveryEnabledByDefault(true);

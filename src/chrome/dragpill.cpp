@@ -195,6 +195,7 @@ DragPill::DragPill(QWidget *parent) : QWidget(parent) {
     lay->addWidget(label);
     setAccessibleName(label->text());
     setToolTip(tr("Drag into another app"));
+    reserveLabelWidth();   // from the start: the first "Prepare drag" would widen it
 }
 
 // The label switches between two texts; it keeps the wider one's width so the

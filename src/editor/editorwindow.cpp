@@ -520,6 +520,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         exportControls->setSpacing(theme::kS1);
         exportControls->addWidget(m_exportStatus);
         exportControls->addWidget(m_exportCancel);
+        // On the window's edge, like the row's speaker above it; the group grows to the
+        // left, so the pill (centred on its own) and the transport row stay put.
+        exportControls->addWidget(m_noAudio);
         fl->addLayout(exportControls, 0, 0, Qt::AlignRight);
     }
     viewControls->setAttribute(Qt::WA_StyledBackground, true);

@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QButtonGroup>
 #include <QEvent>
+#include <QGraphicsOpacityEffect>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
@@ -311,34 +312,6 @@ bool SelectionGlide::eventFilter(QObject *watched, QEvent *event) {
 }
 
 namespace {
-class ContextMark : public QWidget {
-public:
-    static constexpr int kLeg = 4;
-    explicit ContextMark(QToolButton *button) : QWidget(button) {
-        setObjectName(QStringLiteral("ContextMark"));
-        setAttribute(Qt::WA_TransparentForMouseEvents);
-        setFocusPolicy(Qt::NoFocus);
-        resize(kLeg, kLeg);
-        place();
-        button->installEventFilter(this);
-    }
-protected:
-    bool eventFilter(QObject *, QEvent *event) override {
-        if (event->type() == QEvent::Resize) place();
-        return false;
-    }
-    void paintEvent(QPaintEvent *) override {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(palette().color(isEnabled() ? QPalette::Active : QPalette::Disabled,
-                                         QPalette::PlaceholderText));   // @sub, like a label
-        painter.drawPolygon(QPolygonF{QPointF(kLeg, 0), QPointF(kLeg, kLeg), QPointF(0, kLeg)});
-    }
-private:
-    void place() { move(parentWidget()->width() - kLeg, parentWidget()->height() - kLeg); raise(); }
-};
-
 class KeepOpen : public QObject {
 public:
     using QObject::QObject;
@@ -354,9 +327,27 @@ protected:
 };
 }
 
-void markContextMenu(QToolButton *button) {
-    if (!button->findChild<QWidget *>(QStringLiteral("ContextMark"), Qt::FindDirectChildrenOnly))
-        new ContextMark(button);
+void fadeVisible(QWidget *widget, bool visible) {
+    widget->setProperty("fadeTarget", visible);
+    auto *spring = widget->findChild<Spring *>(QStringLiteral("FadeSpring"), Qt::FindDirectChildrenOnly);
+    if (!spring) {
+        auto *effect = new QGraphicsOpacityEffect(widget);
+        effect->setEnabled(false);   // fully shown, the widget paints directly and stays crisp
+        widget->setGraphicsEffect(effect);
+        spring = new Spring(motion::kBase, [widget, effect](qreal opacity) {
+            effect->setOpacity(opacity);
+            effect->setEnabled(opacity < 0.999);
+            if (opacity <= 0.001 && !widget->property("fadeTarget").toBool()) widget->hide();
+        }, widget);
+        spring->setObjectName(QStringLiteral("FadeSpring"));
+        spring->jumpTo(widget->isVisible() ? 1 : 0);
+    }
+    if (visible && widget->isHidden()) {
+        spring->jumpTo(0);
+        widget->show();
+    }
+    if (!visible && widget->isHidden()) return;
+    spring->setTarget(visible ? 1 : 0);
 }
 
 void keepOpenOnToggle(QMenu *menu) {

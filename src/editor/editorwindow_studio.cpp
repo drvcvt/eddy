@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include "app/fills.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -135,7 +136,7 @@ void EditorWindow::setStudioDocument(const StudioDocument &doc) {
     if (m_outputAudio) {
         const QSignalBlocker quiet(m_outputAudio);
         m_outputAudio->setChecked(doc.audio);
-        m_noAudio->setVisible(!doc.audio && m_media.video.hasAudio);
+        fadeVisible(m_noAudio, !doc.audio && m_media.video.hasAudio);
     }
     if (m_exportPanel) m_exportPanel->setSound(doc.audio, isVideo() && m_media.video.hasAudio);
     if (isVideo()) onVideoContentChanged();

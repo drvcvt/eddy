@@ -164,7 +164,7 @@ QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
 QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: @font-ui; font-weight: 500; padding: 0; }
 QWidget#PlaybackBar QLabel#TrimDuration { color: @fg; padding: 0; }
 QLabel#VideoExportStatus { color: @sub; font-size: @fs-caption; padding: 0 @s2; }
-QWidget#PlaybackBar QLabel#NoAudio { color: @sub; font-family: @font-ui; font-size: @fs-caption; padding: 0 @s1; }
+QWidget#ViewControls QLabel#NoAudio { color: @sub; font-family: @font-ui; font-size: @fs-caption; font-weight: 500; }
 QWidget#PlaybackBar QLineEdit {
     background: transparent;
     color: @fg;
@@ -305,6 +305,14 @@ QWidget#StudioPopover QToolButton:checked { background-color: @raise3; color: @f
 QWidget#MiniMap { background: @raise1; border: none; border-radius: @r-bar; }
 /* Resume: the kept edits, newest first. */
 QDialog#ResumeDialog { background: @raise1; }
+/* Scroll bars: a slim rounded grip on its surface, no arrows, no trough. It keeps one
+   tone (a hover tone would switch at once); dragging it is its feedback. */
+QScrollBar:vertical { background: transparent; width: @s2; margin: 0; }
+QScrollBar:horizontal { background: transparent; height: @s2; margin: 0; }
+QScrollBar::handle:vertical { background: @raise3; border-radius: @s1; min-height: @ctl; }
+QScrollBar::handle:horizontal { background: @raise3; border-radius: @s1; min-width: @ctl; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; border: none; background: none; }
+QScrollBar::add-page, QScrollBar::sub-page { background: none; }
 QDialog#ResumeDialog QListWidget { background: @raise1; border: none; outline: 0; color: @fg; font-size: @fs-ui; }
 QDialog#ResumeDialog QListWidget::item { padding: @s2; border-radius: @r-chip; }
 QDialog#ResumeDialog QListWidget::item:selected { background: @raise3; color: @fg; }

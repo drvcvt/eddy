@@ -47,9 +47,9 @@ void easeToggle(QToolButton *button);
 // The checked button of an exclusive group shows one fill that glides to the
 // next choice (motion::kFast), instead of one fill going out and another coming on.
 // It paints from a layer under the buttons, so their own checked fill stays off.
-// A button whose menu opens on right-click (and Alt+Down) carries a small corner
-// mark, bottom right, outside its hover fill: the Photoshop convention for "more here".
-void markContextMenu(QToolButton *button);
+// Shows or hides `widget` through its opacity on motion::kBase, in place: it keeps its
+// slot, so nothing beside it moves. Hidden once faded out; with motion off, at once.
+void fadeVisible(QWidget *widget, bool visible);
 // Checkable entries switch without closing the menu, so a setting can be flipped
 // and the next one reached; plain entries still run and close it.
 void keepOpenOnToggle(QMenu *menu);

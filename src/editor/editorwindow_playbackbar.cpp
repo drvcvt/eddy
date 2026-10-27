@@ -186,6 +186,8 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_outputAudio, &QAction::toggled, this, [this](bool on) {
         editStudio([on](StudioDocument &d) { d.audio = on; });
     });
+    // Shown in the footer beside the export status, where the output's state lives;
+    // there it fades in without moving the transport row (EditorWindow constructor).
     m_noAudio = new QLabel(tr("No audio"), bar);
     m_noAudio->setObjectName(QStringLiteral("NoAudio"));
     m_noAudio->setToolTip(tr("The output has no sound; turn it back on with a right-click on the speaker"));
@@ -193,7 +195,6 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_muteButton->setMenu(audioMenu);
     m_muteButton->setPopupMode(QToolButton::DelayedPopup);
     keepOpenOnToggle(audioMenu);   // flip the output's sound, then set the volume
-    markContextMenu(m_muteButton);
     m_muteButton->setFocusPolicy(Qt::StrongFocus);
 
     leftGroup->addWidget(m_playButton);
@@ -326,7 +327,6 @@ QWidget *EditorWindow::createPlaybackBar() {
     theme::setMenuLabel(m_speedButton, QStringLiteral("1×"));
     rightGroup->addWidget(m_loopButton);
     rightGroup->addWidget(speedSlot);
-    rightGroup->addWidget(m_noAudio);
     rightGroup->addWidget(m_muteButton);
     playback->addLayout(rightGroup, 0, 2, Qt::AlignRight | Qt::AlignVCenter);
     lay->addWidget(m_timeline);

@@ -13,6 +13,7 @@
 #include <QContextMenuEvent>
 #include "popovers/exportpanel.h"
 #include "editor/editorwindow.h"
+#include "app/theme.h"
 #include "output/exportsettings.h"
 #include "timeline/fragmentbar.h"
 #include "timeline/videotimeline.h"
@@ -121,7 +122,6 @@ private slots:
         for (const char *name : {"PlaybackMute", "Copy", "Save"}) {
             auto *button = w.findChild<QToolButton *>(QString::fromLatin1(name));
             QVERIFY2(button && button->menu(), name);
-            QVERIFY2(button->findChild<QWidget *>(QStringLiteral("ContextMark")), name);   // the corner mark
             QVERIFY2(button->toolTip().contains(QStringLiteral("Right-click")), name);
             QSignalSpy opened(button->menu(), &QMenu::aboutToShow);
             QSignalSpy clicked(button, &QToolButton::clicked);
@@ -132,6 +132,35 @@ private slots:
             QCOMPARE(opened.count(), 1);
             QCOMPARE(clicked.count(), 0);
         }
+    }
+    void leavingTheSoundOutMovesNothing() {
+        // "No audio" used to appear inside the transport row and push it aside.
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        MediaDocument doc = videoDoc(dir.filePath("none.mp4"));
+        doc.video.hasAudio = true;
+        EditorWindow w(doc, cfg, {});
+        w.resize(1000, 680);
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        const auto at = [&](const char *name) {
+            auto *widget = w.findChild<QWidget *>(QString::fromLatin1(name));
+            return QRect(widget->mapTo(&w, QPoint()), widget->size());
+        };
+        const QRect mute = at("PlaybackMute"), loop = at("PlaybackLoop"), pill = at("DragPill"), trim = at("TrimControls");
+        QAction *include = nullptr;
+        for (QAction *a : w.findChildren<QAction *>())
+            if (a->text() == QStringLiteral("Include audio in output")) include = a;
+        include->trigger();
+        QApplication::processEvents();
+        auto *label = w.findChild<QLabel *>(QStringLiteral("NoAudio"));
+        QVERIFY(label->isVisible());
+        QCOMPARE(label->parentWidget()->objectName(), QStringLiteral("ViewControls"));   // the footer
+        QCOMPARE(w.width() - 1 - at("NoAudio").right(), theme::kBarPad);                 // on the window's edge
+        QCOMPARE(at("PlaybackMute"), mute);
+        QCOMPARE(at("PlaybackLoop"), loop);
+        QCOMPARE(at("DragPill"), pill);
+        QCOMPARE(at("TrimControls"), trim);
     }
     void theSoundMenuStaysOpenWhileItToggles() {
         QTemporaryDir dir;

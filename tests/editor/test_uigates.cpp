@@ -3,6 +3,9 @@
 // axis down the tool rail, and nothing past the window at its narrowest.
 #include "editortest.h"
 #include <QPainter>
+#include <QListWidget>
+#include <QScrollBar>
+#include <QStyleOptionSlider>
 
 namespace {
 
@@ -148,6 +151,25 @@ private slots:
         for (auto *b : redact.findChildren<QToolButton *>())
             if (b->isVisible()) right = std::max(right, b->geometry().right());
         QCOMPARE(redact.width() - 1 - right, theme::kS1);
+    }
+
+    void listsScrollOnASlimGrip() {
+        // The Resume list showed the platform's bar with arrows and a trough.
+        QListWidget list;
+        for (int i = 0; i < 60; ++i) list.addItem(QStringLiteral("entry %1").arg(i));
+        list.resize(300, 200);
+        list.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&list));
+        QScrollBar *bar = list.verticalScrollBar();
+        QVERIFY(bar->isVisible());
+        QCOMPARE(bar->width(), theme::kS2);
+        QStyleOptionSlider option;
+        option.initFrom(bar);
+        option.orientation = Qt::Vertical;
+        option.minimum = bar->minimum(); option.maximum = bar->maximum();
+        option.sliderPosition = bar->sliderPosition(); option.pageStep = bar->pageStep();
+        const QRect arrow = bar->style()->subControlRect(QStyle::CC_ScrollBar, &option, QStyle::SC_ScrollBarAddLine, bar);
+        QVERIFY2(arrow.height() <= 0, qPrintable(QString::number(arrow.height())));
     }
 
     void toolRailIconsShareOneAxis() {
