@@ -1,5 +1,6 @@
 #include <QtTest>
 #include <QGraphicsScene>
+#include <QScrollBar>
 #include <QUndoStack>
 #include <QWheelEvent>
 #include "canvas/canvas.h"
@@ -91,6 +92,37 @@ private slots:
         const QPointF after = canvas.mapToScene(canvas.viewport()->rect()).boundingRect().center();
         QVERIFY2(distance(after, centre) * canvas.transform().m11() <= 1.0,
                  qPrintable(QStringLiteral("centre moved %1 px").arg(distance(after, centre) * canvas.transform().m11())));
+    }
+    void scrollingRepaintsTheRoundCorners() {
+        // A scroll moves the painted pixels along; the corners sit still on the
+        // viewport, so the copy they leave behind has to be painted over.
+        Canvas canvas(&m_scene, &m_tools);
+        canvas.resize(400, 300); canvas.show(); canvas.resetZoom();
+        QVERIFY(QTest::qWaitForWindowExposed(&canvas));
+        wheel(canvas, QPoint(200, 150), QPoint(0, 480));
+        canvas.centerOn(1000, 600);
+        QCoreApplication::processEvents();
+        struct Recorder : QObject {
+            QRegion painted;
+            bool eventFilter(QObject *, QEvent *e) override {
+                if (e->type() == QEvent::Paint) painted += static_cast<QPaintEvent *>(e)->region();
+                return false;
+            }
+        } recorder;
+        canvas.viewport()->installEventFilter(&recorder);
+        for (const QPoint step : {QPoint(10, 0), QPoint(0, 10), QPoint(-10, 0), QPoint(0, -10)}) {
+            recorder.painted = {};
+            canvas.horizontalScrollBar()->setValue(canvas.horizontalScrollBar()->value() + step.x());
+            canvas.verticalScrollBar()->setValue(canvas.verticalScrollBar()->value() + step.y());
+            QCoreApplication::processEvents();
+            const int r = 24;   // theme::kS6
+            const QRect viewport = canvas.viewport()->rect();
+            const QRegion corners = QRegion(0, 0, r, r) + QRegion(0, viewport.height() - r, r, r);
+            const QRegion copies = corners.translated(-step) & viewport;   // where the blit put them
+            QVERIFY2((corners + copies - recorder.painted).isEmpty(), "a corner kept its scrolled copy");
+            QVERIFY2(recorder.painted.boundingRect() != viewport || recorder.painted.rectCount() > 1,
+                     "scrolling repainted the whole view");
+        }
     }
 };
 

@@ -63,6 +63,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseDoubleClickEvent(QMouseEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
+    void scrollContentsBy(int dx, int dy) override;
     void drawForeground(QPainter *painter, const QRectF &rect) override;
     void contextMenuEvent(QContextMenuEvent *e) override;
     void focusOutEvent(QFocusEvent *e) override;

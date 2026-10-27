@@ -224,6 +224,16 @@ void Canvas::drawWorkspaceCorners(QPainter *painter) {
     painter->restore();
 }
 
+// A scroll moves the painted pixels along, corners included, but the corners stay on
+// the viewport: paint them again where they are and where the move put their copy.
+void Canvas::scrollContentsBy(int dx, int dy) {
+    QGraphicsView::scrollContentsBy(dx, dy);
+    const int h = viewport()->height();
+    const QRegion corners = QRegion(0, 0, theme::kS6, theme::kS6)
+                          + QRegion(0, h - theme::kS6, theme::kS6, theme::kS6);
+    viewport()->update(corners + corners.translated(dx, dy));
+}
+
 QColor Canvas::workspaceColor() const {
     return theme::tone(theme::Tone::Well, QApplication::palette().color(QPalette::Window).lightness() < 128);
 }
