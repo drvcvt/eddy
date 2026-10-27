@@ -150,7 +150,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
     }
     if (m_selectedFragment >= 0 && !m_selectedZoom && m_scene->selectedItems().isEmpty()
         && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
-        if (!m_studio.fragments[m_selectedFragment].removed) emit m_fragmentBar->cutToggled();
+        toggleFragmentCut(m_selectedFragment);   // cut, and on a cut piece restore
         e->accept();
         return;
     }

@@ -109,6 +109,24 @@ private slots:
         timeline.setZoomLaneVisible(false);
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH);
     }
+    void aClickWithoutMovementIsAClick() {
+        VideoTimeline timeline;
+        timeline.resize(312, 52);
+        timeline.setDuration(10000);
+        timeline.show();
+        QSignalSpy clicks(&timeline, &VideoTimeline::stripClicked);
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(156, 36));
+        QCOMPARE(clicks.count(), 1);
+        QCOMPARE(clicks.first().first().toLongLong(), 5000);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(100, 36));
+        QTest::mouseMove(&timeline, QPoint(160, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(160, 36));
+        QCOMPARE(clicks.count(), 1);   // a scrub
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(100, 36));
+        QTest::mouseMove(&timeline, QPoint(102, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(102, 36));
+        QCOMPARE(clicks.count(), 2);   // a hand's tremor is still a click
+    }
     void clickingTheEmptyLaneAsksForAZoomThere() {
         VideoTimeline timeline;
         timeline.resize(312, 84);

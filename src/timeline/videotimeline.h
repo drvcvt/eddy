@@ -115,6 +115,8 @@ signals:
     void zoomsEdited(const QVector<ZoomSegment> &before, const QVector<ZoomSegment> &after);
     void zoomMenuRequested(quint32 id, QPoint globalPos);
     void cutClicked(int fragment);
+    // A press and release on the strip or waveform within 3 px: a click, not a scrub.
+    void stripClicked(qint64 positionMs);
     void maskSelected(quintptr key);
     void maskWindowPreviewed(quintptr key, qint64 fromMs, qint64 toMs);
     void maskWindowEdited(quintptr key, qint64 fromMs, qint64 toMs, qint64 beforeFrom, qint64 beforeTo);
@@ -167,6 +169,8 @@ private:
     Drag m_hover = Drag::None;
     bool m_laneVisible = false;
     Spring *m_height = nullptr;   // lanes come and go on motion::kSlow
+    qreal m_pressX = 0;           // where a strip press began, for click versus scrub
+    bool m_pressMoved = false;
     QVector<ZoomSegment> m_zooms, m_zoomsBefore;
     std::function<double(qint64)> m_zoomLevel;
     quint32 m_selectedZoom = 0, m_dragZoom = 0;

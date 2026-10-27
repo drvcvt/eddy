@@ -317,7 +317,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.fillPath(notch, ink(lit ? 0.95 : 0.6));
         if (i == m_hoverCut) {
             const double ms = double(fragments::endOf(m_fragments, i, m_duration) - parts[i].startMs);
-            const QString text = tr("Cut %1 s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
+            const QString text = tr("Cut %1\u00a0s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
             QFont hint = font();
             hint.setPixelSize(theme::kFsCaption);
             painter.setFont(hint);

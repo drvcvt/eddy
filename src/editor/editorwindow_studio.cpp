@@ -428,6 +428,26 @@ void EditorWindow::selectFragment(int index) {
     refreshZoomUi();
 }
 
+// Cuts a kept fragment (it stays selected, its bar offers Restore) or restores a cut one.
+// A restore may melt the fragment into its neighbours, so nothing stays selected after it.
+void EditorWindow::toggleFragmentCut(int index) {
+    if (index < 0 || index >= m_studio.fragments.size()) return;
+    QVector<Fragment> list = m_studio.fragments;
+    const bool restoring = list[index].removed;
+    if (!fragments::setRemoved(list, index, !restoring)
+        || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
+        m_toast->showMessage(tr("Keep at least part of the clip"));
+        return;
+    }
+    editStudio([&](StudioDocument &d) { d.fragments = list; });
+    if (restoring) selectFragment(-1);
+}
+
+void EditorWindow::restoreCut(int index) {
+    if (index >= 0 && index < m_studio.fragments.size() && m_studio.fragments[index].removed)
+        toggleFragmentCut(index);
+}
+
 // S splits at the playhead and selects the part after it (studio plan 6.6).
 void EditorWindow::splitAtPlayhead() {
     const qint64 at = m_timeline->position();
@@ -522,7 +542,7 @@ void EditorWindow::refreshZoomUi() {
     if (fragment)
         m_fragmentBar->setFragment(m_studio.fragments[m_selectedFragment],
                                    m_selectedFragment > 0 && !m_studio.fragments[m_selectedFragment - 1].removed);
-    m_fragmentBar->setVisible(fragment);
+    fadeVisible(m_fragmentBar, fragment);
     const bool map = !cropping && !playing && (i >= 0 || keep);
     if (map && !m_miniMap->isVisible()) {
         // The picture only changes with the frame; see videoFrameChanged. m_bg is

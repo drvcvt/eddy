@@ -246,6 +246,51 @@ private slots:
         QVERIFY(include->isChecked() && w.studioDocument().audio);
         menu->close();
     }
+    void aScrubLeavesFragmentsAloneAndAClickPicksOne() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        w.show();
+        StudioDocument doc = w.studioDocument();
+        Fragment second;
+        second.startMs = 2000;
+        doc.fragments = {Fragment(), second};
+        w.setStudioDocument(doc);
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *bar = w.findChild<FragmentBar *>();
+        emit timeline->interactionStarted(false);
+        emit timeline->interactionFinished(false);   // a scrub
+        QVERIFY(!bar->isVisible());
+        timeline->setPosition(3000);
+        emit timeline->stripClicked(3000);
+        QTRY_VERIFY(bar->isVisible());
+        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Cut"));
+    }
+    void deleteTogglesACutAndTheNotchRestores() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        w.show();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *bar = w.findChild<FragmentBar *>();
+        auto *undo = w.findChild<QUndoStack *>();
+        timeline->setPosition(1000);
+        QTest::keyClick(&w, Qt::Key_S);   // the part after the split is selected
+        const int steps = undo->count();
+        QTest::keyClick(&w, Qt::Key_Delete);
+        QVERIFY(w.studioDocument().fragments[1].removed);
+        QCOMPARE(w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->text(), QStringLiteral("Restore"));
+        QTest::keyClick(&w, Qt::Key_Delete);   // used to be swallowed on a cut piece
+        QVERIFY(w.studioDocument().fragments.isEmpty());
+        QTRY_VERIFY(!bar->isVisible());
+        QCOMPARE(undo->count(), steps + 2);
+        undo->undo();
+        QVERIFY(w.studioDocument().fragments[1].removed);
+        emit timeline->cutClicked(1);   // the notch: restore, as its hint says
+        QVERIFY(w.studioDocument().fragments.isEmpty());
+        QCOMPARE(undo->count(), steps + 2);
+        QVERIFY(!bar->isVisible());
+    }
     void splitSpeedCutAndJoinAreUndoSteps() {
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
@@ -265,6 +310,12 @@ private slots:
         w.findChild<QMenu *>(QStringLiteral("FragmentSpeedMenu"))->actions().at(4)->trigger();   // 2x
         QCOMPARE(w.studioDocument().fragments[1].speed, 2.0);
         QCOMPARE(duration->text(), QStringLiteral("0:02.500"));   // 1 s + 3 s at 2x
+        // Esc lets go of the fragment before it would close the window; a click picks it again.
+        QTest::keyClick(&w, Qt::Key_Escape);
+        QTRY_VERIFY(!bar->isVisible());
+        QVERIFY(w.isVisible());
+        emit timeline->stripClicked(2000);
+        QTRY_VERIFY(bar->isVisible());
         w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->click();
         QVERIFY(w.studioDocument().fragments[1].removed);
         QCOMPARE(duration->text(), QStringLiteral("0:01.000"));
@@ -272,10 +323,7 @@ private slots:
         w.findChild<QToolButton *>(QStringLiteral("FragmentCut"))->click();
         QVERIFY(!w.studioDocument().fragments[1].removed);
         QCOMPARE(undo->count(), steps + 3);
-        // Esc lets go of the fragment before it would close the window.
-        QTest::keyClick(&w, Qt::Key_Escape);
-        QVERIFY(!bar->isVisible());
-        QVERIFY(w.isVisible());
+        QTRY_VERIFY(!bar->isVisible());   // restored, it may melt into its neighbour: nothing stays selected
         undo->undo();
         undo->undo();
         undo->undo();

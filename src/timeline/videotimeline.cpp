@@ -489,7 +489,8 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
     else
         m_drag = Drag::Seek;
     m_beforeIn = m_in; m_beforeOut = m_out; m_beforePosition = m_position;
-    m_dragX = x;
+    m_dragX = m_pressX = x;
+    m_pressMoved = false;
     m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
     m_fine = event->modifiers().testFlag(Qt::ShiftModifier);
     emit interactionStarted(trimming());
@@ -549,6 +550,7 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     m_modifiers = modifiers;
     if (zoomDragging()) { moveZoomDrag(x); return; }
     if (maskDragging()) { moveMaskDrag(x); return; }
+    if (qAbs(x - m_pressX) >= 3) m_pressMoved = true;
     const bool fine = modifiers.testFlag(Qt::ShiftModifier);
     if (fine != m_fine) {
         m_dragTime = edited(m_drag == Drag::In ? m_in : m_out);
@@ -598,9 +600,11 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     }
     moveDrag(event->position().x(), event->modifiers());
     const bool trimmed = m_drag == Drag::In || m_drag == Drag::Out;
+    const bool clicked = m_drag == Drag::Seek && !m_pressMoved;
     m_drag = Drag::None;
     m_edgePan.stop();
     if (trimmed && (m_in != m_beforeIn || m_out != m_beforeOut)) emit trimCommitted(m_in, m_out);
+    if (clicked) emit stripClicked(m_position);
     emit interactionFinished(false);
     emit hoverLeft();
     update();

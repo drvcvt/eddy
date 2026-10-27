@@ -48,7 +48,7 @@ void FragmentBar::setFragment(const Fragment &fragment, bool canJoin) {
     for (QAction *a : m_speed->menu()->actions()) a->setChecked(qFuzzyCompare(a->data().toDouble(), fragment.speed));
     m_speed->setVisible(!fragment.removed);
     m_cut->setText(fragment.removed ? tr("Restore") : tr("Cut"));
-    m_cut->setToolTip(fragment.removed ? tr("Bring this fragment back") : tr("Leave this fragment out\tDelete"));
+    m_cut->setToolTip(fragment.removed ? tr("Bring this fragment back\tDelete") : tr("Leave this fragment out\tDelete"));
     m_join->setVisible(canJoin && !fragment.removed);
     adjustSize();
 }

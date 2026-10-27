@@ -611,17 +611,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
             const int i = m_selectedFragment;
             editStudio([i, speed](StudioDocument &d) { fragments::setSpeed(d.fragments, i, speed); });
         });
-        connect(m_fragmentBar, &FragmentBar::cutToggled, this, [this] {
-            const int i = m_selectedFragment;
-            if (i < 0) return;
-            QVector<Fragment> list = m_studio.fragments;
-            if (!fragments::setRemoved(list, i, !list[i].removed)
-                || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
-                m_toast->showMessage(tr("Keep at least part of the clip"));
-                return;
-            }
-            editStudio([&](StudioDocument &d) { d.fragments = list; });
-        });
+        connect(m_fragmentBar, &FragmentBar::cutToggled, this, [this] { toggleFragmentCut(m_selectedFragment); });
         connect(m_fragmentBar, &FragmentBar::joinRequested, this, [this] {
             const int i = m_selectedFragment;
             QVector<Fragment> list = m_studio.fragments;

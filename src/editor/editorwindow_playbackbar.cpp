@@ -451,9 +451,6 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_timeline, &VideoTimeline::seekRequested, this, &EditorWindow::requestVideoSeek);
     connect(m_timeline, &VideoTimeline::interactionFinished, this, [this](bool cancelled) {
         m_timelineActive = false;
-        // A click on the film strip selects the fragment under the playhead.
-        if (!cancelled && !m_timelineTrimming && m_studio.fragments.size() > 1)
-            selectFragment(fragments::indexAt(m_studio.fragments, m_timeline->position()));
         if (cancelled) m_resumeAfterSeek = m_copyFramePending = false;
         flushVideoSeek();
         if (hasVideoEdits() && m_cachedVideoRevision != m_videoRevision) scheduleVideoExportCache();
@@ -464,7 +461,12 @@ QWidget *EditorWindow::createPlaybackBar() {
             this, &EditorWindow::updateTrimTimeLabels);
     connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);
     connect(m_timeline, &VideoTimeline::zoomSelected, this, &EditorWindow::selectZoom);
-    connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::selectFragment);
+    // A click (not a scrub) on the strip selects the fragment under it; a scrub leaves the
+    // selection and its bar alone. The cut notch restores, as its hint says.
+    connect(m_timeline, &VideoTimeline::stripClicked, this, [this](qint64 at) {
+        if (m_studio.fragments.size() > 1) selectFragment(fragments::indexAt(m_studio.fragments, at));
+    });
+    connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::restoreCut);
     auto itemFor = [this](quintptr key) -> AnnotationItem * {
         for (QGraphicsItem *item : m_scene->items())
             if (quintptr(item) == key) return dynamic_cast<AnnotationItem *>(item);

@@ -192,6 +192,8 @@ private:
     void positionZoomUi();
     void addZoomAt(qint64 sourceMs);
     void selectFragment(int index);
+    void toggleFragmentCut(int index);   // Delete and the bar's Cut/Restore
+    void restoreCut(int index);          // a click on a cut's notch
     void refreshMasks();
     void applyTimeWindows(qint64 sourceMs);
     void setTimeScope(AnnotationItem *item, bool fromPlayhead);
