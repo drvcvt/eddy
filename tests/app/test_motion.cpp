@@ -3,6 +3,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QGraphicsOpacityEffect>
 #include "app/fills.h"
 #include "app/spring.h"
 using namespace eddy;
@@ -184,6 +185,40 @@ private slots:
             if (QLatin1String(name) == QLatin1String("CropApply"))
                 QVERIFY(hover != theme::tone(theme::Tone::Fg, dark) || rest == theme::tone(theme::Tone::Fg, dark));
         }
+    }
+    void fadeVisibleTurnsBackAndLetsTheMouseThrough() {
+        Spring::setEnabled(true);
+        QWidget window;
+        window.resize(200, 100);
+        auto *bar = new QWidget(&window);
+        bar->setGeometry(10, 10, 80, 30);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        const auto opacity = [bar] {
+            auto *effect = qobject_cast<QGraphicsOpacityEffect *>(bar->graphicsEffect());
+            return effect && effect->isEnabled() ? effect->opacity() : 1.0;
+        };
+        fadeVisible(bar, false);
+        QVERIFY(bar->testAttribute(Qt::WA_TransparentForMouseEvents));   // gone for the pointer at once
+        QTest::qWait(40);
+        QVERIFY(bar->isVisible());
+        const qreal midway = opacity();
+        QVERIFY2(midway > 0 && midway < 1, qPrintable(QString::number(midway)));
+        fadeVisible(bar, true);   // back before it is gone: it turns, never hides
+        QVERIFY(!bar->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QTRY_COMPARE_WITH_TIMEOUT(opacity(), 1.0, 2000);
+        QVERIFY(bar->isVisible());
+        fadeVisible(bar, false);
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isHidden(), 2000);
+        // From hidden it starts transparent and comes in.
+        fadeVisible(bar, true);
+        QVERIFY(bar->isVisible() && opacity() < 0.5);
+        QTRY_COMPARE_WITH_TIMEOUT(opacity(), 1.0, 2000);
+        // Motion off: at once.
+        Spring::setEnabled(false);
+        fadeVisible(bar, false);
+        QVERIFY(bar->isHidden());
+        Spring::setEnabled(true);
     }
 };
 

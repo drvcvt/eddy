@@ -1,5 +1,6 @@
 #include "editor/editorwindow.h"
 #include "app/fills.h"
+#include <QGuiApplication>
 #include "app/spring.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
@@ -641,7 +642,7 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         });
         connect(m_dragPill, &DragPill::preparationRequested, this, [this] { videoDeliveryPath(); });
     }
-    if (cfg.animations) setWindowOpacity(0.0);   // entrance fade starts transparent
+    if (cfg.animations && canFadeWindow()) setWindowOpacity(0.0);   // entrance fade starts transparent
 
     // Size the canvas to the image at 100%; only oversized media starts fitted.
     const int maxW = 1700, maxH = 1000;
@@ -651,6 +652,12 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
     const int minW = qMax(isVideo() ? 520 : 760, lay->minimumSize().width());
     setMinimumSize(minW, chromeH + m_toolbar->toolRail()->sizeHint().height());
     resize(qMin(qMax(native.width() + chromeW, minW), maxW), qMin(native.height() + chromeH, maxH));
+}
+
+// Wayland gives a client no say over its window's opacity (Qt warns on every frame and
+// does nothing); the compositor animates new windows itself.
+bool EditorWindow::canFadeWindow() {
+    return !QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
 }
 
 void EditorWindow::showEvent(QShowEvent *e) {
@@ -667,7 +674,7 @@ void EditorWindow::showEvent(QShowEvent *e) {
         m_canvas->fitMedia();
     if (isVideo()) { scheduleVideoLoad(); scheduleStripLoad(); }
     QTimer::singleShot(0, this, &EditorWindow::offerKeptEdit);
-    if (!m_cfg.animations) { setWindowOpacity(1.0); return; }
+    if (!m_cfg.animations || !canFadeWindow()) return;
     auto *fade = new Spring(motion::kBase, [this](qreal opacity) { setWindowOpacity(opacity); }, this);
     fade->jumpTo(0);
     fade->setTarget(1);

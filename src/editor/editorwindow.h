@@ -97,6 +97,7 @@ protected:
     void keyPressEvent(QKeyEvent *e) override;
     void keyReleaseEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
+    static bool canFadeWindow();
     void closeEvent(QCloseEvent *e) override;
 private:
     bool isVideo() const { return m_media.kind == MediaKind::Video; }

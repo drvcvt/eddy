@@ -1,4 +1,5 @@
 #include "editor/editorwindow.h"
+#include "app/fills.h"
 #include "bars/stepbar.h"
 #include "bars/selectionbar.h"
 #include "canvas/snapping.h"
@@ -117,10 +118,10 @@ TextItem *EditorWindow::selectedText() const {
 
 void EditorWindow::refreshTextBar() {
     TextItem *text = selectedText();
-    if (!text) { m_textBar->hide(); return; }
+    if (!text) { fadeVisible(m_textBar, false); return; }
     m_textBar->setState(text->state());
     m_textBar->adjustSize();
-    m_textBar->show();
+    fadeVisible(m_textBar, true);
     m_textBar->raise();
     positionTextBar();
 }
@@ -128,7 +129,7 @@ void EditorWindow::refreshTextBar() {
 void EditorWindow::positionTextBar() {
     if (m_textBar->isHidden()) return;
     TextItem *text = selectedText();
-    if (!text) { m_textBar->hide(); return; }
+    if (!text) { fadeVisible(m_textBar, false); return; }
     const QRectF bounds = text->sceneBoundingRect();
     const QRect item(m_canvas->mapFromScene(bounds.topLeft()),
                      m_canvas->mapFromScene(bounds.bottomRight()));
@@ -157,13 +158,13 @@ QList<QGraphicsItem *> EditorWindow::alignableSelection() const {
 
 void EditorWindow::refreshSelectionBar() {
     const QList<QGraphicsItem *> items = alignableSelection();
-    if (items.size() < 2 || m_tools->editingText()) { m_selectionBar->hide(); return; }
+    if (items.size() < 2 || m_tools->editingText()) { fadeVisible(m_selectionBar, false); return; }
     QVector<QRectF> boxes;
     for (QGraphicsItem *item : items) boxes.append(alignmentBounds(item));
     m_selectionBar->setSelection(items.size(), !distributeDeltas(boxes, Qt::Horizontal).isEmpty(),
                                  !distributeDeltas(boxes, Qt::Vertical).isEmpty());
     m_selectionBar->adjustSize();
-    m_selectionBar->show();
+    fadeVisible(m_selectionBar, true);
     m_selectionBar->raise();
     positionContextBars();
 }
@@ -193,10 +194,10 @@ StepItem *EditorWindow::selectedStep() const {
 
 void EditorWindow::refreshStepBar() {
     StepItem *step = selectedStep();
-    if (!step) { m_stepBar->hide(); return; }
+    if (!step) { fadeVisible(m_stepBar, false); return; }
     m_stepBar->setStep(step->number(), step->size());
     m_stepBar->adjustSize();
-    m_stepBar->show();
+    fadeVisible(m_stepBar, true);
     m_stepBar->raise();
     positionContextBars();
 }
@@ -237,11 +238,11 @@ SpotlightItem *EditorWindow::selectedSpotlight() const {
 
 void EditorWindow::refreshSpotlightBar() {
     SpotlightItem *spotlight = selectedSpotlight();
-    if (!spotlight) { m_spotlightBar->hide(); return; }
+    if (!spotlight) { fadeVisible(m_spotlightBar, false); return; }
     m_spotlightBar->setValues(spotlight->spotlightShape(), spotlight->intensity());
     m_spotlightBar->setTimeScope(isVideo(), spotlight->timeWindow().has_value());
     m_spotlightBar->adjustSize();
-    m_spotlightBar->show();
+    fadeVisible(m_spotlightBar, true);
     m_spotlightBar->raise();
     positionSpotlightBar();
 }
@@ -249,7 +250,7 @@ void EditorWindow::refreshSpotlightBar() {
 void EditorWindow::positionSpotlightBar() {
     if (m_spotlightBar->isHidden()) return;
     SpotlightItem *spotlight = selectedSpotlight();
-    if (!spotlight) { m_spotlightBar->hide(); return; }
+    if (!spotlight) { fadeVisible(m_spotlightBar, false); return; }
     const QRectF bounds = spotlight->mapRectToScene(spotlight->rect());
     const QRect item(m_canvas->mapFromScene(bounds.topLeft()),
                      m_canvas->mapFromScene(bounds.bottomRight()));
@@ -259,11 +260,11 @@ void EditorWindow::positionSpotlightBar() {
 
 void EditorWindow::refreshRedactBar() {
     RedactItem *r = selectedRedact();
-    if (!r) { m_redactBar->hide(); return; }
+    if (!r) { fadeVisible(m_redactBar, false); return; }
     m_redactBar->setMode(r->mode());
     m_redactBar->setTimeScope(isVideo(), r->timeWindow().has_value());
     m_redactBar->adjustSize();
-    m_redactBar->show();
+    fadeVisible(m_redactBar, true);
     m_redactBar->raise();
     positionRedactBar();
 }
@@ -271,7 +272,7 @@ void EditorWindow::refreshRedactBar() {
 void EditorWindow::positionRedactBar() {
     if (m_redactBar->isHidden()) return;
     RedactItem *r = selectedRedact();
-    if (!r) { m_redactBar->hide(); return; }
+    if (!r) { fadeVisible(m_redactBar, false); return; }
     const QRectF bounds = r->mapRectToScene(r->rect());
     const QRect item(m_canvas->mapFromScene(bounds.topLeft()),
                      m_canvas->mapFromScene(bounds.bottomRight()));
@@ -330,7 +331,7 @@ void EditorWindow::setupCrop() {
         if (rect != m_cropRect)
             m_undo->push(new SetCropCommand(m_cropRect, rect, [this](QRect value) { setCropRect(value); }));
         else setCropRect(rect);
-        m_cropBar->hide();
+        fadeVisible(m_cropBar, false);
         m_handles->setVisible(true);
         if (m_tools->tool() == ToolType::Crop) m_tools->setTool(ToolType::Move);
         m_canvas->setFocus();
@@ -342,7 +343,7 @@ void EditorWindow::setupCrop() {
         const auto items = m_scene->items();
         for (auto *item : m_beforeCropSelection)
             if (items.contains(item)) item->setSelected(true);
-        m_cropBar->hide();
+        fadeVisible(m_cropBar, false);
         m_handles->setVisible(true);
         if (m_tools->tool() == ToolType::Crop) m_tools->setTool(ToolType::Move);
         m_canvas->setFocus();
@@ -369,7 +370,7 @@ void EditorWindow::setupCrop() {
         m_cropBar->resetRatio();
         m_crop->begin(m_media.nativeSize(), m_cropRect, isVideo() ? 2 : 1);
         if (m_beforeCropFit) m_canvas->fitMedia();
-        m_cropBar->show();
+        fadeVisible(m_cropBar, true);
         positionCropBar();
         m_canvas->setFocus();
     });

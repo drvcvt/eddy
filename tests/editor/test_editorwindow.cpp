@@ -1,4 +1,5 @@
 #include "editortest.h"
+#include "app/spring.h"
 
 class TestEditorWindow : public QObject {
     Q_OBJECT
@@ -377,6 +378,25 @@ private slots:
         scene->addItem(text);
         text->setSelected(true);
         QVERIFY(!bar->isHidden());
+    }
+    void contextBarsFadeOutAndLetClicksThrough() {
+        QImage bg(300, 180, QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);
+        Config cfg; cfg.animations = true; CliOptions cli;
+        EditorWindow w(bg, cfg, cli);
+        const auto off = qScopeGuard([] { Spring::setEnabled(false); });
+        w.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&w));
+        auto *scene = w.findChild<QGraphicsScene *>();
+        auto *bar = w.findChild<TextBar *>();
+        auto *text = new TextItem(QStringLiteral("Label"), Qt::red, 18);
+        text->setFlags(QGraphicsItem::ItemIsSelectable | QGraphicsItem::ItemIsMovable);
+        scene->addItem(text);
+        text->setSelected(true);
+        QVERIFY(bar->isVisible() && !bar->testAttribute(Qt::WA_TransparentForMouseEvents));
+        text->setSelected(false);
+        QVERIFY(bar->isVisible());   // fading, not gone at once
+        QVERIFY(bar->testAttribute(Qt::WA_TransparentForMouseEvents));
+        QTRY_VERIFY_WITH_TIMEOUT(bar->isHidden(), 2000);
     }
     void textContextBarDoesNotCoverSelectedText() {
         QImage bg(300,180,QImage::Format_ARGB32_Premultiplied); bg.fill(Qt::white);

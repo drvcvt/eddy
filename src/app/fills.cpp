@@ -342,6 +342,8 @@ void fadeVisible(QWidget *widget, bool visible) {
         spring->setObjectName(QStringLiteral("FadeSpring"));
         spring->jumpTo(widget->isVisible() ? 1 : 0);
     }
+    // Fading out it is already gone for the pointer: clicks reach what is under it.
+    widget->setAttribute(Qt::WA_TransparentForMouseEvents, !visible);
     if (visible && widget->isHidden()) {
         spring->jumpTo(0);
         widget->show();

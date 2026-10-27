@@ -49,6 +49,8 @@ void easeToggle(QToolButton *button);
 // It paints from a layer under the buttons, so their own checked fill stays off.
 // Shows or hides `widget` through its opacity on motion::kBase, in place: it keeps its
 // slot, so nothing beside it moves. Hidden once faded out; with motion off, at once.
+// While it fades out it takes no mouse input. A child widget only: Qt applies no
+// effect to a window, and Wayland gives windows no opacity.
 void fadeVisible(QWidget *widget, bool visible);
 // Checkable entries switch without closing the menu, so a setting can be flipped
 // and the next one reached; plain entries still run and close it.
