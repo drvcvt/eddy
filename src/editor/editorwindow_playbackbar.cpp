@@ -250,11 +250,20 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addWidget(setOut);
     trim->addWidget(m_trimOutLabel);
     trim->addSpacing(theme::kS3);
+    // Duration reads like the pairs before it: a caption boxed like Start and End,
+    // its value boxed like their time fields (updateTrimTimeLabels sets its width).
     auto *durationCaption = new QLabel(tr("Duration"), trimControls);
     durationCaption->setObjectName(QStringLiteral("TrimDurationCaption"));
+    durationCaption->ensurePolished();
+    durationCaption->setContentsMargins(theme::kS2, 0, theme::kS2, 0);
+    durationCaption->setFixedWidth(durationCaption->fontMetrics().horizontalAdvance(durationCaption->text())
+                                   + 2 * theme::kS2);
+    m_trimDurationLabel->ensurePolished();
+    m_trimDurationLabel->setContentsMargins(theme::kS2 + 2, 0, theme::kS2 + 2, 0);
     trim->addWidget(durationCaption);
     trim->addWidget(m_trimDurationLabel);
-    trim->addSpacing(theme::kS2);
+    // Reset's ink sits (kCtl - ink) / 2 in, a caption's kS2: the pairs' kS3 makes up the rest.
+    trim->addSpacing(theme::kS3 + theme::kS2 - (theme::kCtl - theme::iconInk(theme::kIconSize)) / 2);
     trim->addWidget(reset);
     playback->addWidget(trimControls, 0, 1, Qt::AlignCenter);
     m_loopButton = new QToolButton(bar);

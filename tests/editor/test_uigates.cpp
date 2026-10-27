@@ -190,6 +190,34 @@ private slots:
         for (const QRect &r : {play, mute}) QCOMPARE(r.center().y(), trim.center().y());
     }
 
+    void trimFieldKeepsOneRhythm() {
+        // Caption to value the same for Start, End and Duration; pair to pair the same,
+        // reset included. Measured on the ink, so padding and side bearings count.
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("rhythm.mp4")), QSize(1080, 700));
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        auto *field = window->findChild<QWidget *>(QStringLiteral("TrimControls"));
+        const QImage shot = field->grab().toImage();
+        const QColor well = shot.pixelColor(shot.width() / 2, 1);
+        const QColor ink = field->palette().color(QPalette::WindowText);
+        QVector<Ink> parts;
+        for (const char *name : {"TrimSetIn", "TrimInTime", "TrimSetOut", "TrimOutTime",
+                                 "TrimDurationCaption", "TrimDuration", "TrimReset"}) {
+            auto *w = field->findChild<QWidget *>(QString::fromLatin1(name));
+            QVERIFY2(w, name);
+            parts << inkOf(shot, QRect(w->mapTo(field, QPoint()), w->size()), well, ink);
+            QVERIFY2(parts.last().any, name);
+        }
+        const auto gap = [&](int a, int b) { return parts[b].left - parts[a].right; };
+        const qreal captions[] = {gap(0, 1), gap(2, 3), gap(4, 5)};
+        const qreal pairs[] = {gap(1, 2), gap(3, 4), gap(5, 6)};
+        qInfo("caption to value %.1f %.1f %.1f, pair to pair %.1f %.1f %.1f",
+              captions[0], captions[1], captions[2], pairs[0], pairs[1], pairs[2]);
+        for (const qreal g : captions) QVERIFY2(qAbs(g - captions[0]) <= 1, "caption to value differs");
+        for (const qreal g : pairs) QVERIFY2(qAbs(g - pairs[0]) <= 1, "pair to pair differs");
+        QVERIFY(pairs[0] > captions[0] + theme::kS1);   // pairs read as pairs
+    }
+
     void readoutShowsThePositionOnly() {
         // The length is End's and the ruler's; the readout keeps one width for every position.
         QTemporaryDir dir;

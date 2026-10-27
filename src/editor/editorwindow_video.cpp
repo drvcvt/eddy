@@ -219,12 +219,15 @@ void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
 }
 
 void EditorWindow::updateTrimTimeLabels(qint64 inMs, qint64 outMs) {
+    for (QWidget *box : {static_cast<QWidget *>(m_trimInLabel), static_cast<QWidget *>(m_trimOutLabel),
+                         static_cast<QWidget *>(m_trimDurationLabel)}) {
+        // Start, End and Duration on one width: kS2 padding plus QLineEdit's own 2 px margin.
+        if (box) box->setFixedWidth(box->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs))
+                                    + 2 * theme::kS2 + 2 * 2);
+    }
     for (auto *field : {m_trimInLabel, m_trimOutLabel}) {
-        if (!field) continue;
-        if (!field->hasFocus() || !field->isModified())
+        if (field && (!field->hasFocus() || !field->isModified()))
             field->setText(formatPreciseTime(field == m_trimInLabel ? inMs : outMs));
-        field->setFixedWidth(field->fontMetrics().horizontalAdvance(formatPreciseTime(m_media.video.durationMs))
-                            + 2 * theme::kS2 + 2 * 2);   // QSS padding plus QLineEdit's own 2 px margin
     }
     // The output's length: cuts left out, sped-up fragments shorter.
     if (m_trimDurationLabel)
