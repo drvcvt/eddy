@@ -365,6 +365,11 @@ void EditorWindow::ensureVideoPlayer() {
                 [this](const QVideoFrame &frame) {
             if (!frame.isValid()) return;
             m_lastVideoFrame = frame;
+            // The seek in flight has shown a frame: a target waiting behind it goes now.
+            if (m_seekInFlight) {
+                m_seekInFlight = false;
+                if (m_timelineActive && m_seekTimer->isActive()) flushVideoSeek();
+            }
             m_videoBackgroundCurrent = false;
             // Pixels only where something reads them: a blur samples the frame, OCR reads it,
             // the Redact tool draws from it. A blacken cover needs none (700 ms of every 3 s

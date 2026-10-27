@@ -265,6 +265,15 @@ void EditorWindow::flushVideoSeek() {
         finishVideoSeek();
         return;
     }
+    // Dragging: a seek sent before the last one showed a frame cancels it, and the
+    // picture freezes. Wait for that frame (at most 150 ms); the release always seeks.
+    constexpr qint64 kSeekPatienceMs = 150;
+    if (m_timelineActive && m_seekInFlight && m_seekFlight.elapsed() < kSeekPatienceMs) {
+        m_seekTimer->start();
+        return;
+    }
+    m_seekInFlight = true;
+    m_seekFlight.restart();
     // Some backends return the frame ending exactly at the requested time.
     // Seek just inside the requested millisecond so a boundary selects its frame.
     m_hasSentVideoSeek = true;

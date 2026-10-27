@@ -1,5 +1,6 @@
 #pragma once
 #include <QWidget>
+#include <QElapsedTimer>
 #include <QImage>
 #include "app/config.h"
 #include "app/cli.h"
@@ -308,6 +309,9 @@ private:
     // Paused stills convert on the thread pool, one job at a time; the newest frame that
     // arrived meanwhile waits here.
     bool m_stillConverting = false;
+    // While dragging, one seek at a time: the next waits for a frame (or kSeekPatienceMs).
+    bool m_seekInFlight = false;
+    QElapsedTimer m_seekFlight;
     QVideoFrame m_stillWaiting;
     bool m_hasSentVideoSeek = false;
     bool m_copyFramePending = false;
