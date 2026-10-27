@@ -76,8 +76,7 @@ void setMenuArrow(QToolButton *button);
 QToolButton *floatButton(QWidget *parent, const QString &name, const QString &tip);
 // Qt pads every tool button label by two spaces; beside an icon that slack
 // lands between label and chevron, so menu buttons are sized without it.
-// With `widest`, the button keeps that label's width, so a new choice moves nothing.
-void setMenuLabel(QToolButton *button, const QString &text, const QString &widest = {});
+void setMenuLabel(QToolButton *button, const QString &text);
 
 // A tool button that draws its own label: the capitals centred on its height,
 // the baseline on a whole device pixel. Qt centres the line box instead, which

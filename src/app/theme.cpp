@@ -203,15 +203,12 @@ void setMenuArrow(QToolButton *button) {
     setMenuLabel(button, button->text());
 }
 
-void setMenuLabel(QToolButton *button, const QString &text, const QString &widest) {
-    const auto fitted = [button](const QString &label) {
-        button->setText(label);
-        button->setMinimumWidth(0);
-        button->setMaximumWidth(QWIDGETSIZE_MAX);
-        return button->sizeHint().width() - 2 * button->fontMetrics().horizontalAdvance(QLatin1Char(' '));
-    };
-    const int width = widest.isEmpty() ? 0 : fitted(widest);
-    button->setFixedWidth(qMax(width, fitted(text)));
+void setMenuLabel(QToolButton *button, const QString &text) {
+    button->setText(text);
+    button->setMinimumWidth(0);
+    button->setMaximumWidth(QWIDGETSIZE_MAX);
+    button->setFixedWidth(button->sizeHint().width()
+                          - 2 * button->fontMetrics().horizontalAdvance(QLatin1Char(' ')));
 }
 
 QRectF CapButton::inkRect(qreal dpr) const {

@@ -224,12 +224,15 @@ private slots:
         QVERIFY(QTest::qWaitForWindowExposed(window.get()));
         auto *speed = window->findChild<QToolButton *>(QStringLiteral("PlaybackSpeed"));
         auto *loop = window->findChild<QWidget *>(QStringLiteral("PlaybackLoop"));
-        const int width = speed->width(), x = loop->mapTo(window.get(), QPoint()).x();
+        // The label grows to the left; the arrow at its right edge and loop never move.
+        const auto right = [&] { return speed->mapTo(window.get(), QPoint(speed->width(), 0)).x(); };
+        const int arrow = right(), x = loop->mapTo(window.get(), QPoint()).x();
         for (QAction *rate : speed->menu()->actions()) {
             rate->trigger();
             QApplication::processEvents();
-            QCOMPARE(speed->width(), width);
+            QCOMPARE(right(), arrow);
             QCOMPARE(loop->mapTo(window.get(), QPoint()).x(), x);
+            QVERIFY(speed->width() <= speed->sizeHint().width());   // fits its label, no gap inside
         }
     }
 

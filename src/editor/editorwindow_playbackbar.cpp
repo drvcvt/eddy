@@ -296,7 +296,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         connect(action, &QAction::triggered, this, [this, rate] {
             ensureVideoPlayer();
             m_previewRate = rate;
-            theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate), kWidestRate);
+            theme::setMenuLabel(m_speedButton, QStringLiteral("%1×").arg(rate));
             for (auto *other : m_speedButton->menu()->actions())
                 other->setChecked(qFuzzyCompare(other->data().toDouble(), rate));
             if (m_player) m_player->setPlaybackRate(rate);
@@ -308,9 +308,19 @@ QWidget *EditorWindow::createPlaybackBar() {
     }
     m_speedButton->setMenu(rates);
     theme::setMenuArrow(m_speedButton);
-    theme::setMenuLabel(m_speedButton, m_speedButton->text(), kWidestRate);
+    // The button fits its label, in a slot as wide as the longest one: label and arrow
+    // stay together, and a new rate moves neither the arrow nor loop beside it.
+    auto *speedSlot = new QWidget(bar);
+    auto *speedLayout = new QHBoxLayout(speedSlot);
+    speedLayout->setContentsMargins(0, 0, 0, 0);
+    speedLayout->setSpacing(0);
+    speedLayout->addStretch();
+    speedLayout->addWidget(m_speedButton);
+    theme::setMenuLabel(m_speedButton, kWidestRate);
+    speedSlot->setFixedSize(m_speedButton->width(), theme::kCtl);
+    theme::setMenuLabel(m_speedButton, QStringLiteral("1×"));
     rightGroup->addWidget(m_loopButton);
-    rightGroup->addWidget(m_speedButton);
+    rightGroup->addWidget(speedSlot);
     rightGroup->addWidget(m_noAudio);
     rightGroup->addWidget(m_muteButton);
     playback->addLayout(rightGroup, 0, 2, Qt::AlignRight | Qt::AlignVCenter);
