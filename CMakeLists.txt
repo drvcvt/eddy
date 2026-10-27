@@ -8,6 +8,11 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+# GCC's default -flto=auto runs one ltrans job per core at every link, test binaries
+# included, whatever make's -j says: two at most keeps the machine usable while building.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set(CMAKE_CXX_COMPILE_OPTIONS_IPO -flto=2 -fno-fat-lto-objects)
+endif()
 # -O2, not CMake's -O3: the same speed here for less code (the whole program goes through LTO).
 string(REPLACE "-O3" "-O2" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
 set(CMAKE_CXX_STANDARD 20)
