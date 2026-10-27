@@ -72,9 +72,9 @@ void SetSpotlightStyleCommand::redo() {
 }
 
 SetTrimRangeCommand::SetTrimRangeCommand(
-    qint64 beforeIn, qint64 beforeOut, qint64 afterIn, qint64 afterOut, Apply apply)
+    qint64 beforeIn, qint64 beforeOut, qint64 afterIn, qint64 afterOut, Apply apply, int mergeKey)
     : m_beforeIn(beforeIn), m_beforeOut(beforeOut), m_afterIn(afterIn),
-      m_afterOut(afterOut), m_apply(std::move(apply)) {
+      m_afterOut(afterOut), m_apply(std::move(apply)), m_key(mergeKey) {
     setText("trim video");
 }
 void SetTrimRangeCommand::undo() { m_apply(m_beforeIn, m_beforeOut); }

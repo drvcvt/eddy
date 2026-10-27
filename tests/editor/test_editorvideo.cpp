@@ -246,7 +246,8 @@ private slots:
         auto *field = window.findChild<QLineEdit *>(QStringLiteral("TrimInTime"));
         auto *timeline = window.findChild<VideoTimeline *>();
         field->setFocus();
-        field->selectAll(); QTest::keyClicks(field, QStringLiteral("6.000")); QTest::keyClick(field, Qt::Key_Return);
+        // On the ruler's clock the cut has no length: 0:05.000 is its seam, the cut's start.
+        field->selectAll(); QTest::keyClicks(field, QStringLiteral("5.000")); QTest::keyClick(field, Qt::Key_Return);
         QCOMPARE(timeline->trimIn(), 0);
         QCOMPARE(field->text(), QStringLiteral("0:00.000"));
         QCOMPARE(window.findChild<Toast *>()->text(), QStringLiteral("Keep at least part of the clip"));
@@ -610,7 +611,7 @@ private slots:
         QTest::keyClick(field, Qt::Key_Escape);
         QCOMPARE(field->text(), QStringLiteral("0:01.250"));
         QCOMPARE(undo->count(), 1);
-        QCOMPARE(window.findChild<QLabel *>("TrimDuration")->text(), QStringLiteral("0:08.750"));
+        QCOMPARE(window.findChild<QLineEdit *>("TrimDuration")->text(), QStringLiteral("0:08.750"));
         undo->undo();
         QCOMPARE(timeline->trimIn(), 0);
     }

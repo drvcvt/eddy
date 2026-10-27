@@ -157,7 +157,6 @@ QWidget#PlaybackBar QLabel#PlaybackTime { color: @fg; }
 /* Start, End and Duration read as three equal caption/value pairs. */
 /* Their boxes are set in code to match the Start/End buttons and the time fields. */
 QWidget#PlaybackBar QLabel#TrimDurationCaption { font-family: @font-ui; font-weight: 500; padding: 0; }
-QWidget#PlaybackBar QLabel#TrimDuration { color: @fg; padding: 0; }
 QLabel#VideoExportStatus { color: @sub; font-size: @fs-caption; padding: 0 @s2; }
 QWidget#ViewControls QLabel#NoAudio { color: @sub; font-family: @font-ui; font-size: @fs-caption; font-weight: 500; }
 QWidget#PlaybackBar QLineEdit {

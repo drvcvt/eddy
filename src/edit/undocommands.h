@@ -98,12 +98,22 @@ private:
 class SetTrimRangeCommand : public QUndoCommand {
 public:
     using Apply = std::function<void(qint64, qint64)>;
+    // Commands with the same non-zero `mergeKey` in a row fold into one step (frame steps in a field).
     SetTrimRangeCommand(qint64 beforeIn, qint64 beforeOut,
-                        qint64 afterIn, qint64 afterOut, Apply apply);
+                        qint64 afterIn, qint64 afterOut, Apply apply, int mergeKey = 0);
     void undo() override; void redo() override;
+    int id() const override { return m_key ? 0x5452 : -1; }
+    bool mergeWith(const QUndoCommand *other) override {
+        const auto *next = static_cast<const SetTrimRangeCommand *>(other);
+        if (next->m_key != m_key) return false;
+        m_afterIn = next->m_afterIn;
+        m_afterOut = next->m_afterOut;
+        return true;
+    }
 private:
     qint64 m_beforeIn, m_beforeOut, m_afterIn, m_afterOut;
     Apply m_apply;
+    int m_key;
 };
 // The whole Studio document before and after one gesture. Commands with the
 // same non-zero `mergeKey` in a row fold into one step (mouse-wheel zooming).

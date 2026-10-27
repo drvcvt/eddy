@@ -2,6 +2,7 @@
 #include <QAudioOutput>
 #include <QGraphicsVideoItem>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMediaPlayer>
 #include <QMenu>
 #include <QProcess>
@@ -176,7 +177,7 @@ private slots:
         slow.speed = 0.25;
         doc.fragments = {slow};
         w.setStudioDocument(doc);
-        auto *duration = w.findChild<QLabel *>(QStringLiteral("TrimDuration"));
+        auto *duration = w.findChild<QLineEdit *>(QStringLiteral("TrimDuration"));
         QCOMPARE(duration->text(), QStringLiteral("10:40.000"));
         QVERIFY2(duration->contentsRect().width() >= duration->fontMetrics().horizontalAdvance(duration->text()),
                  qPrintable(QString::number(duration->contentsRect().width())));
@@ -305,7 +306,7 @@ private slots:
         timeline->setMark(1000, 2000);
         QTest::keyClick(&w, Qt::Key_Delete);
         QCOMPARE(w.studioDocument().fragments, (QVector<Fragment>{f(0, false), f(1000, true), f(2000, false)}));
-        QCOMPARE(w.findChild<QLabel *>(QStringLiteral("TrimDuration"))->text(), QStringLiteral("0:03.000"));
+        QCOMPARE(w.findChild<QLineEdit *>(QStringLiteral("TrimDuration"))->text(), QStringLiteral("0:03.000"));
         QCOMPARE(undo->count(), steps + 1);
         QVERIFY(!timeline->hasMark());
         QCOMPARE(timeline->position(), 2000);   // the first kept frame after the cut
@@ -342,7 +343,7 @@ private slots:
         w.show();
         auto *timeline = w.findChild<VideoTimeline *>();
         auto *undo = w.findChild<QUndoStack *>();
-        auto *duration = w.findChild<QLabel *>(QStringLiteral("TrimDuration"));
+        auto *duration = w.findChild<QLineEdit *>(QStringLiteral("TrimDuration"));
         timeline->setPosition(1000);
         QTest::keyClick(&w, Qt::Key_S);
         QCOMPARE(w.studioDocument().fragments.size(), 2);

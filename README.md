@@ -113,6 +113,7 @@ On videos:
 | `Shift+←` / `Shift+→` | A second back / forward, as the clip plays |
 | `↑` / `↓` | To the previous / next edge (cut, zoom, mask, Start, End) |
 | `Home` / `End` | To Start / to the last frame of the range |
+| `↑` / `↓` in Start, End or Duration | Step that time a frame (`Shift`: a second) |
 | `I` / `O` | Set start / end at the playhead |
 | `S` | Split at the playhead |
 | `Shift` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |

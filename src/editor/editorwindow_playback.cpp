@@ -192,17 +192,27 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
             return true;
         }
     }
-    if (event->type() == QEvent::KeyPress && (widget == m_trimInLabel || widget == m_trimOutLabel)) {
+    const bool trimField = widget == m_trimInLabel || widget == m_trimOutLabel || widget == m_trimDurationLabel;
+    if (trimField && event->type() == QEvent::FocusOut) ++m_trimStepSession;   // ends a run of ↑/↓ steps
+    if (event->type() == QEvent::KeyPress && trimField) {
         const auto *key = static_cast<QKeyEvent *>(event);
         auto *field = static_cast<QLineEdit *>(widget);
         if (key->key() == Qt::Key_Escape) {
-            field->setText(formatPreciseTime(field == m_trimInLabel ? m_trimInMs : m_trimOutMs));
             field->setModified(false);
+            updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
+            ++m_trimStepSession;
             m_canvas->setFocus();
             return true;
         }
         if (key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) {
             commitTrimTime(field);
+            ++m_trimStepSession;
+            return true;
+        }
+        if ((key->key() == Qt::Key_Up || key->key() == Qt::Key_Down)
+            && (key->modifiers() & ~Qt::ShiftModifier & ~Qt::KeypadModifier) == 0) {
+            if (field->isModified()) commitTrimTime(field);   // a typed value is where the steps start
+            stepTrimField(field, key->key() == Qt::Key_Up ? 1 : -1, key->modifiers().testFlag(Qt::ShiftModifier));
             return true;
         }
     }
@@ -262,9 +272,9 @@ void EditorWindow::showVideoPreview() {
     // The nearest decoded frame, when it differs, follows a step quieter.
     m_previewTime->setText(m_previewSampleTime >= 0 && m_previewSampleTime != m_hoverTime
         ? QStringLiteral("%1&nbsp;&nbsp;<span style=\"color:%2\">~%3</span>")
-              .arg(formatPreciseTime(m_hoverTime), palette().color(QPalette::PlaceholderText).name(),
-                   formatPreciseTime(m_previewSampleTime))
-        : formatPreciseTime(m_hoverTime));
+              .arg(formatPreciseTime(editedMs(m_hoverTime)), palette().color(QPalette::PlaceholderText).name(),
+                   formatPreciseTime(editedMs(m_previewSampleTime)))
+        : formatPreciseTime(editedMs(m_hoverTime)));
     m_videoPreview->adjustSize();
     QPoint pos = m_timeline->mapTo(this, m_hoverPoint);
     pos.setX(qBound(theme::kS1, pos.x() - m_videoPreview->width() / 2,
@@ -478,8 +488,8 @@ void EditorWindow::ensureVideoPlayer() {
         updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
         rebuildCamera();
         if (m_timeLabel) {
-            m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(formatPreciseTime(duration)));
-            m_timeLabel->setText(formatPreciseTime(m_player->position()));
+            m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(widestTime()));
+            m_timeLabel->setText(formatPreciseTime(editedMs(m_player->position())));
         }
     });
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos){
@@ -487,7 +497,7 @@ void EditorWindow::ensureVideoPlayer() {
         if (m_timeline && (m_presentedStart < 0 || m_player->playbackState() != QMediaPlayer::PlayingState))
             m_timeline->setPosition(pos);
         if (m_timeLabel)
-            m_timeLabel->setText(formatPreciseTime(pos));
+            m_timeLabel->setText(formatPreciseTime(editedMs(pos)));
         if (m_player->playbackState() == QMediaPlayer::PlayingState) followPlaybackPieces(pos);
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
             handlePlaybackEnd();

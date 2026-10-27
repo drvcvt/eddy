@@ -146,8 +146,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_timeLabel = new QLabel(formatPreciseTime(0), bar);
     m_timeLabel->setObjectName("PlaybackTime");
     m_timeLabel->ensurePolished();
-    m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(
-        formatPreciseTime(m_media.video.durationMs)));
+    m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(widestTime()));
 
     m_muteButton = new QToolButton(bar);
     m_muteButton->setObjectName("PlaybackMute");
@@ -212,17 +211,19 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_trimInLabel->setObjectName(QStringLiteral("TrimInTime"));
     m_trimOutLabel = new QLineEdit(formatPreciseTime(m_trimOutMs), bar);
     m_trimOutLabel->setObjectName(QStringLiteral("TrimOutTime"));
-    m_trimDurationLabel = new QLabel(bar);
+    m_trimDurationLabel = new QLineEdit(bar);
     m_trimDurationLabel->setObjectName(QStringLiteral("TrimDuration"));
-    m_trimDurationLabel->setToolTip(QStringLiteral("Selected duration"));
-    for (auto *field : {m_trimInLabel, m_trimOutLabel}) {
+    // Times on the ruler's clock (C4): cuts folded, speed applied, from the clip's first frame.
+    for (auto *field : {m_trimInLabel, m_trimOutLabel, m_trimDurationLabel}) {
         field->ensurePolished();
         field->setMaxLength(20);
         field->setFixedHeight(theme::kCtl);
-        field->setAccessibleName(field == m_trimInLabel ? tr("Trim start") : tr("Trim end"));
+        field->setAccessibleName(field == m_trimInLabel ? tr("Trim start")
+                                 : field == m_trimOutLabel ? tr("Trim end") : tr("Exported length"));
         field->setToolTip(field == m_trimInLabel
-            ? tr("Start of the exported clip\nApply\tEnter\nCancel\tEsc")
-            : tr("End of the exported clip\nApply\tEnter\nCancel\tEsc"));
+            ? tr("Start of the exported clip\nStep a frame\t↑ ↓\nApply\tEnter\nCancel\tEsc")
+            : field == m_trimOutLabel ? tr("End of the exported clip\nStep a frame\t↑ ↓\nApply\tEnter\nCancel\tEsc")
+            : tr("Length of the exported clip\nStep a frame\t↑ ↓\nApply\tEnter\nCancel\tEsc"));
         connect(field, &QLineEdit::editingFinished, this, [this, field] { commitTrimTime(field); });
     }
     updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
@@ -255,16 +256,14 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addWidget(setOut);
     trim->addWidget(m_trimOutLabel);
     trim->addSpacing(theme::kS3);
-    // Duration reads like the pairs before it: a caption boxed like Start and End,
-    // its value boxed like their time fields (updateTrimTimeLabels sets its width).
+    // Duration reads like the pairs before it: a caption boxed like Start and End, its
+    // value a time field like theirs (updateTrimTimeLabels sets the width of all three).
     auto *durationCaption = new QLabel(tr("Duration"), trimControls);
     durationCaption->setObjectName(QStringLiteral("TrimDurationCaption"));
     durationCaption->ensurePolished();
     durationCaption->setContentsMargins(theme::kS2, 0, theme::kS2, 0);
     durationCaption->setFixedWidth(durationCaption->fontMetrics().horizontalAdvance(durationCaption->text())
                                    + 2 * theme::kS2);
-    m_trimDurationLabel->ensurePolished();
-    m_trimDurationLabel->setContentsMargins(theme::kS2 + 2, 0, theme::kS2 + 2, 0);
     trim->addWidget(durationCaption);
     trim->addWidget(m_trimDurationLabel);
     // Reset's ink sits (kCtl - ink) / 2 in, a caption's kS2: the pairs' kS3 makes up the rest.
@@ -392,7 +391,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         if (time != m_hoverTime || !m_videoPreview->isVisible()) return;
         setVideoPreviewImage(image);
         m_previewSampleTime = time;
-        m_previewTime->setText(formatPreciseTime(time));
+        m_previewTime->setText(formatPreciseTime(editedMs(time)));
     });
     connect(m_previewProvider, &VideoPreviewProvider::hoverFailed, this, [this](qint64 time) {
         if (time == m_hoverTime && m_previewSampleTime < 0) m_previewImage->setText(tr("Preview unavailable"));
@@ -457,7 +456,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         if (hasVideoEdits() && m_cachedVideoRevision != m_videoRevision) scheduleVideoExportCache();
     });
     connect(m_timeline, &VideoTimeline::trimCommitted,
-            this, &EditorWindow::applyTrimRange);
+            this, [this](qint64 in, qint64 out) { applyTrimRange(in, out); });
     connect(m_timeline, &VideoTimeline::trimPreviewed,
             this, &EditorWindow::updateTrimTimeLabels);
     connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);

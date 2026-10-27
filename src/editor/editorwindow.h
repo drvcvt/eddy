@@ -127,7 +127,7 @@ private:
     bool hasTrim() const;
     void setTrimStartAtPlayhead();
     void setTrimEndAtPlayhead();
-    void applyTrimRange(qint64 inMs, qint64 outMs);
+    void applyTrimRange(qint64 inMs, qint64 outMs, int mergeKey = 0);
     void setTrimRangeState(qint64 inMs, qint64 outMs);
     void updateTrimTimeLabels(qint64 inMs, qint64 outMs);
     void commitTrimTime(QLineEdit *field);
@@ -200,6 +200,12 @@ private:
     QVector<qint64> playheadEdges() const;
     void stepPlayhead(qint64 target, bool held);
     bool m_keyStepping = false;   // an arrow held down: seeks wait for the frame in flight
+    // C4, one clock: every time shown is the ruler's, edited time from the clip's first
+    // frame (cuts folded, speed applied). Stored times stay source time.
+    qint64 editedMs(qint64 sourceMs) const;
+    qint64 sourceFromEdited(qint64 editedMs) const;
+    QString widestTime() const;   // the longest clock reading, so nothing changes width
+    void stepTrimField(QLineEdit *field, int direction, bool second);
     void refreshMasks();
     void applyTimeWindows(qint64 sourceMs);
     void setTimeScope(AnnotationItem *item, bool fromPlayhead);
@@ -305,7 +311,8 @@ private:
     QToolButton *m_exportCancel = nullptr;
     QLineEdit *m_trimInLabel = nullptr;
     QLineEdit *m_trimOutLabel = nullptr;
-    QLabel *m_trimDurationLabel = nullptr;
+    QLineEdit *m_trimDurationLabel = nullptr;   // editable: a length sets End (C4)
+    int m_trimStepSession = 0;                  // ↑/↓ in one field, one focus: one undo step
     QTimer *m_seekTimer = nullptr;
     QTimer *m_seekSettleTimer = nullptr;
     qint64 m_seekTarget = -1;
