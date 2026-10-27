@@ -46,11 +46,12 @@ QString path(const QObject *o) {
     return names.join(QLatin1Char('/'));
 }
 
-std::unique_ptr<EditorWindow> openVideo(const QString &file, QSize size) {
+std::unique_ptr<EditorWindow> openVideo(const QString &file, QSize size, bool audio = false) {
     MediaDocument doc;
     doc.kind = MediaKind::Video;
     doc.path = file;
     doc.video = {QSize(64, 48), 4000, 25.0};
+    doc.video.hasAudio = audio;   // the file is missing: the waveform lane says so, at full height
     Config cfg; cfg.animations = false;
     auto window = std::make_unique<EditorWindow>(doc, cfg, CliOptions());
     window->resize(size);
@@ -204,8 +205,16 @@ private slots:
         QTemporaryDir dir;
         // Stress: a long file name in the title and a long message in the toast.
         const QString file = dir.filePath(QStringLiteral("a-very-long-screen-recording-name-from-a-long-afternoon-2026-10-26_23-59-59.mp4"));
-        auto window = openVideo(file, QSize(520, 620));
+        auto window = openVideo(file, QSize(520, 620), true);
         QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        QVERIFY(window->findChild<VideoTimeline *>()->waveformShown());
+        QCOMPARE(window->size(), QSize(520, 620));   // the bottom never pushes the window taller
+        // Folded onto its own line, the trim field keeps its size and the window's middle,
+        // so its gaps match the wide row.
+        auto *trim = window->findChild<QWidget *>(QStringLiteral("TrimControls"));
+        QCOMPARE(trim->width(), trim->sizeHint().width());
+        const int middle = trim->mapTo(window.get(), trim->rect().center()).x();
+        QVERIFY2(qAbs(middle - window->width() / 2) <= 1, qPrintable(QString::number(middle)));
         auto *toast = window->findChild<Toast *>();
         QVERIFY(toast);
         toast->showMessage(QStringLiteral("OCR failed: tesseract exited with code 1 while reading "

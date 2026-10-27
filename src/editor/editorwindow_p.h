@@ -57,7 +57,7 @@ public:
         if (wide != m_wide) {
             m_wide = wide;
             if (wide) { stack->removeWidget(trim); transport->addWidget(trim, 0, 1, Qt::AlignCenter); }
-            else { transport->removeWidget(trim); stack->addWidget(trim); }
+            else { transport->removeWidget(trim); stack->addWidget(trim, 0, Qt::AlignHCenter); }
             updateGeometry();
         }
         const int balanced = wide ? side : 0;
