@@ -401,14 +401,14 @@ void EditorWindow::ensureVideoPlayer() {
         updateTrimTimeLabels(m_trimInMs, m_trimOutMs);
         rebuildCamera();
         if (m_timeLabel)
-            m_timeLabel->setText(formatTime(m_player->position()) + QStringLiteral(" / ") + formatTime(duration));
+            m_timeLabel->setText(playbackTime(m_player->position(), duration));
     });
     connect(m_player, &QMediaPlayer::positionChanged, this, [this](qint64 pos){
         if (m_timelineActive || m_seekSettling) return;
         if (m_timeline && (m_presentedStart < 0 || m_player->playbackState() != QMediaPlayer::PlayingState))
             m_timeline->setPosition(pos);
         if (m_timeLabel)
-            m_timeLabel->setText(formatTime(pos) + QStringLiteral(" / ") + formatTime(m_player->duration()));
+            m_timeLabel->setText(playbackTime(pos, m_player->duration()));
         if (m_player->playbackState() == QMediaPlayer::PlayingState) followPlaybackPieces(pos);
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
             handlePlaybackEnd();

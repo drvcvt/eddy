@@ -109,10 +109,19 @@ QWidget *EditorWindow::createPlaybackBar() {
     bar->setObjectName("PlaybackBar");
     bar->setAttribute(Qt::WA_StyledBackground, true);
     auto *lay = new QVBoxLayout(bar);
-    lay->setContentsMargins(theme::kS2, theme::kS2, theme::kS2, theme::kS2);
+    // One left and right edge with the tool rail and footer (kBarPad from the window);
+    // rows kS2 apart, the footer's own kBarPad completing the last gap.
+    lay->setContentsMargins(theme::kBarPad, theme::kS2, theme::kBarPad, theme::kS2 - theme::kBarPad);
     lay->setSpacing(theme::kS2);
-    auto *playback = new QHBoxLayout;
-    playback->setSpacing(theme::kS2);
+    auto *playback = new QGridLayout;
+    playback->setContentsMargins(0, 0, 0, 0);
+    playback->setHorizontalSpacing(theme::kS2);
+    playback->setColumnStretch(0, 1);
+    playback->setColumnStretch(2, 1);
+    auto *leftGroup = new QHBoxLayout;
+    leftGroup->setSpacing(theme::kS2);
+    auto *rightGroup = new QHBoxLayout;
+    rightGroup->setSpacing(theme::kS2);
     auto *trimControls = new QWidget(bar);
     trimControls->setObjectName(QStringLiteral("TrimControls"));
     auto *trim = new QHBoxLayout(trimControls);
@@ -130,11 +139,11 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_playButton->setIconSize(QSize(theme::kIconSize, theme::kIconSize));
     m_playButton->setToolTip(QStringLiteral("Play / Pause\tSpace / K"));
     m_playButton->setAccessibleName(theme::spokenName(m_playButton->toolTip()));
-    m_timeLabel = new QLabel(QStringLiteral("0:00 / ") + formatTime(m_media.video.durationMs), bar);
+    m_timeLabel = new QLabel(playbackTime(0, m_media.video.durationMs), bar);
     m_timeLabel->setObjectName("PlaybackTime");
     m_timeLabel->ensurePolished();
     m_timeLabel->setFixedWidth(m_timeLabel->fontMetrics().horizontalAdvance(
-        formatPreciseTime(m_media.video.durationMs) + QStringLiteral(" / ") + formatTime(m_media.video.durationMs)));
+        playbackTime(m_media.video.durationMs, m_media.video.durationMs)));
 
     m_muteButton = new QToolButton(bar);
     m_muteButton->setObjectName("PlaybackMute");
@@ -151,7 +160,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_volumeSlider->setObjectName("PlaybackVolume");
     m_volumeSlider->setRange(0, 100);
     m_volumeSlider->setValue(100);
-    m_volumeSlider->setFixedWidth(64);
+    m_volumeSlider->setFixedSize(64, theme::kCtl);   // on the row's middle, like its neighbours
     m_volumeSlider->setToolTip(QStringLiteral("Volume"));
     m_volumeSlider->setAccessibleName(QStringLiteral("Volume"));
     auto *audioMenu = new QMenu(m_muteButton);
@@ -186,9 +195,9 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(popupVolume, &QSlider::valueChanged, m_volumeSlider, &QSlider::setValue);
     connect(m_volumeSlider, &QSlider::valueChanged, popupVolume, &QSlider::setValue);
 
-    playback->addWidget(m_playButton);
-    playback->addWidget(m_timeLabel);
-    playback->addStretch(1);
+    leftGroup->addWidget(m_playButton);
+    leftGroup->addWidget(m_timeLabel);
+    playback->addLayout(leftGroup, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
     m_timeline = new VideoTimeline(bar);
     m_timeline->setDuration(m_media.video.durationMs);
     m_timeline->setMinimumRange(m_media.video.fps > 0.0
@@ -250,9 +259,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     trim->addWidget(m_trimDurationLabel);
     trim->addSpacing(theme::kS2);
     trim->addWidget(reset);
-    trim->addStretch(1);
-    playback->addWidget(trimControls);
-    playback->addStretch(1);
+    playback->addWidget(trimControls, 0, 1, Qt::AlignCenter);
     m_loopButton = new QToolButton(bar);
     m_loopButton->setObjectName(QStringLiteral("PlaybackLoop"));
     m_loopButton->setCheckable(true);
@@ -292,11 +299,12 @@ QWidget *EditorWindow::createPlaybackBar() {
     }
     m_speedButton->setMenu(rates);
     theme::setMenuArrow(m_speedButton);
-    playback->addWidget(m_loopButton);
-    playback->addWidget(m_speedButton);
-    playback->addWidget(m_noAudio);
-    playback->addWidget(m_muteButton);
-    playback->addWidget(m_volumeSlider);
+    rightGroup->addWidget(m_loopButton);
+    rightGroup->addWidget(m_speedButton);
+    rightGroup->addWidget(m_noAudio);
+    rightGroup->addWidget(m_muteButton);
+    rightGroup->addWidget(m_volumeSlider);
+    playback->addLayout(rightGroup, 0, 2, Qt::AlignRight | Qt::AlignVCenter);
     lay->addWidget(m_timeline);
     lay->addLayout(playback);
 
@@ -508,7 +516,8 @@ QWidget *EditorWindow::createPlaybackBar() {
         m_timeline->setTrimRange(0, m_timeline->duration());
         applyTrimRange(m_timeline->trimIn(), m_timeline->trimOut());
     });
-    bar->stack = lay; bar->transport = playback; bar->trim = trimControls; bar->volume = m_volumeSlider;
+    bar->stack = lay; bar->transport = playback; bar->left = leftGroup; bar->right = rightGroup;
+    bar->trim = trimControls; bar->volume = m_volumeSlider;
     bar->adapt();
     return bar;
 }

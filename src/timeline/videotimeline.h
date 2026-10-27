@@ -19,7 +19,8 @@ class VideoTimeline : public QWidget {
 public:
     // Geometry (docs/design.md): a caption-high ruler, the film strip, then each
     // optional lane below it, all kS1 apart.
-    static constexpr qreal kInset = 6;                               // room for a trim grip
+    static constexpr qreal kInset = 6;                               // a trim grip's width: grips sit outside the kept range
+    static constexpr qreal kGripReach = kInset / 2 + 4;             // from a grip's middle: the grip and 4 px of slop
     static constexpr qreal kRulerH = 16;                             // a 12 px caption and its line
     static constexpr qreal kTrackTop = kRulerH + theme::kS1;
     static constexpr qreal kTrackH = 32;

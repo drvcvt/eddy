@@ -98,7 +98,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     clip.addRoundedRect(track, 6, 6);
     painter.save();
     painter.setClipPath(clip);
-    painter.fillRect(track, ink(0.12));
+    painter.fillRect(track, ink(hasFocus() ? 0.18 : 0.12));   // focus shows as a brighter track, not a ring
     const auto times = thumbnailTimes();
     for (int i = 0; i < times.size(); ++i) {
         const QRectF slot(track.left() + i * track.width() / times.size(), track.top(),
@@ -243,68 +243,63 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
         painter.setPen(Qt::NoPen);
     }
 
-    const qreal playX = xForTime(m_position);
-    painter.setBrush(ink(0.86));
-    if (playX >= track.left() && playX <= track.right()) {
-        const qreal playBottom = !m_masks.isEmpty() ? maskLaneRect().bottom()
-            : m_laneVisible ? zoomLaneRect().bottom() : waveformShown() ? waveformRect().bottom() : track.bottom() + 3;
-        painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, playBottom - track.top()), 1, 1);
-        painter.drawRoundedRect(QRectF(playX - 3, track.top() - 4, 6, 5), 2, 2);
-    }
+    // Grips sit just outside the kept range, the strip's full height, so they never
+    // cover a kept frame; the track's inset leaves them room at the clip's ends.
     auto handle = [&](qreal x, Drag kind) {
         if (x < track.left() || x > track.right()) return;
         const bool active = m_drag == kind || m_hover == kind;
+        const QRectF grip(kind == Drag::In ? x - kInset : x, track.top(), kInset, track.height());
         painter.setPen(Qt::NoPen);
-        painter.setBrush(ink(active ? 0.36 : 0.23));
-        painter.drawRoundedRect(QRectF(x - 5, track.top() - 1, 10, track.height() + 2), 4, 4);
-        // Brackets point into the kept range and stay distinct from the playhead.
-        const qreal direction = kind == Drag::In ? 1 : -1;
-        const qreal y = track.center().y();
-        QPainterPath bracket;
-        bracket.moveTo(x + direction * 2, y - 5);
-        bracket.lineTo(x - direction * 1, y - 5);
-        bracket.lineTo(x - direction * 1, y + 5);
-        bracket.lineTo(x + direction * 2, y + 5);
-        painter.setPen(QPen(ink(active ? 0.95 : 0.8), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(Qt::NoBrush);
-        painter.drawPath(bracket);
+        painter.setBrush(ink(active ? 0.5 : 0.34));
+        painter.drawRoundedRect(grip, 3, 3);
+        painter.setBrush(ink(active ? 0.95 : 0.78));
+        painter.drawRoundedRect(QRectF(grip.center().x() - 1, grip.center().y() - 6, 2, 12), 1, 1);
     };
     handle(inX, Drag::In);
     handle(outX, Drag::Out);
-
-    QFont boundaryFont = font(); boundaryFont.setPixelSize(theme::kFsCaption);
-    const QFontMetricsF boundaryMetrics(boundaryFont);
-    const QString start = tr("Start"), end = tr("End");
-    auto labelRect = [&](qreal x, const QString &text, bool before) {
-        if (x < track.left() || x > track.right()) return QRectF();
-        const qreal w = boundaryMetrics.horizontalAdvance(text);
-        return QRectF(qBound(track.left(), before ? x - w - 4 : x + 4, track.right() - w), 0, w, kRulerH);
+    // A bound beyond the view: a chevron in the inset, pointing to where it is.
+    auto chevron = [&](qreal x, qreal direction) {
+        const qreal y = track.center().y();
+        QPainterPath mark;
+        mark.moveTo(x + direction * 2, y - 4);
+        mark.lineTo(x - direction * 2, y);
+        mark.lineTo(x + direction * 2, y + 4);
+        painter.setPen(QPen(ink(0.78), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(mark);
     };
-    QRectF startLabel = labelRect(inX, start, true);
-    QRectF endLabel = labelRect(outX, end, false);
-    if (!startLabel.isEmpty() && !endLabel.isEmpty() && startLabel.right() + 8 > endLabel.left()) {
-        endLabel.moveLeft(qMin(track.right() - endLabel.width(), startLabel.right() + 8));
-        startLabel.moveRight(qMin(startLabel.right(), endLabel.left() - 8));
+    if (m_in < m_viewStart) chevron(kInset / 2, 1);
+    if (m_out > m_viewEnd) chevron(width() - kInset / 2, -1);
+
+    // The playhead over everything, its head in the gap above the strip.
+    const qreal playX = xForTime(m_position);
+    if (playX >= track.left() && playX <= track.right()) {
+        const qreal playBottom = !m_masks.isEmpty() ? maskLaneRect().bottom()
+            : m_laneVisible ? zoomLaneRect().bottom() : waveformShown() ? waveformRect().bottom() : track.bottom();
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(ink(0.92));
+        painter.drawRoundedRect(QRectF(playX - 1, track.top(), 2, playBottom - track.top()), 1, 1);
+        painter.drawRoundedRect(QRectF(playX - 4, track.top() - 6, 8, 6), 2, 2);
     }
+
+    // Time labels only: each needs its own width plus kS3 of air, and none is cut
+    // at the widget's edge. The grips mark the kept range; the fields below name it.
     painter.setPen(ink(0.6));
     QFont ruler = font(); ruler.setPixelSize(theme::kFsCaption); painter.setFont(ruler);
+    const QFontMetricsF rulerMetrics(ruler);
     const auto ticks = rulerTicks();
     const qint64 step = ticks.size() > 1 ? ticks[1].second - ticks[0].second : 1000;
+    qreal lastRight = -1e9;
     for (const auto &[x, t] : ticks) {
         const QString label = QStringLiteral("%1:%2").arg(t / 60000)
             .arg((t / 1000) % 60, 2, 10, QLatin1Char('0'))
             + (step < 1000 ? QStringLiteral(".%1").arg((t % 1000) / 100) : QString());
-        const QRectF tickLabel(x - 30, 0, 60, kRulerH);
-        if ((!startLabel.isEmpty() && tickLabel.intersects(startLabel.adjusted(-4, 0, 4, 0)))
-            || (!endLabel.isEmpty() && tickLabel.intersects(endLabel.adjusted(-4, 0, 4, 0)))) continue;
+        const qreal w = rulerMetrics.horizontalAdvance(label);
+        const QRectF tickLabel(x - w / 2, 0, w, kRulerH);
+        if (tickLabel.left() < 0 || tickLabel.right() > width() || tickLabel.left() < lastRight + theme::kS3) continue;
         painter.drawText(tickLabel, Qt::AlignCenter, label);
+        lastRight = tickLabel.right();
     }
-    painter.setFont(boundaryFont);
-    painter.setPen(ink(0.85));
-    if (!startLabel.isEmpty()) painter.drawText(startLabel, Qt::AlignCenter, start);
-    if (!endLabel.isEmpty()) painter.drawText(endLabel, Qt::AlignCenter, end);
-    if (m_in < m_viewStart) painter.drawText(QRectF(0, 19, 14, 26), Qt::AlignCenter, QStringLiteral("‹"));
-    if (m_out > m_viewEnd) painter.drawText(QRectF(width() - 14, 19, 14, 26), Qt::AlignCenter, QStringLiteral("›"));
     // A cut is a notch in the ruler over its seam (E3); hover names it.
     const QVector<Fragment> parts = fragments::expanded(m_fragments);
     for (int i = 0; i < parts.size(); ++i) {
@@ -331,10 +326,6 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
             painter.setPen(ink(0.9));
             painter.drawText(box, Qt::AlignCenter, text);
         }
-    }
-    if (hasFocus()) {
-        painter.setPen(QPen(ink(0.4), 1)); painter.setBrush(Qt::NoBrush);
-        painter.drawRoundedRect(track.adjusted(-2, -2, 2, 2), 7, 7);
     }
 }
 

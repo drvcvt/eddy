@@ -74,8 +74,9 @@ private slots:
         window.resize(1000, 640);
         window.show();
         QTest::qWait(50);
-        // The spacing scale plus kBarPad, the one value the bar height derives.
-        static const QSet<int> scale{0, 1, 2, 4, theme::kBarPad, 6, 8, 12, 16, 24, 32, 48, 72};
+        // The spacing scale plus the two values the bars derive: kBarPad, and kS2 - kBarPad
+        // below the playback bar (its last row gap, completed by the footer's kBarPad).
+        static const QSet<int> scale{0, 1, 2, theme::kS2 - theme::kBarPad, 4, theme::kBarPad, 6, 8, 12, 16, 24, 32, 48, 72};
         QStringList bad;
         auto name = [](const QObject *o) {
             for (; o; o = o->parent()) if (!o->objectName().isEmpty()) return o->objectName();

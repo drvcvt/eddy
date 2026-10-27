@@ -232,8 +232,7 @@ void EditorWindow::requestVideoSeek(qint64 position) {
     m_seekTarget = qBound<qint64>(0, position, qMax<qint64>(0, m_media.video.durationMs - 1));
     m_seekSettling = true;
     m_seekSettleTimer->start();
-    if (m_timeLabel) m_timeLabel->setText(formatPreciseTime(m_seekTarget)
-        + QStringLiteral(" / ") + formatTime(m_media.video.durationMs));
+    if (m_timeLabel) m_timeLabel->setText(playbackTime(m_seekTarget, m_media.video.durationMs));
     if (!m_seekTimer->isActive()) m_seekTimer->start();
 }
 

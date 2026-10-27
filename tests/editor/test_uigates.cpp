@@ -162,6 +162,28 @@ private slots:
         QVERIFY2(off.isEmpty(), qPrintable(off.join(QStringLiteral("\n   "))));
     }
 
+    void videoControlsShareTheirAxes() {
+        QTemporaryDir dir;
+        auto window = openVideo(dir.filePath(QStringLiteral("axes.mp4")), QSize(1080, 700));
+        QVERIFY(QTest::qWaitForWindowExposed(window.get()));
+        const auto rect = [&](const char *name) {
+            auto *w = window->findChild<QWidget *>(QString::fromLatin1(name));
+            return w ? QRect(w->mapTo(window.get(), QPoint()), w->size()) : QRect();
+        };
+        const QRect timeline = rect("VideoTimeline"), play = rect("PlaybackPlay"), fit = rect("ZoomFit");
+        const QRect volume = rect("PlaybackVolume"), status = rect("VideoExportStatus");
+        const QRect trim = rect("TrimControls"), pill = rect("DragPill");
+        // One left and one right edge for the whole bottom, the tool rail's.
+        for (const QRect &r : {timeline, play, fit}) QCOMPARE(r.left(), theme::kBarPad);
+        for (const QRect &r : {timeline, volume, status}) QCOMPARE(window->width() - 1 - r.right(), theme::kBarPad);
+        // The trim group and the drag pill on the window's middle.
+        QVERIFY2(qAbs(trim.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(trim.center().x())));
+        QVERIFY2(qAbs(pill.center().x() - window->width() / 2) <= 1, qPrintable(QString::number(pill.center().x())));
+        // Rows kS2 apart: strip to transport, transport to footer.
+        QCOMPARE(play.top() - (timeline.bottom() + 1), theme::kS2);
+        QCOMPARE(fit.top() - (play.bottom() + 1), theme::kS2);
+    }
+
     void narrowWindowKeepsEveryControlInside() {
         QTemporaryDir dir;
         // Stress: a long file name in the title and a long message in the toast.

@@ -468,9 +468,9 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
         return;
     }
     const qreal x = event->position().x();
-    const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_in));
-    const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_out));
-    if (qMin(inDistance, outDistance) <= 11)
+    const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_in) - kInset / 2));
+    const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_out) + kInset / 2));
+    if (qMin(inDistance, outDistance) <= kGripReach)
         m_drag = inDistance <= outDistance ? Drag::In : Drag::Out;
     else
         m_drag = Drag::Seek;
@@ -514,9 +514,9 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
             return;
         }
         const qreal x = event->position().x();
-        const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_in));
-        const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - xForTime(m_out));
-        const Drag hover = m_duration > 0 && qMin(inDistance, outDistance) <= 11
+        const qreal inDistance = m_in < m_viewStart || m_in > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_in) - kInset / 2));
+        const qreal outDistance = m_out < m_viewStart || m_out > m_viewEnd ? width() + 20 : qAbs(x - (xForTime(m_out) + kInset / 2));
+        const Drag hover = m_duration > 0 && qMin(inDistance, outDistance) <= kGripReach
             ? (inDistance <= outDistance ? Drag::In : Drag::Out) : Drag::None;
         if (hover != m_hover) {
             m_hover = hover;
