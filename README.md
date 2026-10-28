@@ -121,7 +121,10 @@ On videos:
 | `S` or Split | Split at the playhead |
 | Click a piece | Choose it (its speed, join, delete) |
 | Drag a piece's edge | Trim it, inner edges too (`Shift`: finer); the gap closes on release |
-| `Shift` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |
+| `Shift` + drag a piece | Move it (and what follows) to leave a pause before it; it snaps back within 8 px (`Ctrl`: no snapping) |
+| `Shift` + double-click a pause | Close it |
+| Right-click a pause | Hold the last frame, or black |
+| `Alt` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |
 | `Delete` or Delete | Take the marked range or the chosen piece out |
 | Click on a cut's notch | Restore the cut |
 | Right-click the timeline › Cut pauses | Cut every stretch where nothing happens (or play it at 4×) |

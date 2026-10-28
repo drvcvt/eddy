@@ -3,6 +3,8 @@
 #include <QGraphicsVideoItem>
 #include <QLabel>
 #include <QLineEdit>
+#include <QGraphicsRectItem>
+#include <QElapsedTimer>
 #include <QMediaPlayer>
 #include <QMenu>
 #include <QProcess>
@@ -458,6 +460,63 @@ private slots:
         undo->undo();
         QVERIFY(w.studioDocument().fragments.isEmpty());
         QCOMPARE(duration->text(), QStringLiteral("0:04.000"));
+    }
+    // P: playback holds through a pause: the playhead runs through it, the player waits, then on.
+    void playbackHoldsThroughAPause() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("colours.mp4");
+        QProcess ffmpeg;
+        ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "color=red:s=160x90:r=30:d=1",
+            "-f", "lavfi", "-i", "color=blue:s=160x90:r=30:d=1", "-f", "lavfi", "-i", "color=0x00ff00:s=160x90:r=30:d=1",
+            "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0", "-g", "10", "-pix_fmt", "yuv420p", clip});
+        QVERIFY(ffmpeg.waitForFinished(20000) && ffmpeg.exitCode() == 0);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(clip, 3000), cfg, {});
+        w.show();
+        QTRY_VERIFY(w.findChild<QMediaPlayer *>());
+        auto *player = w.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        QTRY_VERIFY(player->isSeekable());
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        auto *timeline = w.findChild<VideoTimeline *>();
+        for (const bool black : {false, true}) {
+            StudioDocument doc;
+            doc.fragments = {{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false, 600, black}};
+            w.setStudioDocument(doc);
+            timeline->setPosition(0);
+            emit timeline->seekRequested(0);   // as a click there would
+            QTRY_VERIFY(player->position() < 100);
+            QElapsedTimer clock;
+            qint64 pauseFrom = -1, pauseTo = -1, greenAt = -1;
+            bool coveredInPause = false, coveredAfter = false;
+            QTimer poll;
+            connect(&poll, &QTimer::timeout, &w, [&] {
+                const bool inPause = timeline->pausePosition() >= 0;
+                if (inPause && pauseFrom < 0) pauseFrom = clock.elapsed();
+                if (inPause) pauseTo = clock.elapsed();
+                QGraphicsRectItem *cover = nullptr;
+                for (QGraphicsItem *child : video->childItems())
+                    if (auto *r = dynamic_cast<QGraphicsRectItem *>(child)) cover = r;
+                if (inPause && cover && cover->isVisible()) coveredInPause = true;
+                if (greenAt >= 0 && cover && cover->isVisible()) coveredAfter = true;
+                const QColor c = video->videoSink()->videoFrame().toImage().pixelColor(80, 45);
+                if (greenAt < 0 && pauseTo >= 0 && c.green() > 150 && c.red() < 100) greenAt = clock.elapsed();
+            });
+            clock.start();
+            poll.start(10);
+            QTest::mouseClick(w.findChild<QToolButton *>(QStringLiteral("PlaybackPlay")), Qt::LeftButton);
+            QTRY_VERIFY_WITH_TIMEOUT(greenAt >= 0, 8000);
+            poll.stop();
+            player->pause();
+            qInfo("black %d: pause shown %lld to %lld ms, green at %lld ms", black, pauseFrom, pauseTo, greenAt);
+            QVERIFY(pauseFrom >= 0);
+            QVERIFY2(pauseTo - pauseFrom >= 450, qPrintable(QString::number(pauseTo - pauseFrom)));   // 600 ms, polled
+            QVERIFY(greenAt >= pauseTo);
+            QCOMPARE(coveredInPause, black);
+            QVERIFY(!coveredAfter);
+        }
     }
     void playbackSkipsACut() {
         if (!have("ffmpeg")) QSKIP("ffmpeg not available");

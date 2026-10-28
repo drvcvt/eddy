@@ -44,6 +44,7 @@
 #include "chrome/minimap.h"
 #include "chrome/motionicon.h"
 #include <QGraphicsScene>
+#include <QGraphicsRectItem>
 #include <QGraphicsTextItem>
 #include <cstdio>
 #include <QGraphicsPixmapItem>
@@ -124,8 +125,15 @@ void EditorWindow::togglePlayback() {
     if (!m_player) return;
     if (m_timelineActive) return;
     if (m_seekSettling) { m_resumeAfterSeek = !m_resumeAfterSeek; return; }
+    if (holdingPause()) {   // P: paused inside a pause, the playhead stays where it is
+        stopPauseHold(false);
+        return;
+    }
     if (m_player->playbackState() == QMediaPlayer::PlayingState) {
         m_player->pause();
+    } else if (const auto hit = m_timeMap.pauseAt(m_timeline->pausePosition());
+               m_timeline->pausePosition() >= 0 && hit) {
+        beginPauseHold(hit->piece, hit->intoMs);   // P: from inside a pause, the rest of it first
     } else {
         // Parked on the last frame (where playback ends) or outside the range: from the top.
         if (m_player->position() < m_trimInMs || m_player->position() >= lastFrameMs())
@@ -142,6 +150,87 @@ qint64 EditorWindow::lastFrameMs() const {
     return m_media.video.fps > 0
         ? qRound64((qCeil(end * m_media.video.fps / 1000.0) - 1) * 1000.0 / m_media.video.fps)
         : end - 1;
+}
+
+bool EditorWindow::holdingPause() const { return m_pauseTimer && m_pauseTimer->isActive(); }
+
+// A pause is due once playback reaches the last frame before it (or, for one opening the
+// output, the first frame after it), unless this pass held it already.
+bool EditorWindow::holdPauseIfDue(qint64 sourceMs) {
+    const QVector<TimePiece> &pieces = m_timeMap.pieces();
+    const double frame = m_media.video.fps > 0 ? 1000.0 / m_media.video.fps : 33.0;
+    for (int k = 0; k < pieces.size(); ++k) {
+        if (pieces[k].pauseBefore <= 0 || k == m_pauseDone) continue;
+        const bool due = k == 0 ? sourceMs <= pieces[0].srcStart + frame
+                                : sourceMs >= pieces[k - 1].srcEnd - frame && sourceMs < pieces[k].srcStart + frame;
+        if (!due) continue;
+        beginPauseHold(k, 0);
+        return true;
+    }
+    return false;
+}
+
+void EditorWindow::beginPauseHold(int piece, double intoMs) {
+    const QVector<TimePiece> &pieces = m_timeMap.pieces();
+    if (piece < 0 || piece >= pieces.size()) return;
+    m_player->pause();
+    m_pausePiece = piece;
+    m_pauseInto = intoMs;
+    // The frame it holds; the player shows it while it waits.
+    m_player->setPosition(qRound64(m_timeMap.toSource(pieces[piece].pauseStart() + intoMs)));
+    if (!m_pauseTimer) {
+        m_pauseTimer = new QTimer(this);
+        m_pauseTimer->setInterval(16);
+        connect(m_pauseTimer, &QTimer::timeout, this, [this] {
+            const QVector<TimePiece> &all = m_timeMap.pieces();
+            if (m_pausePiece < 0 || m_pausePiece >= all.size()) { stopPauseHold(false); return; }
+            const TimePiece &p = all[m_pausePiece];
+            const double into = m_pauseInto + m_pauseClock.elapsed() * m_previewRate;
+            if (into >= p.pauseBefore) { stopPauseHold(true); return; }
+            m_timeline->setPausePosition(p.pauseStart() + into);
+            if (m_timeLabel) m_timeLabel->setText(formatPreciseTime(qRound64(p.pauseStart() + into)));
+        });
+    }
+    m_pauseClock.start();
+    m_pauseTimer->start();
+    m_timeline->setPausePosition(pieces[piece].pauseStart() + intoMs);
+    updateBlackout();
+    const QColor color = palette().color(QPalette::ButtonText);
+    m_playButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/pause.svg"), color, color));   // still playing
+}
+
+// Ends a hold: on into the piece after it, or (a pause, a seek) the playhead stays.
+void EditorWindow::stopPauseHold(bool goOn) {
+    if (!m_pauseTimer) return;
+    m_pauseTimer->stop();
+    const QVector<TimePiece> &pieces = m_timeMap.pieces();
+    const int piece = m_pausePiece;
+    m_pausePiece = -1;
+    if (goOn && piece >= 0 && piece < pieces.size()) {
+        m_pauseDone = piece;
+        m_timeline->setPosition(qRound64(pieces[piece].srcStart));
+        updateBlackout();
+        m_player->setPosition(qRound64(pieces[piece].srcStart));
+        m_player->play();
+        return;
+    }
+    const QColor color = palette().color(QPalette::ButtonText);
+    m_playButton->setIcon(theme::tintedIcon(QStringLiteral(":/icons/play.svg"), color, color));
+}
+
+// Black over the video while the playhead stands in a black pause.
+void EditorWindow::updateBlackout() {
+    const double at = m_timeline ? m_timeline->pausePosition() : -1;
+    const auto hit = at >= 0 ? m_timeMap.pauseAt(at) : std::nullopt;
+    const bool black = hit && hit->black;
+    if (!black && !m_blackout) return;
+    if (!m_blackout && m_videoItem) {
+        m_blackout = new QGraphicsRectItem(QRectF(QPointF(), QSizeF(m_media.nativeSize())), m_videoItem);
+        m_blackout->setBrush(Qt::black);
+        m_blackout->setPen(Qt::NoPen);
+        m_blackout->setAcceptedMouseButtons(Qt::NoButton);
+    }
+    if (m_blackout) m_blackout->setVisible(black);
 }
 
 void EditorWindow::handlePlaybackEnd() {
@@ -428,7 +517,7 @@ void EditorWindow::ensureVideoPlayer() {
         if (m_playButton) {
             const QColor color = palette().color(QPalette::ButtonText);
             m_playButton->setIcon(theme::tintedIcon(
-                state == QMediaPlayer::PlayingState
+                state == QMediaPlayer::PlayingState || holdingPause()   // P: a held pause still plays
                     ? QStringLiteral(":/icons/pause.svg") : QStringLiteral(":/icons/play.svg"),
                 color, color));
         }
@@ -475,6 +564,7 @@ void EditorWindow::ensureVideoPlayer() {
         if (m_timeLabel)
             m_timeLabel->setText(formatPreciseTime(editedMs(pos)));
         if (m_player->playbackState() == QMediaPlayer::PlayingState) followPlaybackPieces(pos);
+        if (!holdingPause()) updateBlackout();
         if (m_player->playbackState() == QMediaPlayer::PlayingState && pos >= m_trimOutMs) {
             handlePlaybackEnd();
         }

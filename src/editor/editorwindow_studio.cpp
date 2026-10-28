@@ -657,6 +657,7 @@ void EditorWindow::followPlaybackPieces(qint64 sourceMs) {
             m_player->setPlaybackRate(m_previewRate);
         return;
     }
+    if (holdPauseIfDue(sourceMs)) return;   // P: a pause before the next piece holds first
     const QVector<TimePiece> &pieces = m_timeMap.pieces();
     for (const TimePiece &piece : pieces) {
         if (sourceMs < piece.srcStart - 1) {   // in a cut: on to the next kept piece

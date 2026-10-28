@@ -4,6 +4,8 @@
 #include "app/spring.h"
 #include "timeline/bars/fragmentbar.h"
 #include <QScopeGuard>
+#include <QMenu>
+#include <QTimer>
 
 namespace {
 
@@ -158,6 +160,91 @@ private slots:
         QCOMPARE(timeline->trimIn(), 0);
         QCOMPARE(timeline->trimOut(), 10000);
         QCOMPARE(w.studioDocument().fragments, withCut());
+    }
+    // P: Shift on a block moves it along the output; the pause before it grows. Close it
+    // with Shift and a double click, or let it snap back within 8 px; Ctrl places freely.
+    void shiftDraggingABlockMakesAPause() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments(withCut());
+        place(timeline);
+        QSignalSpy edits(&timeline, &VideoTimeline::clipEdited);
+        // The second block (output 4-8 s, x 208-404), 50 px right: a second of pause.
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(300, 36));
+        QVERIFY(timeline.movingPiece());
+        QMouseEvent move(QEvent::MouseMove, QPointF(350, 36), timeline.mapToGlobal(QPointF(350, 36)),
+                         Qt::NoButton, Qt::LeftButton, Qt::ShiftModifier);
+        QApplication::sendEvent(&timeline, &move);
+        QVERIFY2(qAbs(timeline.pieceRects()[1].left() - 258) <= 0.5, qPrintable(QString::number(timeline.pieceRects()[1].left())));
+        // 50 px of pause plus the 4 px gap there was, less a 4 px gap to each neighbour.
+        QCOMPARE(timeline.pauseRect(1).width(), 50.0 + theme::kS1 - 2 * theme::kS1);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(350, 36));
+        QCOMPARE(edits.count(), 1);
+        QCOMPARE(timeline.clip().list[2].pauseMs, qint64(1000));
+        QCOMPARE(timeline.pieceRects()[1].right(), 406.0 - theme::kS1 / 2);   // fitted again: 9 s of output
+        // Measured on the render: the pause is the recessed well, not the bar and not a block.
+        const QImage shot = timeline.grab().toImage();
+        const QColor well = theme::tone(theme::Tone::Well, timeline.palette().color(QPalette::Window).lightness() < 128);
+        QCOMPARE(shot.pixelColor(timeline.pauseRect(1).center().toPoint()).rgb(), well.rgb());
+        // Shift and a double click in it: closed, one edit.
+        QTest::mouseDClick(&timeline, Qt::LeftButton, Qt::ShiftModifier, timeline.pauseRect(1).center().toPoint());
+        QCOMPARE(edits.count(), 2);
+        QCOMPARE(timeline.clip().list, withCut());
+    }
+
+    void aSmallPullSnapsBackUnlessCtrlIsHeld() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments(withCut());
+        place(timeline);
+        QSignalSpy edits(&timeline, &VideoTimeline::clipEdited);
+        const auto pullBy = [&](int dx, Qt::KeyboardModifiers modifiers) {
+            QTest::mousePress(&timeline, Qt::LeftButton, modifiers, QPoint(300, 36));
+            QMouseEvent move(QEvent::MouseMove, QPointF(300 + dx, 36), timeline.mapToGlobal(QPointF(300 + dx, 36)),
+                             Qt::NoButton, Qt::LeftButton, modifiers);
+            QApplication::sendEvent(&timeline, &move);
+            QTest::mouseRelease(&timeline, Qt::LeftButton, modifiers, QPoint(300 + dx, 36));
+        };
+        pullBy(6, Qt::ShiftModifier);                          // 120 ms, under 8 px: back on its neighbour
+        QCOMPARE(edits.count(), 0);
+        pullBy(6, Qt::ShiftModifier | Qt::ControlModifier);    // Ctrl: no snapping
+        QCOMPARE(edits.count(), 1);
+        QCOMPARE(timeline.clip().list[2].pauseMs, qint64(120));
+    }
+
+    void thePausesMenuTurnsItBlack() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments({{0, 1.0, false}, {4000, 1.0, true}, {6000, 1.0, false, 1000, false}});
+        place(timeline);
+        QSignalSpy edits(&timeline, &VideoTimeline::clipEdited);
+        QStringList seen;
+        QTimer::singleShot(300, &timeline, [&] {
+            auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+            QVERIFY(menu);
+            for (QAction *a : menu->actions()) seen << a->text();
+            for (QAction *a : menu->actions()) if (a->text() == QStringLiteral("Black")) a->trigger();
+            menu->close();
+        });
+        emit timeline.customContextMenuRequested(timeline.pauseRect(1).center().toPoint());
+        QVERIFY2(seen.contains(QStringLiteral("Hold last frame")), qPrintable(seen.join(QLatin1Char('|'))));
+        QCOMPARE(edits.count(), 1);
+        QVERIFY(timeline.clip().list[2].pauseBlack);
+        QCOMPARE(timeline.grab().toImage().pixelColor(timeline.pauseRect(1).center().toPoint()).rgb(), QColor(Qt::black).rgb());
+    }
+
+    void altDragStillMarksAndShiftOnAGripStillTrims() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments(withCut());
+        place(timeline);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(300, 36));
+        QVERIFY(timeline.marking());
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(350, 36));
+        QVERIFY(timeline.hasMark());
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(211, 36));   // the second block's start grip
+        QVERIFY(timeline.trimming() && !timeline.movingPiece());
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(211, 36));
     }
 };
 

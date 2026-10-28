@@ -169,6 +169,10 @@ void VideoTimeline::setPosition(qint64 positionMs) {
         const qreal x = xForTime(at);
         update(QRectF(x - 5, 0, 10, height()).toAlignedRect());
     }
+    if (m_pauseHead >= 0) {   // P: out of a pause again
+        m_pauseHead = -1;
+        update();
+    }
     m_position = position;
 }
 

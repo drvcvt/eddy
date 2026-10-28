@@ -313,6 +313,11 @@ int main(int argc, char **argv) {
         auto *timeline = window->findChild<eddy::VideoTimeline *>();
         const qint64 d = timeline->duration();
         doc.fragments = {{0, 1.0, false}, {d * 3 / 10, 1.0, true}, {d / 2, 2.0, false}, {d * 8 / 10, 1.0, false}};
+        if (mode.contains(QStringLiteral("pauses"))) {   // P: a held pause and a black one
+            doc.fragments[2].pauseMs = d / 6;
+            doc.fragments[3].pauseMs = d / 8;
+            doc.fragments[3].pauseBlack = true;
+        }
         window->setStudioDocument(doc);
         emit timeline->stripClicked(d * 6 / 10);
         QEventLoop settle;

@@ -33,6 +33,47 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     QFont speedFont = font();
     speedFont.setPixelSize(theme::kFsCaption);
     const QFontMetricsF speedMetrics(speedFont);
+    // P: a pause is no block but a recessed stretch: the frame it holds, dimmed (or black),
+    // and its length when it fits.
+    const bool darkTheme = background.lightness() < 128;
+    for (int i = 0; i < pieces.size(); ++i) {
+        const QRectF pause = pauseRect(i);
+        if (pause.isEmpty() || pause.right() < track.left() || pause.left() > track.right()) continue;
+        const bool moved = m_drag == Drag::Move && i == m_movePiece;
+        const double length = moved ? m_moveNow : pieces[i].pauseBefore;
+        const QPainterPath shape = theme::squircleRect(pause, qMin<qreal>(theme::kRChip, pause.width() / 2));
+        painter.save();
+        painter.setClipRect(track);
+        painter.setClipPath(shape, Qt::IntersectClip);
+        painter.fillRect(pause, pieces[i].pauseBlack ? QColor(Qt::black) : theme::tone(theme::Tone::Well, darkTheme));
+        if (!pieces[i].pauseBlack) {
+            const qint64 held = i > 0 ? qint64(pieces[i - 1].srcEnd) - 1 : qint64(pieces[i].srcStart);
+            const QImage image = thumbnailNear(held, nullptr);
+            if (!image.isNull()) {
+                const qreal scale = qMax(pause.width() / image.width(), pause.height() / image.height());
+                const QSizeF crop(pause.width() / scale, pause.height() / scale);
+                painter.setOpacity(0.3);   // held, not playing: a step back from the blocks
+                painter.drawImage(pause, image, QRectF(QPointF(image.width() - crop.width(), image.height() - crop.height()) / 2, crop));
+                painter.setOpacity(1);
+            }
+        }
+        const QString label = QStringLiteral("%1\u00a0s").arg(length / 1000.0, 0, 'f', 1);
+        // On the quiet backing the speed label uses: readable over any held frame.
+        const qreal w = speedMetrics.horizontalAdvance(label) + 2 * theme::kS1;
+        if (w + 2 * theme::kS1 <= pause.width()) {
+            const QRectF box(pause.center().x() - w / 2, pause.center().y() - (theme::kFsCaption + theme::kS1) / 2.0,
+                             w, theme::kFsCaption + theme::kS1);
+            QColor backing = background;
+            backing.setAlphaF(0.78);
+            painter.setBrush(backing);
+            painter.drawRoundedRect(box, 3, 3);
+            painter.setFont(speedFont);
+            painter.setPen(foreground);
+            painter.drawText(box, Qt::AlignCenter, label);
+            painter.setPen(Qt::NoPen);
+        }
+        painter.restore();
+    }
     QVector<int> order;
     for (int i = 0; i < blocks.size(); ++i) if (!(m_drag == Drag::Edge && i == m_edgePiece)) order.append(i);
     if (m_drag == Drag::Edge && m_edgePiece >= 0 && m_edgePiece < blocks.size()) order.append(m_edgePiece);
@@ -167,7 +208,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     if (m_viewEnd < editedDuration()) chevron(width() - kInset / 2, -1);
 
     // The playhead over everything, its head in the gap above the strip.
-    const qreal playX = xForTime(m_position);
+    const qreal playX = m_pauseHead >= 0 ? xForOutput(m_pauseHead) : xForTime(m_position);   // P: in a pause
     if (playX >= track.left() && playX <= track.right()) {
         const qreal playBottom = !m_masks.isEmpty() ? maskLaneRect().bottom()
             : m_laneVisible ? zoomLaneRect().bottom() : waveformShown() ? waveformRect().bottom() : track.bottom();
@@ -185,7 +226,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     QString cutHint, markHint;
     QRectF cutBox, markBox;
     if (m_hoverCut >= 0 && m_hoverCut < parts.size() && parts[m_hoverCut].removed) {
-        const qreal x = xForTime(parts[m_hoverCut].startMs);
+        const qreal x = notchX(m_hoverCut);
         const double ms = double(fragments::endOf(m_fragments, m_hoverCut, m_duration) - parts[m_hoverCut].startMs);
         cutHint = tr("Cut %1\u00a0s, click to restore").arg(ms / 1000.0, 0, 'f', 1);
         const qreal w = rulerMetrics.horizontalAdvance(cutHint) + 8;
@@ -219,7 +260,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     // A cut is a notch in the ruler over its seam (E3); hover names it.
     for (int i = 0; i < parts.size(); ++i) {
         if (!notchShown(i)) continue;
-        const qreal x = xForTime(parts[i].startMs);
+        const qreal x = notchX(i);
         if (x < track.left() - 4 || x > track.right() + 4) continue;
         const qreal lit = m_states->value(stateKey(kNotch, quint64(i)));
         QPainterPath notch;

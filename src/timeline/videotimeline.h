@@ -18,7 +18,7 @@ class SpringLevels;
 
 class VideoTimeline : public QWidget {
     Q_OBJECT
-    enum class Drag { None, Edge, Seek, Mark, ZoomAdd, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
+    enum class Drag { None, Edge, Move, Seek, Mark, ZoomAdd, ZoomMove, ZoomStart, ZoomEnd, MaskMove, MaskStart, MaskEnd };
 public:
     // Geometry (docs/design.md): a caption-high ruler, the film strip, then each
     // optional lane below it, all kS1 apart.
@@ -46,6 +46,13 @@ public:
     fragments::Clip clip() const { return {m_in, m_out, m_fragments}; }
     // Blocks as shown, in widget pixels (gaps and a running glide included).
     QVector<QRectF> pieceRects() const;
+    // P: the pause before piece `piece` as shown, empty without one.
+    QRectF pauseRect(int piece) const;
+    bool movingPiece() const { return m_drag == Drag::Move; }
+    // P: the playhead inside a pause, at output time `outMs` (it has no source time of its
+    // own); setPosition() takes it out again.
+    void setPausePosition(double outMs);
+    double pausePosition() const { return m_pauseHead; }   // -1 outside a pause
     void setThumbnail(qint64 timeMs, const QImage &image);
     void zoomAt(qreal factor, qint64 anchorMs);
     void panBy(qint64 deltaMs);
@@ -149,6 +156,7 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
     void leaveEvent(QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
@@ -183,7 +191,16 @@ private:
     void beginEdgeDrag(int piece, bool end, qreal x, Qt::KeyboardModifiers modifiers);
     void moveEdgeDrag(qreal x);
     int selectedPiece() const;
+    int pieceAt(QPointF pos) const;    // the block under `pos` (its body), -1 for none
+    int pauseAt(QPointF pos) const;    // the pause under `pos`: the piece after it, -1 for none
+    void beginMove(int piece, qreal x);
+    void moveMove(qreal x);
+    void editPause(int piece, std::optional<qint64> pauseMs, std::optional<bool> black);
+    int m_movePiece = -1;
+    double m_movePause = 0, m_moveNow = 0;   // the moved piece's pause at the press, and now
+    double m_pauseHead = -1;
     bool notchShown(int fragment) const;   // a cut inside the output, not at its ends
+    qreal notchX(int fragment) const;      // where a cut sits: the end of what is kept before it
     int m_edgePiece = -1, m_hoverEdge = -1;   // hover: piece * 2 + (end ? 1 : 0)
     bool m_edgeEnd = false;
     qint64 m_edgeSource = 0, m_edgeNow = 0;   // the edge's source time at the press, and now

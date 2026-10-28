@@ -231,6 +231,8 @@ void EditorWindow::setTrimRangeState(qint64 inMs, qint64 outMs) {
 
 void EditorWindow::requestVideoSeek(qint64 position) {
     ensureVideoPlayer();
+    if (holdingPause()) stopPauseHold(false);   // P: a seek ends a hold; the next pass holds again
+    m_pauseDone = -1;
     m_seekTarget = qBound<qint64>(0, position, qMax<qint64>(0, m_media.video.durationMs - 1));
     m_seekSettling = true;
     m_seekSettleTimer->start();

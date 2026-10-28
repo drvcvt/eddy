@@ -29,7 +29,7 @@ class QGraphicsItem; class QGraphicsVideoItem; class QGraphicsPixmapItem; class 
 class QToolButton; class QSlider; class QLabel;
 class QHBoxLayout;
 class QGridLayout; class QLineEdit;
-class QTimer;
+class QTimer; class QGraphicsRectItem;
 namespace eddy {
 class Spring;
 class Canvas; class Toolbar; class ToolController; class SelectionHandles;
@@ -218,6 +218,18 @@ private:
     QVector<TimedOverlay> renderTimedOverlays();
     void splitAtPlayhead();
     void followPlaybackPieces(qint64 sourceMs);
+    // P: playback holds through a pause. The player waits on the frame the pause shows (black
+    // covers it for a black one) while a timer runs the playhead through the pause's output time.
+    bool holdPauseIfDue(qint64 sourceMs);
+    void beginPauseHold(int piece, double intoMs);
+    void stopPauseHold(bool goOn);
+    bool holdingPause() const;
+    void updateBlackout();
+    QTimer *m_pauseTimer = nullptr;
+    QElapsedTimer m_pauseClock;
+    int m_pausePiece = -1, m_pauseDone = -1;   // held now; held already this pass
+    double m_pauseInto = 0;
+    QGraphicsRectItem *m_blackout = nullptr;
     FragmentBar *m_fragmentBar = nullptr;
     int m_selectedFragment = -1;
     bool m_timelineTrimming = false;   // what the running timeline gesture is

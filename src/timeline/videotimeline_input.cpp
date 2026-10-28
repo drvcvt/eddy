@@ -25,6 +25,17 @@ void VideoTimeline::contextMenu(QPoint pos) {
     }
     QMenu menu(this);
     theme::roundMenu(&menu);
+    if (const int piece = pauseAt(pos); piece >= 0) {   // P: what the pause shows, or close it
+        const bool black = m_axis.pieces()[piece].pauseBlack;
+        QAction *hold = menu.addAction(tr("Hold last frame"), this, [this, piece] { editPause(piece, std::nullopt, false); });
+        QAction *dark = menu.addAction(tr("Black"), this, [this, piece] { editPause(piece, std::nullopt, true); });
+        hold->setCheckable(true);
+        hold->setChecked(!black);
+        dark->setCheckable(true);
+        dark->setChecked(black);
+        menu.addAction(tr("Close pause\tShift+double-click"), this, [this, piece] { editPause(piece, 0, std::nullopt); });
+        menu.addSeparator();
+    }
     if (m_waveform && !m_waveform->silent()) {   // a silent track has nothing to show
         QAction *show = menu.addAction(tr("Show waveform"));
         show->setCheckable(true);
@@ -112,13 +123,24 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
         event->accept();
         return;
     }
-    m_drag = event->modifiers().testFlag(Qt::ShiftModifier) ? Drag::Mark : Drag::Seek;
+    // P: Shift on a block's body moves it; Alt marks a range (Shift did, before pauses).
+    if (event->modifiers().testFlag(Qt::ShiftModifier)) {
+        if (const int body = pieceAt(event->position()); body >= 0) {
+            beginMove(body, x);
+            setCursor(Qt::ClosedHandCursor);
+            emit interactionStarted(true);
+            m_edgePan.start();
+            event->accept();
+            return;
+        }
+    }
+    m_drag = event->modifiers().testFlag(Qt::AltModifier) ? Drag::Mark : Drag::Seek;
     m_beforePosition = m_position;
     m_dragX = m_pressX = x;
     m_pressMoved = false;
     if (m_drag == Drag::Mark) {
         m_markBefore = {m_markAnchor, m_markHead, m_markOpen};
-        // A Shift-click marks from the mark's anchor, or from the playhead without one.
+        // An Alt-click marks from the mark's anchor, or from the playhead without one.
         m_markClickAnchor = m_markAnchor >= 0 ? m_markAnchor : m_position;
         m_markAnchor = m_markHead = snapMark(timeForX(x));
         m_markOpen = false;
@@ -134,7 +156,7 @@ void VideoTimeline::mousePressEvent(QMouseEvent *event) {
 // What the area under the pointer does, for the tooltip: the gestures it takes.
 QString VideoTimeline::hintAt(QPointF pos) const {
     if (pos.y() < kRulerH)
-        return tr("Zoom\tWheel\nPan\tShift+wheel\nFit clip\t0\nMark a range to cut\tShift+drag below");
+        return tr("Zoom\tWheel\nPan\tShift+wheel\nFit clip\t0\nMark a range to cut\tAlt+drag below");
     Drag part = Drag::None;
     if (inZoomLane(pos))
         return zoomAt(pos, &part) ? tr("Drag to move, pull an end to resize\nRemove\tDelete")
@@ -143,6 +165,9 @@ QString VideoTimeline::hintAt(QPointF pos) const {
     int piece = -1;
     bool end = false;
     if (edgeAt(pos, &piece, &end)) return tr("Pull to trim this piece\nFine\tShift");
+    if (const int paused = pauseAt(pos); paused >= 0)
+        return tr("Pause %1\u00a0s\nClose\tShift+double-click\nHold or black\tRight-click")
+            .arg(m_axis.pieces()[paused].pauseBefore / 1000.0, 0, 'f', 1);
     return {};
 }
 
@@ -185,7 +210,9 @@ void VideoTimeline::mouseMoveEvent(QMouseEvent *event) {
             update();
         }
         setCursor(hover >= 0 ? Qt::SizeHorCursor
-                  : event->modifiers().testFlag(Qt::ShiftModifier) ? Qt::IBeamCursor : Qt::PointingHandCursor);
+                  : event->modifiers().testFlag(Qt::AltModifier) ? Qt::IBeamCursor
+                  : event->modifiers().testFlag(Qt::ShiftModifier) && pieceAt(event->position()) >= 0 ? Qt::OpenHandCursor
+                  : Qt::PointingHandCursor);
         emit hoverRequested(timeForX(x), event->pos());
         return;
     }
@@ -199,6 +226,7 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
     if (zoomDragging()) { moveZoomDrag(x); return; }
     if (maskDragging()) { moveMaskDrag(x); return; }
     if (m_drag == Drag::Edge) { moveEdgeDrag(x); return; }
+    if (m_drag == Drag::Move) { moveMove(x); return; }
     if (qAbs(x - m_pressX) >= 3) m_pressMoved = true;
     if (m_drag == Drag::ZoomAdd) return;
     if (m_drag == Drag::Mark) {
@@ -212,6 +240,10 @@ void VideoTimeline::moveDrag(qreal x, Qt::KeyboardModifiers modifiers) {
         return;
     }
     m_position = timeForX(x);
+    // P: inside a pause the playhead stands where it was put; the canvas shows the frame held.
+    const QRectF track = trackRect();
+    const double out = m_viewStart + qBound<qreal>(0, (x - track.left()) / track.width(), 1) * (m_viewEnd - m_viewStart);
+    m_pauseHead = m_axis.pauseAt(out) ? out : -1;
     emit seekRequested(m_position);
     update();
 }
@@ -266,6 +298,16 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     }
     moveDrag(event->position().x(), event->modifiers());
     const bool clicked = m_drag == Drag::Seek && !m_pressMoved;
+    if (m_drag == Drag::Move && m_moveNow > 0 && m_moveNow < m_minimumRange) {   // under a frame is none
+        m_moveNow = 0;
+        m_clipPreview = fragments::setPause(m_clipBefore, m_movePiece, 0, m_duration);
+    }
+    if (m_drag == Drag::Move && m_clipPreview != m_clipBefore) {
+        const fragments::Clip before = m_clipBefore, after = m_clipPreview;
+        setClip(after.inMs, after.outMs, after.list);   // glides on from where the drag left it
+        m_drag = Drag::None;
+        emit clipEdited(before, after, m_movePiece);
+    }
     if (m_drag == Drag::Edge && m_clipPreview != m_clipBefore) {
         // The edit lands while the pulled edge still shows: the blocks glide on from there.
         const fragments::Clip before = m_clipBefore, after = m_clipPreview;
@@ -279,6 +321,17 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     emit interactionFinished(false);
     emit hoverLeft();
     update();
+    event->accept();
+}
+
+// P: Shift and a double click in a pause close it; the piece moves back onto its neighbour.
+void VideoTimeline::mouseDoubleClickEvent(QMouseEvent *event) {
+    const int piece = event->modifiers().testFlag(Qt::ShiftModifier) ? pauseAt(event->position()) : -1;
+    if (event->button() != Qt::LeftButton || piece < 0) {
+        mousePressEvent(event);   // a plain double click is two clicks
+        return;
+    }
+    editPause(piece, 0, std::nullopt);
     event->accept();
 }
 

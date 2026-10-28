@@ -133,15 +133,15 @@ private slots:
         QCOMPARE(clicks.count(), 2);   // a hand's tremor is still a click
     }
     // C1: a timeline 312 px wide shows 10 s on 300 px of track: x = 6 + t * 0.03.
-    void shiftDragMarksARangeAndThePlayheadFollows() {
+    void altDragMarksARangeAndThePlayheadFollows() {
         VideoTimeline timeline;
         timeline.resize(312, 52);
         timeline.setDuration(10000);
         timeline.show();
         QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(66, 36));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(66, 36));
         QTest::mouseMove(&timeline, QPoint(126, 36));
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(126, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(126, 36));
         QVERIFY(timeline.hasMark());
         QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{2000, 4000}));
         QCOMPARE(timeline.position(), 4000);   // the frame where the cut would end
@@ -150,19 +150,19 @@ private slots:
         QTest::mouseClick(&timeline, Qt::LeftButton, Qt::NoModifier, QPoint(200, 36));
         QVERIFY(!timeline.hasMark());
     }
-    void shiftClickMarksFromThePlayhead() {
+    void altClickMarksFromThePlayhead() {
         VideoTimeline timeline;
         timeline.resize(312, 52);
         timeline.setDuration(10000);
         timeline.setMinimumRange(33);
         timeline.show();
         timeline.setPosition(1000);
-        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(96, 36));
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(96, 36));
         QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{1000, 3000}));
         QCOMPARE(timeline.position(), 3000);
         timeline.clearMark();
         timeline.setPosition(2000);
-        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(66, 36));   // no width
+        QTest::mouseClick(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(66, 36));   // no width
         QVERIFY(!timeline.hasMark());
     }
     void escapeRestoresTheMarkBeforeTheDrag() {
@@ -172,7 +172,7 @@ private slots:
         timeline.show();
         timeline.setPosition(500);
         timeline.setMark(1000, 2000);
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(156, 36));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(156, 36));
         QTest::mouseMove(&timeline, QPoint(216, 36));
         QVERIFY(timeline.marking());
         QTest::keyClick(&timeline, Qt::Key_Escape);
@@ -186,9 +186,9 @@ private slots:
         timeline.setDuration(10000);
         timeline.setTrimRange(3000, 9000);   // 6 s on 300 px: 20 ms a pixel from source 3 s
         timeline.show();
-        QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(56, 36));
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(56, 36));
         QTest::mouseMove(&timeline, QPoint(106, 36));
-        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(106, 36));
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::AltModifier, QPoint(106, 36));
         QCOMPARE(timeline.markRange(), (std::pair<qint64, qint64>{4000, 5000}));
         QTest::mousePress(&timeline, Qt::LeftButton, Qt::ShiftModifier, QPoint(11, 36));   // the start's grip
         QVERIFY(timeline.trimming() && !timeline.marking());
