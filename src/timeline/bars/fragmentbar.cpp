@@ -1,5 +1,6 @@
 #include "timeline/bars/fragmentbar.h"
 #include "app/theme.h"
+#include "app/fills.h"
 #include <QHBoxLayout>
 #include <QMenu>
 #include <QToolButton>
@@ -23,6 +24,7 @@ FragmentBar::FragmentBar(QWidget *parent) : QWidget(parent) {
         return b;
     };
     m_speed = button(QStringLiteral("FragmentSpeed"), tr("Speed of this piece"));
+    raiseAtRest(m_speed);   // A2: the speed menu and Join read as controls at rest
     m_speed->setPopupMode(QToolButton::InstantPopup);
     auto *speeds = new QMenu(m_speed);
     speeds->setObjectName(QStringLiteral("FragmentSpeedMenu"));
@@ -37,6 +39,7 @@ FragmentBar::FragmentBar(QWidget *parent) : QWidget(parent) {
     m_speed->setMenu(speeds);
     m_join = button(QStringLiteral("FragmentJoin"), tr("Join with the piece before"));
     m_join->setText(tr("Join"));
+    raiseAtRest(m_join);
     connect(m_join, &QToolButton::clicked, this, &FragmentBar::joinRequested);
     refreshTheme();
 }

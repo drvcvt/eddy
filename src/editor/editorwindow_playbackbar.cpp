@@ -222,6 +222,7 @@ QWidget *EditorWindow::createPlaybackBar() {
         button->setCursor(Qt::PointingHandCursor);
         button->setFixedHeight(theme::kCtl);
         button->setSidePadding(theme::kS3);   // on its own fill: as much room as Boltsnap's controls
+        raiseAtRest(button);
         return button;
     };
     m_splitButton = makeClipButton(tr("Split"), QStringLiteral("ClipSplit"), QStringLiteral(":/icons/scissors.svg"));
@@ -257,6 +258,7 @@ QWidget *EditorWindow::createPlaybackBar() {
     m_speedButton = new QToolButton(bar);
     m_speedButton->setObjectName(QStringLiteral("PlaybackSpeed"));
     m_speedButton->setText(QStringLiteral("1×"));
+    raiseAtRest(m_speedButton);   // A2: a menu reads as a control at rest, like Boltsnap's dropdowns
     m_speedButton->setFixedHeight(theme::kCtl);
     m_speedButton->setToolTip(tr("Preview speed"));
     m_speedButton->setAccessibleName(theme::spokenName(m_speedButton->toolTip()));

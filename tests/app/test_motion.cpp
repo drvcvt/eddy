@@ -1,4 +1,5 @@
 #include <QtTest>
+#include <cmath>
 #include <QButtonGroup>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -6,6 +7,10 @@
 #include <QGraphicsOpacityEffect>
 #include "app/fills.h"
 #include "app/spring.h"
+#include "app/theme.h"
+#include <QMenu>
+#include <QScopeGuard>
+#include <QTimer>
 using namespace eddy;
 
 class TestMotion : public QObject {
@@ -184,6 +189,149 @@ private slots:
             QVERIFY2(step >= 8 && step <= 60, qPrintable(QStringLiteral("%1: %2 -> %3").arg(name, rest.name(), hover.name())));
             if (QLatin1String(name) == QLatin1String("CropApply"))
                 QVERIFY(hover != theme::tone(theme::Tone::Fg, dark) || rest == theme::tone(theme::Tone::Fg, dark));
+        }
+    }
+    // A: a press is its own step, eased on `fast` like the hover (after Boltsnap's Press channel).
+    void aPressAddsAStepAndLetsGoOffTheButton() {
+        Spring::setEnabled(true);
+        HoverFills::install();
+        qApp->setPalette(theme::palette(true));
+        qApp->setStyleSheet(theme::styleSheet(true));
+        const auto plain = qScopeGuard([] { qApp->setStyleSheet({}); });
+        QWidget bar;
+        bar.setObjectName(QStringLiteral("PlaybackBar"));   // a ghost on the frame's grey
+        bar.setAttribute(Qt::WA_StyledBackground, true);
+        auto *button = new QToolButton(&bar);
+        button->setAutoRaise(true);
+        button->setFixedSize(26, 26);
+        button->move(10, 10);
+        bar.resize(60, 46);
+        bar.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&bar));
+        const auto lightness = [&] { return bar.grab().toImage().pixelColor(23, 23).lightness(); };
+        const int rest = lightness();
+        QEvent enter(QEvent::Enter);
+        QApplication::sendEvent(button, &enter);
+        QTRY_COMPARE_WITH_TIMEOUT(HoverFills::level(button), 1.0, 2000);
+        const int hover = lightness();
+        QTest::mousePress(button, Qt::LeftButton, {}, QPoint(13, 13));
+        QTest::qWait(30);
+        const qreal midway = HoverFills::pressLevel(button);
+        QVERIFY2(midway > 0 && midway < 1, qPrintable(QString::number(midway)));
+        QTRY_COMPARE_WITH_TIMEOUT(HoverFills::pressLevel(button), 1.0, 2000);
+        const int pressed = lightness();
+        qInfo("ghost in a bar: rest %d, hover %d, pressed %d", rest, hover, pressed);
+        QVERIFY(rest < hover && hover < pressed);
+        // Off the button with the mouse still down: Qt lets go of it, and so does the step.
+        QMouseEvent away(QEvent::MouseMove, QPointF(60, 60), button->mapToGlobal(QPointF(60, 60)),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(button, &away);
+        QTRY_COMPARE_WITH_TIMEOUT(HoverFills::pressLevel(button), 0.0, 2000);
+        QTest::mouseRelease(button, Qt::LeftButton, {}, QPoint(60, 60));
+        // Disabled, a press shows nothing.
+        button->setEnabled(false);
+        QTest::mousePress(button, Qt::LeftButton, {}, QPoint(13, 13));
+        QTest::qWait(150);
+        QCOMPARE(HoverFills::pressLevel(button), 0.0);
+        QTest::mouseRelease(button, Qt::LeftButton, {}, QPoint(13, 13));
+        // Motion off: the step lands at once.
+        button->setEnabled(true);
+        Spring::setEnabled(false);
+        const auto on = qScopeGuard([] { Spring::setEnabled(true); });
+        QTest::mousePress(button, Qt::LeftButton, {}, QPoint(13, 13));
+        QApplication::processEvents();
+        QCOMPARE(HoverFills::pressLevel(button), 1.0);
+        QTest::mouseRelease(button, Qt::LeftButton, {}, QPoint(13, 13));
+    }
+    void aMenuButtonStaysDownWhileItsMenuIsOpen() {
+        Spring::setEnabled(true);
+        HoverFills::install();
+        QWidget window;
+        auto *button = new QToolButton(&window);
+        button->setFixedSize(40, 26);
+        auto *menu = new QMenu(button);
+        menu->addAction(QStringLiteral("2×"));
+        button->setMenu(menu);
+        button->setPopupMode(QToolButton::InstantPopup);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        qreal whileOpen = -1;
+        QTimer::singleShot(400, menu, [&] { whileOpen = HoverFills::pressLevel(button); menu->close(); });
+        button->showMenu();   // blocks until the timer closes it
+        QVERIFY2(whileOpen > 0.98, qPrintable(QString::number(whileOpen)));
+        QTRY_COMPARE_WITH_TIMEOUT(HoverFills::pressLevel(button), 0.0, 2000);
+    }
+    // A2 and A0: a raised control has its fill at rest, a step above its surface; its hover
+    // eases (it used to switch in the stylesheet), and disabled it keeps the fill.
+    void aRaisedControlEasesFromItsRestingFill() {
+        Spring::setEnabled(true);
+        HoverFills::install();
+        for (const bool dark : {true, false}) {
+            qApp->setPalette(theme::palette(dark));
+            qApp->setStyleSheet(theme::styleSheet(dark));
+            const auto plain = qScopeGuard([] { qApp->setStyleSheet({}); });
+            for (const char *surface : {"PlaybackBar", "FragmentBar"}) {
+                QWidget bar;
+                bar.setObjectName(QString::fromLatin1(surface));
+                auto *button = new QToolButton(&bar);
+                button->setText(QStringLiteral("Join"));
+                button->setAutoRaise(true);
+                raiseAtRest(button);
+                button->setFixedSize(60, 26);
+                bar.resize(80, 40);
+                bar.show();
+                QVERIFY(QTest::qWaitForWindowExposed(&bar));
+                const auto fill = [&] { return button->grab().toImage().pixelColor(4, 13).rgb(); };
+                const QColor expected = theme::tone(QByteArray(surface) == "PlaybackBar" ? theme::Tone::Raise1
+                                                                                       : theme::Tone::Raise2, dark);
+                QCOMPARE(fill(), expected.rgb());
+                QEvent enter(QEvent::Enter);
+                QApplication::sendEvent(button, &enter);
+                QTest::qWait(30);
+                const QColor midway = QColor(fill());
+                QTRY_COMPARE_WITH_TIMEOUT(HoverFills::level(button), 1.0, 2000);
+                const QColor hovered = QColor(fill());
+                const auto between = [](int a, int m, int b) { return (a < m && m < b) || (b < m && m < a); };
+                QVERIFY2(between(expected.lightness(), midway.lightness(), hovered.lightness()),
+                         qPrintable(QStringLiteral("%1 %2 %3").arg(expected.name(), midway.name(), hovered.name())));
+                QEvent leave(QEvent::Leave);
+                QApplication::sendEvent(button, &leave);
+                QTRY_COMPARE_WITH_TIMEOUT(HoverFills::level(button), 0.0, 2000);
+                button->setEnabled(false);
+                QCOMPARE(fill(), expected.rgb());   // the fill stays; the label goes faint
+                QCOMPARE(button->palette().color(QPalette::Disabled, QPalette::ButtonText).rgb(),
+                         theme::tone(theme::Tone::Faint, dark).rgb());
+            }
+        }
+    }
+    void aPressedPrimaryKeepsItsTextReadable() {
+        Spring::setEnabled(false);
+        const auto on = qScopeGuard([] { Spring::setEnabled(true); });
+        HoverFills::install();
+        const auto luminance = [](const QColor &c) {
+            auto channel = [](qreal v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+            return 0.2126 * channel(c.redF()) + 0.7152 * channel(c.greenF()) + 0.0722 * channel(c.blueF());
+        };
+        for (const bool dark : {true, false}) {
+            qApp->setPalette(theme::palette(dark));
+            qApp->setStyleSheet(theme::styleSheet(dark));   // as in the app: the fill is HoverFills' alone
+            const auto plain = qScopeGuard([] { qApp->setStyleSheet({}); });
+            QWidget window;
+            auto *save = new QToolButton(&window);
+            save->setObjectName(QStringLiteral("ExportSave"));
+            save->setFixedSize(60, 26);
+            window.show();
+            QVERIFY(QTest::qWaitForWindowExposed(&window));
+            QTest::mousePress(save, Qt::LeftButton, {}, QPoint(30, 13));
+            QApplication::processEvents();
+            const QColor held = save->grab().toImage().pixelColor(4, 13);
+            QTest::mouseRelease(save, Qt::LeftButton, {}, QPoint(70, 13));
+            const QColor text = theme::tone(theme::Tone::Bg, dark);
+            const qreal a = luminance(held), b = luminance(text);
+            const qreal ratio = (std::max(a, b) + 0.05) / (std::min(a, b) + 0.05);
+            qInfo("%s: pressed primary %s, text %s: %.2f:1", dark ? "dark" : "light",
+                  qPrintable(held.name()), qPrintable(text.name()), ratio);
+            QVERIFY(ratio >= 4.5);
         }
     }
     void fadeVisibleTurnsBackAndLetsTheMouseThrough() {

@@ -14,10 +14,10 @@ namespace eddy {
 
 class Spring;
 
-// Hover fills for the tool buttons, eased in and out with motion::kFast. The
-// stylesheet leaves their hover background off; this paints it from the button's
-// own Paint event, before the button draws, so label and icon stay on top.
-// Buttons with a background of their own (primary actions, swatches) keep theirs.
+// Hover and press fills for the tool buttons, each eased with motion::kFast (A, after
+// Boltsnap): rest, a step lighter under the pointer, one more while held down. The
+// stylesheet leaves these backgrounds off; this paints them from the button's own
+// Paint event, before the button draws, so label and icon stay on top.
 class HoverFills : public QObject {
     Q_OBJECT
 public:
@@ -27,6 +27,8 @@ public:
     static qreal level(const QToolButton *button);
     // How far an eased toggle shows its checked fill, 0 to 1; for tests.
     static qreal checkedLevel(const QToolButton *button);
+    // How far the held-down step shows, 0 to 1; for tests.
+    static qreal pressLevel(const QToolButton *button);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -35,14 +37,19 @@ private:
     explicit HoverFills(QObject *parent) : QObject(parent) {}
     Spring *springFor(QToolButton *button);
     Spring *checkSpringFor(QToolButton *button);
+    Spring *pressSpringFor(QToolButton *button);
     void aim(QToolButton *button, bool hovered);
-    QHash<const QToolButton *, Spring *> m_springs, m_checkSprings;
-    QHash<const QToolButton *, qreal> m_levels, m_checkLevels;
+    QHash<const QToolButton *, Spring *> m_springs, m_checkSprings, m_pressSprings;
+    QHash<const QToolButton *, qreal> m_levels, m_checkLevels, m_pressLevels;
 };
 
 // A toggle (Bold, Studio, Loop) whose checked fill eases in and out with
 // motion::kFast; HoverFills paints it, the stylesheet leaves it off.
 void easeToggle(QToolButton *button);
+// A text or menu control that reads as one at rest (A2, Boltsnap's controls): a fill a
+// step above the surface it sits on, the label bright, kS3 of side room. Disabled, the
+// fill stays and the label goes faint. Icon-only buttons stay without.
+void raiseAtRest(QToolButton *button);
 
 // The checked button of an exclusive group shows one fill that glides to the
 // next choice (motion::kFast), instead of one fill going out and another coming on.

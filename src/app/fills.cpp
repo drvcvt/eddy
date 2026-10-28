@@ -39,8 +39,18 @@ qreal HoverFills::checkedLevel(const QToolButton *button) {
     return g_fills ? g_fills->m_checkLevels.value(button) : 0;
 }
 
+qreal HoverFills::pressLevel(const QToolButton *button) {
+    return g_fills ? g_fills->m_pressLevels.value(button) : 0;
+}
+
 void easeToggle(QToolButton *button) {
     button->setProperty("easedToggle", true);   // eddy.qss leaves its checked fill off
+    button->style()->unpolish(button);
+    button->style()->polish(button);
+}
+
+void raiseAtRest(QToolButton *button) {
+    button->setProperty("raised", true);   // eddy.qss: bright label, kS3 side room, no background
     button->style()->unpolish(button);
     button->style()->polish(button);
 }
@@ -50,6 +60,14 @@ namespace {
 // buttons): HoverFills paints that fill and eases it a step on hover, so the
 // stylesheet leaves it off. The rest colour by name.
 std::optional<QColor> restingFill(const QToolButton *button) {
+    if (button->property("raised").toBool()) {   // one step above the surface under it
+        for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget()) {
+            if (w->objectName() == QLatin1String("PlaybackBar")) break;   // on the frame's own grey
+            if (w->objectName().endsWith(QLatin1String("Bar")))           // a floating bar is raise1
+                return theme::tone(theme::Tone::Raise2, dark());
+        }
+        return theme::tone(theme::Tone::Raise1, dark());
+    }
     const QString name = button->objectName();
     if (name == QLatin1String("ExportSave") || name == QLatin1String("ToastAction")
         || name == QLatin1String("ResumeOpen"))
@@ -66,13 +84,20 @@ bool ownsItsBackground(const QToolButton *button) {
     return button->objectName() == QLatin1String("ExportSegment");
 }
 
-// One step from rest: a light fill darkens, a dark one lightens, in either theme.
-QColor hovered(const QColor &rest) {
+// Steps from rest: a light fill darkens, a dark one lightens, in either theme. One step
+// is the hover, two the press (A).
+QColor stepped(const QColor &rest, int steps) {
     const QColor towards = rest.lightness() > 128 ? QColor(Qt::black) : QColor(Qt::white);
-    constexpr qreal kStep = 0.12;
-    return QColor::fromRgbF(rest.redF() + (towards.redF() - rest.redF()) * kStep,
-                            rest.greenF() + (towards.greenF() - rest.greenF()) * kStep,
-                            rest.blueF() + (towards.blueF() - rest.blueF()) * kStep);
+    const qreal amount = 0.12 * steps;
+    return QColor::fromRgbF(rest.redF() + (towards.redF() - rest.redF()) * amount,
+                            rest.greenF() + (towards.greenF() - rest.greenF()) * amount,
+                            rest.blueF() + (towards.blueF() - rest.blueF()) * amount);
+}
+QColor hovered(const QColor &rest) { return stepped(rest, 1); }
+
+QColor mix(const QColor &a, const QColor &b, qreal t) {
+    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t, a.greenF() + (b.greenF() - a.greenF()) * t,
+                            a.blueF() + (b.blueF() - a.blueF()) * t);
 }
 
 // Icon buttons in the top bar and tool rail take the squircle mark their selection uses.
@@ -107,6 +132,18 @@ QColor checkedFillFor(const QToolButton *button) {
     return theme::tone(theme::Tone::Raise3, dark());
 }
 
+// Held down: the step above the hover fill, as Boltsnap's SELECTED is above its HOVER.
+QColor pressedFillFor(const QToolButton *button) {
+    for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget()) {
+        const QString name = w->objectName();
+        if (name == QLatin1String("Toolbar") || name == QLatin1String("ToolRail")
+            || name == QLatin1String("ViewControls") || name == QLatin1String("PlaybackBar"))
+            return theme::tone(theme::Tone::BarActive, dark());
+        if (name == QLatin1String("ColorPopover")) return hovered(theme::tone(theme::Tone::Raise3, dark()));
+    }
+    return theme::tone(theme::Tone::Raise3, dark());
+}
+
 // One step above the surface the button sits on.
 QColor fillFor(const QToolButton *button) {
     for (const QWidget *w = button->parentWidget(); w; w = w->parentWidget()) {
@@ -132,6 +169,20 @@ Spring *HoverFills::checkSpringFor(QToolButton *button) {
         m_checkLevels.remove(button);
     });
     spring->jumpTo(button->isChecked() ? 1 : 0);   // the state it starts in shows at once
+    return spring;
+}
+
+Spring *HoverFills::pressSpringFor(QToolButton *button) {
+    if (Spring *spring = m_pressSprings.value(button)) return spring;
+    auto *spring = new Spring(motion::kFast, [this, button](qreal level) {
+        m_pressLevels[button] = level;
+        button->update();
+    }, button);
+    m_pressSprings.insert(button, spring);
+    connect(button, &QObject::destroyed, this, [this, button] {
+        m_pressSprings.remove(button);
+        m_pressLevels.remove(button);
+    });
     return spring;
 }
 
@@ -198,11 +249,23 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
         aim(button, event->type() == QEvent::EnabledChange && button->underMouse());
         break;
     case QEvent::Hide:
-        // A hidden button keeps no hover: it would show it on the next show.
+        // A hidden button keeps no hover or press: it would show them on the next show.
         if (Spring *spring = m_springs.value(button)) spring->jumpTo(0);
+        if (Spring *spring = m_pressSprings.value(button)) spring->jumpTo(0);
         if (Spring *spring = m_checkSprings.value(button)) spring->jumpTo(button->isChecked() ? 1 : 0);
         break;
     case QEvent::Paint: {
+        // Held down while Qt says so: off the button mid-press it lets go, back on it returns,
+        // and a menu button stays down while its menu is open. Qt repaints on every change.
+        QStyleOptionToolButton look;
+        static_cast<OptionAccess *>(button)->initStyleOption(&look);   // sunken also while its menu is open
+        const bool down = (button->isDown() || look.state.testFlag(QStyle::State_Sunken)) && button->isEnabled()
+                          && !showsChoice(button) && !ownsItsBackground(button);
+        if (down || m_pressSprings.contains(button)) {
+            Spring *spring = pressSpringFor(button);
+            if (spring->target() != (down ? 1 : 0)) spring->setTarget(down ? 1 : 0);
+        }
+        const qreal press = qBound<qreal>(0, m_pressLevels.value(button), 1);
         if (ownsItsBackground(button)) {   // the glide draws the fill; the label still blends
             if (paintsItself) break;
             paintLabels(button, qBound<qreal>(0, m_levels.value(button), 1));
@@ -212,14 +275,13 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
             const qreal level = button->isEnabled() ? qBound<qreal>(0, m_levels.value(button), 1) : 0;
             if (level > 0.001 && !button->underMouse()) aim(button, false);
             // Disabled, a primary steps back to a plain field: its full fill read as clickable.
-            const QColor base = button->isEnabled() ? *rest : theme::tone(theme::Tone::Raise2, dark());
-            const QColor top = hovered(base);
+            // A raised control keeps its fill, as Boltsnap's do; only its label goes faint.
+            const bool raised = button->property("raised").toBool();
+            const QColor base = button->isEnabled() || raised ? *rest : theme::tone(theme::Tone::Raise2, dark());
             QPainter painter(button);
             painter.setRenderHint(QPainter::Antialiasing);
             painter.fillPath(chip(QRectF(button->rect())),
-                             QColor::fromRgbF(base.redF() + (top.redF() - base.redF()) * level,
-                                              base.greenF() + (top.greenF() - base.greenF()) * level,
-                                              base.blueF() + (top.blueF() - base.blueF()) * level));
+                             mix(mix(base, stepped(base, 1), level), stepped(base, 2), press));
             painter.end();
             if (paintsItself) break;
             paintLabels(button, level);
@@ -252,6 +314,15 @@ bool HoverFills::eventFilter(QObject *watched, QEvent *event) {
             QColor on = checkedFillFor(button);
             on.setAlphaF(on.alphaF() * checked);
             if (on.alphaF() > 0.001) painter.fillPath(shape, on);
+        }
+        if (press > 0.001) {   // the held-down step, over hover or checked fill alike
+            QPainter painter(button);
+            painter.setRenderHint(QPainter::Antialiasing);
+            painter.setPen(Qt::NoPen);
+            const QRectF box(button->rect());
+            QColor held = checked > 0.5 ? hovered(checkedFillFor(button)) : pressedFillFor(button);
+            held.setAlphaF(held.alphaF() * press);
+            painter.fillPath(inChromeBar(button) ? chromeMark(box) : chip(box), held);
         }
         if (paintsItself) break;
         paintLabels(button, level);

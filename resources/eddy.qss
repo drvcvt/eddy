@@ -146,15 +146,14 @@ QWidget#PlaybackBar QToolButton#PlaybackPlay,
 QWidget#PlaybackBar QToolButton#PlaybackMute,
 QWidget#PlaybackBar QToolButton#TrimReset,
 QWidget#PlaybackBar QToolButton#PlaybackLoop { padding: 0; }
-/* The clip's edits (K, B): controls that read as controls at rest, as in Boltsnap's
-   settings: a raised fill one step over the bar, the label in fg, s3 of side room. */
-QWidget#PlaybackBar QToolButton#ClipSplit, QWidget#PlaybackBar QToolButton#ClipDelete {
-    background-color: @raise1;
-    color: @fg;
-    font-size: @fs-ui;   /* the side room is CapButton's own, s3 */
-}
-QWidget#PlaybackBar QToolButton#ClipSplit:hover, QWidget#PlaybackBar QToolButton#ClipDelete:hover { background-color: @raise2; }
-QWidget#PlaybackBar QToolButton#ClipDelete:disabled { color: @faint; }
+/* A2, after Boltsnap's controls: a text or menu control raised at rest (fills.cpp raiseAtRest).
+   HoverFills paints its fill a step above the surface; here the bright label and s3 of side
+   room. Disabled, the fill stays and the label goes faint. Icon-only buttons stay without. */
+QWidget#PlaybackBar QToolButton[raised="true"], QWidget#ZoomBar QToolButton[raised="true"],
+QWidget#FragmentBar QToolButton[raised="true"] { background: transparent; color: @fg; padding: 0 @s3; }
+QWidget#PlaybackBar QToolButton[raised="true"]:disabled, QWidget#ZoomBar QToolButton[raised="true"]:disabled,
+QWidget#FragmentBar QToolButton[raised="true"]:disabled { color: @faint; }
+QWidget#PlaybackBar QToolButton#ClipSplit, QWidget#PlaybackBar QToolButton#ClipDelete { font-size: @fs-ui; }
 QWidget#PlaybackBar QToolButton#PlaybackSpeed { font-family: @font-mono; font-weight: 400; }
 QWidget#PlaybackBar QLabel {
     color: @sub;

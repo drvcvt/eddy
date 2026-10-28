@@ -36,6 +36,7 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
         return b;
     };
     m_scale = button(QStringLiteral("ZoomScale"), tr("Zoom level\nScroll over the map for any level"));
+    raiseAtRest(m_scale);   // A2: menus and plain actions read as controls at rest
     m_scale->setPopupMode(QToolButton::InstantPopup);
     auto *scales = popupMenu(m_scale, QStringLiteral("ZoomScaleMenu"));
     for (double s : {1.25, 1.5, 2.0, 3.0}) {
@@ -63,6 +64,7 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
     connect(m_cursor, &QToolButton::clicked, this, [this] { emit targetChosen(ZoomSegment::Target::Cursor); });
     setCursorAvailable(false);
     m_motion = button(QStringLiteral("ZoomMotion"), tr("How the camera moves into and out of this zoom"));
+    raiseAtRest(m_motion);
     m_motion->setPopupMode(QToolButton::InstantPopup);
     auto *motions = popupMenu(m_motion, QStringLiteral("ZoomMotionMenu"));
     for (auto motion : {ZoomSegment::Motion::Focused, ZoomSegment::Motion::Smooth,
@@ -75,6 +77,7 @@ ZoomBar::ZoomBar(QWidget *parent) : QWidget(parent) {
     m_motion->setMenu(motions);
     auto *remove = button(QStringLiteral("ZoomRemove"), tr("Remove this zoom\tDelete"));
     remove->setText(tr("Remove"));
+    raiseAtRest(remove);
     connect(remove, &QToolButton::clicked, this, &ZoomBar::removeRequested);
     refreshTheme();
 }
