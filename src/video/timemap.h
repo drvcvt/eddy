@@ -10,7 +10,10 @@ struct TimePiece {
     double srcStart = 0, srcEnd = 0;   // source ms, end exclusive
     double outStart = 0;               // output ms
     double speed = 1;
+    double pauseBefore = 0;            // P: output ms of pause right before outStart
+    bool pauseBlack = false;           // ... shown black instead of the frame before held
     double outEnd() const { return outStart + (srcEnd - srcStart) / speed; }
+    double pauseStart() const { return outStart - pauseBefore; }
 };
 
 // Source time <-> output time for the trim plus fragments (studio plan 3.3).
@@ -25,8 +28,13 @@ public:
     std::optional<double> toOutput(double srcMs) const;
     // Where `srcMs` lands, or the next kept source after it.
     double toOutputAfter(double srcMs) const;
-    // Clamped to the output; monotonic and continuous across seams.
+    // Clamped to the output; monotonic and continuous across seams. In a pause, the frame it
+    // holds: the last of the piece before (1 ms short of its end), or the first of the piece
+    // after when the pause opens the output.
     double toSource(double outMs) const;
+    // P: the pause at `outMs`, if any: the piece after it and how far in.
+    struct PauseHit { int piece = -1; double intoMs = 0; double lengthMs = 0; bool black = false; };
+    std::optional<PauseHit> pauseAt(double outMs) const;
     const QVector<TimePiece> &pieces() const { return m_pieces; }
 
 private:

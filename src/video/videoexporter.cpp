@@ -109,14 +109,26 @@ static QString seconds(double ms) { return QString::number(ms / 1000.0, 'f', 4);
 // The kept pieces of the input after `label`, one after another: each trimmed
 // relative to the input's first frame at `originMs` and sped up. The result is
 // the unlabelled end of the chain (studio plan 4.3).
+// P: a pause holds the frame before it (tpad clone) or shows black, in output time after
+// setpts; one opening the output holds the first frame. Measured: docs/plans/2026-10/2026-10-28-pauses.md.
+static QString pausePad(const TimePiece &after, bool atStart) {
+    if (after.pauseBefore <= 0) return {};
+    const QString side = atStart ? QStringLiteral("start") : QStringLiteral("stop");
+    return QStringLiteral(",tpad=%1_mode=%2:%1_duration=%3%4")
+        .arg(side, after.pauseBlack ? QStringLiteral("add") : QStringLiteral("clone"), seconds(after.pauseBefore),
+             after.pauseBlack ? QStringLiteral(":color=black") : QString());
+}
+
 static QString fragmentVideo(const QVector<TimePiece> &pieces, double originMs, const QString &label) {
     QString f = label + QStringLiteral("split=%1").arg(pieces.size());
     for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[fs%1]").arg(i);
     f += QLatin1Char(';');
     for (int i = 0; i < pieces.size(); ++i)
-        f += QStringLiteral("[fs%1]trim=start=%2:end=%3,setpts=(PTS-STARTPTS)/%4[fv%1];")
+        f += QStringLiteral("[fs%1]trim=start=%2:end=%3,setpts=(PTS-STARTPTS)/%4%5%6[fv%1];")
                  .arg(i).arg(seconds(pieces[i].srcStart - originMs), seconds(pieces[i].srcEnd - originMs))
-                 .arg(pieces[i].speed);
+                 .arg(pieces[i].speed)
+                 .arg(i == 0 ? pausePad(pieces[0], true) : QString(),
+                      i + 1 < pieces.size() ? pausePad(pieces[i + 1], false) : QString());
     for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[fv%1]").arg(i);
     return f + QStringLiteral("concat=n=%1:v=1:a=0").arg(pieces.size());
 }
@@ -133,8 +145,14 @@ static QString fragmentAudio(const QVector<TimePiece> &pieces, double originMs, 
         for (; speed < 0.5; speed /= 0.5) tempo += QStringLiteral(",atempo=0.5");
         for (; speed > 2.0; speed /= 2.0) tempo += QStringLiteral(",atempo=2");
         if (speed != 1.0) tempo += QStringLiteral(",atempo=%1").arg(speed);
-        f += QStringLiteral("[as%1]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS%4[fa%1];")
-                 .arg(i).arg(seconds(pieces[i].srcStart - originMs), seconds(pieces[i].srcEnd - originMs), tempo);
+        // P: silence for a pause, after this piece or (opening the output) before it.
+        QString silence;
+        if (i == 0 && pieces[0].pauseBefore > 0)
+            silence += QStringLiteral(",adelay=delays=%1:all=1").arg(qRound64(pieces[0].pauseBefore));
+        if (i + 1 < pieces.size() && pieces[i + 1].pauseBefore > 0)
+            silence += QStringLiteral(",apad=pad_dur=%1").arg(seconds(pieces[i + 1].pauseBefore));
+        f += QStringLiteral("[as%1]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS%4%5[fa%1];")
+                 .arg(i).arg(seconds(pieces[i].srcStart - originMs), seconds(pieces[i].srcEnd - originMs), tempo, silence);
     }
     for (int i = 0; i < pieces.size(); ++i) f += QStringLiteral("[fa%1]").arg(i);
     return f + QStringLiteral("concat=n=%1:v=0:a=1[aout]").arg(pieces.size());

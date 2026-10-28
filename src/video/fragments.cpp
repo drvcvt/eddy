@@ -3,6 +3,15 @@
 
 namespace eddy::fragments {
 
+namespace {
+// A new seam copies the fragment it splits; a pause (P) stays before the piece it was on.
+Fragment withoutPause(Fragment f) {
+    f.pauseMs = 0;
+    f.pauseBlack = false;
+    return f;
+}
+}
+
 QVector<Fragment> expanded(const QVector<Fragment> &list) {
     return list.isEmpty() ? QVector<Fragment>{Fragment()} : list;
 }
@@ -29,7 +38,7 @@ bool split(QVector<Fragment> &list, qint64 sourceMs, qint64 durationMs) {
     const int i = indexAt(parts, sourceMs);
     if (sourceMs - parts[i].startMs < kMinFragmentMs || endOf(parts, i, durationMs) - sourceMs < kMinFragmentMs)
         return false;
-    Fragment next = parts[i];
+    Fragment next = withoutPause(parts[i]);
     next.startMs = sourceMs;
     parts.insert(i + 1, next);
     list = parts;
@@ -52,8 +61,11 @@ bool setRemoved(QVector<Fragment> &list, int index, bool removed) {
     parts[index].removed = removed;
     if (!removed) {
         // A restored fragment melts into equal neighbours again (studio plan 6.6).
+        // ... unless a pause (P) stands between the two: then they stay two pieces.
         auto same = [&](int other) {
-            return other >= 0 && other < parts.size() && !parts[other].removed && parts[other].speed == parts[index].speed;
+            const int later = std::max(other, index);
+            return other >= 0 && other < parts.size() && !parts[other].removed && parts[other].speed == parts[index].speed
+                && parts[later].pauseMs == 0;
         };
         if (same(index + 1)) parts.remove(index + 1);
         if (same(index - 1)) parts.remove(index);
@@ -82,7 +94,7 @@ bool cutRange(QVector<Fragment> &list, qint64 fromMs, qint64 toMs, qint64 durati
         if (at >= durationMs) continue;
         const int i = indexAt(parts, at);
         if (parts[i].startMs == at) continue;
-        Fragment next = parts[i];
+        Fragment next = withoutPause(parts[i]);
         next.startMs = at;
         parts.insert(i + 1, next);
     }
@@ -117,7 +129,7 @@ bool applySpans(QVector<Fragment> &list, const QVector<std::pair<qint64, qint64>
             if (at >= durationMs) continue;
             const int i = indexAt(all, at);
             if (all[i].startMs == at) continue;
-            Fragment next = all[i];
+            Fragment next = withoutPause(all[i]);
             next.startMs = at;
             all.insert(i + 1, next);
         }
@@ -142,7 +154,7 @@ QVector<Fragment> meltCuts(const QVector<Fragment> &parts) {
 int seamAt(QVector<Fragment> &parts, qint64 at) {
     const int i = indexAt(parts, at);
     if (parts[i].startMs == at) return i;
-    Fragment next = parts[i];
+    Fragment next = withoutPause(parts[i]);
     next.startMs = at;
     parts.insert(i + 1, next);
     return i + 1;
@@ -182,9 +194,12 @@ Clip moveStart(Clip clip, int piece, qint64 sourceMs, qint64 durationMs) {
         parts.remove(first, f - first + 1);
         parts.insert(first, kept);
     } else if (piece > 0) {
-        // Given up: [from, to) is cut and melts with a cut before it.
+        // Given up: [from, to) is cut and melts with a cut before it; the pause moves on
+        // to where the piece now starts.
         const int at = seamAt(parts, to);
         parts[at - 1].removed = true;
+        std::swap(parts[at].pauseMs, parts[at - 1].pauseMs);
+        std::swap(parts[at].pauseBlack, parts[at - 1].pauseBlack);
     }
     if (piece == 0) clip.inMs = to;
     clip.list = simplified(meltCuts(parts));
@@ -210,6 +225,26 @@ Clip moveEnd(Clip clip, int piece, qint64 sourceMs, qint64 durationMs) {
     }
     if (last) clip.outMs = to;
     clip.list = simplified(meltCuts(parts));
+    return clip;
+}
+
+Clip setPause(Clip clip, int piece, qint64 pauseMs, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size()) return clip;
+    QVector<Fragment> parts = expanded(clip.list);
+    Fragment &f = parts[indexAt(parts, qint64(pieces[piece].srcStart))];
+    f.pauseMs = std::clamp<qint64>(pauseMs, 0, Fragment::kMaxPauseMs);
+    if (f.pauseMs == 0) f.pauseBlack = false;
+    clip.list = simplified(parts);
+    return clip;
+}
+
+Clip setPauseBlack(Clip clip, int piece, bool black, qint64 durationMs) {
+    const QVector<TimePiece> pieces = clip.pieces(durationMs);
+    if (piece < 0 || piece >= pieces.size() || pieces[piece].pauseBefore <= 0) return clip;
+    QVector<Fragment> parts = expanded(clip.list);
+    parts[indexAt(parts, qint64(pieces[piece].srcStart))].pauseBlack = black;
+    clip.list = simplified(parts);
     return clip;
 }
 

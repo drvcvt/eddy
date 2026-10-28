@@ -98,6 +98,38 @@ private slots:
         QCOMPARE(*nextEdge(cut, edges, 0, 1), qint64(5000));
         QCOMPARE(*nextEdge(cut, edges, 5000, 1), qint64(9960));
     }
+    // P: a pause belongs to the piece after it and pushes it later in the output.
+    void aPauseHoldsTheFrameBeforeIt() {
+        Fragment second;
+        second.startMs = 4000;
+        second.pauseMs = 1000;
+        const TimeMap map(10000, 0, 10000, {Fragment(), second});
+        QCOMPARE(map.outputDurationMs(), 11000.0);
+        QCOMPARE(map.pieces()[1].outStart, 5000.0);
+        QCOMPARE(map.pieces()[1].pauseStart(), 4000.0);
+        QCOMPARE(map.toSource(4500), 3999.0);            // the last frame of the piece before
+        QCOMPARE(map.toSource(5000), 4000.0);            // the next piece's first
+        QCOMPARE(map.toSource(3000), 3000.0);
+        QCOMPARE(map.toOutputAfter(4000), 5000.0);
+        const auto hit = map.pauseAt(4250);
+        QVERIFY(hit);
+        QCOMPARE(hit->piece, 1);
+        QCOMPARE(hit->intoMs, 250.0);
+        QCOMPARE(hit->lengthMs, 1000.0);
+        QVERIFY(!hit->black);
+        QVERIFY(!map.pauseAt(5000));
+        QVERIFY(!map.pauseAt(3999));
+    }
+    void aPauseCanOpenTheOutput() {
+        Fragment first;
+        first.pauseMs = 500;
+        first.pauseBlack = true;
+        const TimeMap map(2000, 300, 2000, {first});   // trimmed: the pause stays before what is kept
+        QCOMPARE(map.pieces()[0].outStart, 500.0);
+        QCOMPARE(map.toSource(200), 300.0);              // nothing before: the first kept frame
+        QVERIFY(map.pauseAt(0) && map.pauseAt(0)->black);
+        QCOMPARE(map.outputDurationMs(), 2200.0);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTimeMap)

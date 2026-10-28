@@ -14,7 +14,8 @@ TimeMap::TimeMap(qint64 durationMs, qint64 trimInMs, qint64 trimOutMs,
         const double start = std::max<double>(parts[i].startMs, in);
         const double end = std::min<double>(i + 1 < parts.size() ? parts[i + 1].startMs : durationMs, out);
         if (parts[i].removed || end <= start) continue;
-        m_pieces.append({start, end, at, parts[i].speed});
+        const double pause = double(parts[i].pauseMs);   // P: the pause belongs to the piece after it
+        m_pieces.append({start, end, at + pause, parts[i].speed, pause, parts[i].pauseBlack});
         at = m_pieces.last().outEnd();
     }
 }
@@ -44,7 +45,18 @@ double TimeMap::toSource(double outMs) const {
     const auto after = std::upper_bound(m_pieces.cbegin(), m_pieces.cend(), t,
         [](double value, const TimePiece &p) { return value < p.outStart; });
     const TimePiece &p = *(after == m_pieces.cbegin() ? after : after - 1);
+    if (t < p.outStart) return p.srcStart;                                   // a pause opening the output
+    if (t > p.outEnd()) return std::max(p.srcStart, p.srcEnd - 1);           // the pause after p: its last frame
     return std::min(p.srcEnd, p.srcStart + (t - p.outStart) * p.speed);
+}
+
+std::optional<TimeMap::PauseHit> TimeMap::pauseAt(double outMs) const {
+    for (int i = 0; i < m_pieces.size(); ++i) {
+        const TimePiece &p = m_pieces[i];
+        if (p.pauseBefore > 0 && outMs >= p.pauseStart() && outMs < p.outStart)
+            return PauseHit{i, outMs - p.pauseStart(), p.pauseBefore, p.pauseBlack};
+    }
+    return std::nullopt;
 }
 
 namespace {

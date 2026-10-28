@@ -29,6 +29,11 @@ struct Fragment {
     qint64 startMs = 0;
     double speed = 1.0;              // 0.25 .. 4
     bool removed = false;
+    // P: a pause before the piece this fragment starts, in output ms; it shows the frame
+    // before it held (or black) over silence. Only on kept fragments; 0 for none.
+    qint64 pauseMs = 0;              // 0 .. kMaxPauseMs
+    bool pauseBlack = false;
+    static constexpr qint64 kMaxPauseMs = 600000;
     bool operator==(const Fragment &) const = default;
 };
 

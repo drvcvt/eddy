@@ -52,6 +52,11 @@ std::pair<qint64, qint64> endRange(const Clip &clip, int piece, qint64 durationM
 // a split: taking source back never melts the piece into its neighbour.
 Clip moveStart(Clip clip, int piece, qint64 sourceMs, qint64 durationMs);
 Clip moveEnd(Clip clip, int piece, qint64 sourceMs, qint64 durationMs);
+// P: the pause before piece `piece`, 0 to Fragment::kMaxPauseMs (0 closes it), and whether
+// it shows black instead of the frame before held. A pause stays with its piece through
+// edge pulls; a split keeps it before the left part; joining or removing drops it.
+Clip setPause(Clip clip, int piece, qint64 pauseMs, qint64 durationMs);
+Clip setPauseBlack(Clip clip, int piece, bool black, qint64 durationMs);
 // Leaves piece `piece` out; the first or last moves the trim onto its neighbour. Empty
 // when it is the only piece: the output never goes empty.
 std::optional<Clip> removePiece(Clip clip, int piece, qint64 durationMs);

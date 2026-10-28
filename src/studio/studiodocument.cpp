@@ -157,7 +157,10 @@ struct Reader {
             const QJsonObject o = value.toObject();
             Fragment f;
             if (!whole(o, "start", 0, double(durationMs - 1), &f.startMs)
-                || !number(o, "speed", 0.25, 4, &f.speed, 1.0) || !flag(o, "removed", &f.removed))
+                || !number(o, "speed", 0.25, 4, &f.speed, 1.0) || !flag(o, "removed", &f.removed)
+                || !flag(o, "pauseBlack", &f.pauseBlack))
+                return false;
+            if (o.contains(QLatin1String("pause")) && !whole(o, "pause", 0, double(Fragment::kMaxPauseMs), &f.pauseMs))
                 return false;
             if (d->fragments.isEmpty() ? f.startMs != 0 : f.startMs <= d->fragments.last().startMs)
                 return fail(QStringLiteral("fragments must start at 0 and keep increasing"));
@@ -216,6 +219,8 @@ QJsonObject studioToJson(const StudioDocument &doc) {
         QJsonObject o{{"start", f.startMs}};
         if (f.speed != 1.0) o[QLatin1String("speed")] = f.speed;
         if (f.removed) o[QLatin1String("removed")] = true;
+        if (f.pauseMs > 0) o[QLatin1String("pause")] = f.pauseMs;   // P; older readers skip it
+        if (f.pauseBlack) o[QLatin1String("pauseBlack")] = true;
         fragments.append(o);
     }
     return QJsonObject{

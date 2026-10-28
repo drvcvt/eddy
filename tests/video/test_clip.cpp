@@ -119,6 +119,48 @@ private slots:
         QCOMPARE(moveEnd(withCut(), -1, 100, kDur), withCut());
         QVERIFY(!removePiece(withCut(), 7, kDur));
     }
+    // P: pauses stay before their piece through every edit.
+    void aPauseStaysWithItsPiece() {
+        Clip c = setPause(withCut(), 1, 1500, kDur);
+        QCOMPARE(c.list[2].pauseMs, qint64(1500));
+        QCOMPARE(c.pieces(kDur)[1].outStart, 4500.0);   // 3 s kept (the cut takes none), then 1.5 s of pause
+        QCOMPARE(setPause(c, 1, 0, kDur), withCut());    // closed: as before
+        QCOMPARE(setPause(c, 1, 9999999, kDur).list[2].pauseMs, Fragment::kMaxPauseMs);
+        // Black only on a pause; closing it forgets black.
+        QCOMPARE(setPauseBlack(withCut(), 1, true, kDur), withCut());
+        const Clip black = setPauseBlack(c, 1, true, kDur);
+        QVERIFY(black.list[2].pauseBlack);
+        QVERIFY(!setPause(black, 1, 0, kDur).list[2].pauseBlack);
+        // Pulling the start in moves the pause to where the piece now starts.
+        const Clip pulled = moveStart(c, 1, 6000, kDur);
+        QCOMPARE(pulled.pieces(kDur)[1].srcStart, 6000.0);
+        QCOMPARE(pulled.pieces(kDur)[1].pauseBefore, 1500.0);
+        // Taking source back keeps it too.
+        QCOMPARE(moveStart(c, 1, 4000, kDur).pieces(kDur)[1].pauseBefore, 1500.0);
+        // A split keeps it before the left part; the right part has none.
+        QVector<Fragment> list = c.list;
+        QVERIFY(split(list, 8000, kDur));
+        const QVector<TimePiece> parts = Clip{0, kDur, list}.pieces(kDur);
+        QCOMPARE(parts[1].pauseBefore, 1500.0);
+        QCOMPARE(parts[2].pauseBefore, 0.0);
+        // Cutting a range inside the piece leaves the pause on its start alone.
+        QVERIFY(cutRange(list, 6000, 7000, kDur));
+        const QVector<TimePiece> cut = Clip{0, kDur, list}.pieces(kDur);
+        QCOMPARE(cut[1].pauseBefore, 1500.0);
+        QCOMPARE(cut[2].pauseBefore, 0.0);
+    }
+    void aPauseKeepsTwoPiecesFromMelting() {
+        // Restoring a cut melts equal neighbours, but never across a pause.
+        Clip c = setPause(withSplit(), 1, 800, kDur);
+        QVector<Fragment> list = c.list;
+        QVERIFY(setRemoved(list, 1, true));
+        QVERIFY(setRemoved(list, 1, false));
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list[1].pauseMs, qint64(800));
+        // Joining makes one piece: the pause between goes.
+        QVERIFY(join(list, 1));
+        QVERIFY(list.isEmpty());
+    }
 };
 
 QTEST_GUILESS_MAIN(TestClip)

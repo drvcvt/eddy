@@ -388,6 +388,76 @@ private slots:
             else QVERIFY2(right.blue() > 200 && right.red() < 60, qPrintable(right.name()));
         }
     }
+    // P: a pause holds the last frame before it (or shows black) over silence, in both export
+    // paths; one at the start holds the first frame.
+    void pausesHoldTheFrameOrGoBlackOverSilence() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        const QString input = dir.filePath(QStringLiteral("input.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error",
+            "-f", "lavfi", "-i", "color=red:s=64x48:r=30:d=1", "-f", "lavfi", "-i", "color=0x00ff00:s=64x48:r=30:d=1",
+            "-f", "lavfi", "-i", "color=blue:s=64x48:r=30:d=1", "-f", "lavfi", "-i", "color=yellow:s=64x48:r=30:d=1",
+            "-f", "lavfi", "-i", "color=white:s=64x48:r=30:d=1", "-f", "lavfi", "-i", "color=0x808080:s=64x48:r=30:d=1",
+            "-f", "lavfi", "-i", "sine=frequency=1000:duration=6",
+            "-filter_complex", "[0:v][1:v][2:v][3:v][4:v][5:v]concat=n=6:v=1:a=0[v]",
+            "-map", "[v]", "-map", "6:a", "-pix_fmt", "yuv420p", "-c:a", "aac", input}));
+        QImage overlay(64, 48, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        auto colourAt = [&](const QString &file, double seconds) {
+            const QString frame = dir.filePath(QStringLiteral("f.png"));
+            runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", QString::number(seconds), "-i", file,
+                                                  "-frames:v", "1", frame});
+            return QImage(frame).pixelColor(32, 24);
+        };
+        auto near = [](QColor c, QColor want) {
+            return qAbs(c.red() - want.red()) < 60 && qAbs(c.green() - want.green()) < 60 && qAbs(c.blue() - want.blue()) < 60;
+        };
+        auto duration = [&](const QString &file) {
+            return processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-show_entries", "format=duration",
+                                                             "-of", "csv=p=0", file}).toDouble();
+        };
+        // Loudest sample in [from, to) seconds of the output's sound, 0 to 32767.
+        auto loudest = [&](const QString &file, double from, double to) {
+            const QByteArray pcm = rawOutput(QStringLiteral("ffmpeg"), {"-v", "error", "-i", file,
+                "-ac", "1", "-ar", "8000", "-f", "s16le", "-"});
+            const auto *samples = reinterpret_cast<const qint16 *>(pcm.constData());
+            int peak = 0;
+            for (qsizetype i = qsizetype(from * 8000); i < qMin(pcm.size() / 2, qsizetype(to * 8000)); ++i)
+                peak = qMax(peak, qAbs(int(samples[i])));
+            return peak;
+        };
+        for (const bool black : {false, true})
+            for (const bool render : {false, true}) {
+                // Keep 0-2 s (red, green), cut 2-3 s, a 1 s pause, keep 3-6 s: 6 s in all.
+                Fragment after{3000, 1.0, false, 1000, black};
+                VideoExportRequest request{input, dir.filePath(QStringLiteral("p%1%2.mp4").arg(black).arg(render)), overlay};
+                request.fragments = {{0, 1.0, false}, {2000, 1.0, true}, after};
+                if (render) request.zooms = {{1, 0, 100, 1.1, ZoomSegment::Target::Point, QPointF(32, 24),
+                                              ZoomSegment::Motion::Instant}};
+                const DeliverResult result = writeVideoWithOverlay(request);
+                QVERIFY2(result.ok, qPrintable(result.error));
+                const QString what = QStringLiteral("black %1 render %2").arg(black).arg(render);
+                QVERIFY2(qAbs(duration(request.outputPath) - 6.0) < 0.1,
+                         qPrintable(QStringLiteral("%1: %2 s").arg(what).arg(duration(request.outputPath))));
+                const QColor pause = colourAt(request.outputPath, 2.5);
+                QVERIFY2(near(pause, black ? QColor(Qt::black) : QColor(0, 255, 0)), qPrintable(what + " " + pause.name()));
+                QVERIFY2(near(colourAt(request.outputPath, 1.5), QColor(0, 255, 0)), qPrintable(what));
+                QVERIFY2(near(colourAt(request.outputPath, 3.5), Qt::yellow), qPrintable(what));
+                const int quiet = loudest(request.outputPath, 2.1, 2.9), heard = loudest(request.outputPath, 3.2, 3.8);
+                qInfo("%s: pause peak %d, after it %d", qPrintable(what), quiet, heard);
+                QVERIFY(quiet < 100 && heard > 3000);
+            }
+        // A pause opening the output holds the first kept frame.
+        Fragment first{0, 1.0, false, 500, false};
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("lead.mp4")), overlay};
+        request.fragments = {first, {2000, 1.0, true}};
+        const DeliverResult result = writeVideoWithOverlay(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QVERIFY2(qAbs(duration(request.outputPath) - 2.5) < 0.1, qPrintable(QString::number(duration(request.outputPath))));
+        QVERIFY(near(colourAt(request.outputPath, 0.25), Qt::red));
+        QVERIFY(loudest(request.outputPath, 0.05, 0.45) < 100);
+    }
     void fragmentsCutAndSpeedUpPictureAndSound() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

@@ -22,7 +22,7 @@ static StudioDocument everything() {
     d.style.aspect = QSize(9, 16);
     d.zooms = {{7, 1000, 3500, 2.0, ZoomSegment::Target::Point, QPointF(960.5, 400), ZoomSegment::Motion::Smooth},
                {9, 5000, 6000, 1.5, ZoomSegment::Target::Cursor, QPointF(10, 20), ZoomSegment::Motion::Instant}};
-    d.fragments = {{0, 1.0, false}, {4000, 1.0, true}, {8000, 2.0, false}};
+    d.fragments = {{0, 1.0, false}, {4000, 1.0, true}, {8000, 2.0, false, 1200, true}};   // P: a black pause
     d.keepZoomedIn = true;
     d.keepCenter = QPointF(800, 540);
     d.motion = ZoomSegment::Motion::Smooth;
@@ -99,6 +99,8 @@ private slots:
         const QJsonObject first = json["fragments"][0].toObject();
         QCOMPARE(first.keys(), QStringList{QStringLiteral("start")});
         QCOMPARE(json["fragments"][2]["speed"].toDouble(), 2.0);
+        QCOMPARE(json["fragments"][2]["pause"].toInt(), 1200);
+        QCOMPARE(json["fragments"][2]["pauseBlack"].toBool(), true);
         // The cursor is Boltsnap's, baked into the video; Eddy stores no choice about it.
         QVERIFY(!json.contains(QLatin1String("cursor")));
         QVERIFY(json["style"]["image"].isNull());
@@ -151,6 +153,9 @@ private slots:
         QVERIFY(rejects(withEntry("fragments", 2, [](QJsonObject &f) { f["start"] = 20000; }))); // at the end
         QVERIFY(rejects(withEntry("fragments", 2, [](QJsonObject &f) { f["speed"] = 8; })));
         QVERIFY(rejects(withEntry("fragments", 2, [](QJsonObject &f) { f["removed"] = 1; })));   // not a bool
+        QVERIFY(rejects(withEntry("fragments", 2, [](QJsonObject &f) { f["pause"] = -5; })));
+        QVERIFY(rejects(withEntry("fragments", 2, [](QJsonObject &f) { f["pause"] = 700000; })));   // over 10 min
+        QVERIFY(rejects(withEntry("fragments", 2, [](QJsonObject &f) { f["pauseBlack"] = 1; })));
         QJsonObject allCut = studioToJson(everything());
         allCut["fragments"] = QJsonArray{QJsonObject{{"start", 0}, {"removed", true}}};
         QVERIFY(rejects(allCut));
