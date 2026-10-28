@@ -48,7 +48,7 @@ const QVector<ShortcutSheet::Group> &ShortcutSheet::groups() {
             {QStringLiteral("Click a piece"), QObject::tr("Choose it")},
             {QStringLiteral("Drag a piece's edge"), QObject::tr("Trim it, Alt for fine")},
             {QStringLiteral("Shift+drag a piece"), QObject::tr("Pull apart for a pause, Ctrl: no snapping")},
-            {QStringLiteral("Shift+double-click a pause"), QObject::tr("Close it")},
+            {QStringLiteral("Double-click a pause, a cut"), QObject::tr("Close the gap")},
             {QStringLiteral("Delete"), QObject::tr("Take the piece or the mark out")},
             {QStringLiteral("S"), QObject::tr("Split at the playhead")},
             {QStringLiteral("Z"), QObject::tr("Add a zoom")},
@@ -56,7 +56,7 @@ const QVector<ShortcutSheet::Group> &ShortcutSheet::groups() {
             {QStringLiteral("Wheel, Shift+wheel"), QObject::tr("Zoom, pan the timeline")},
             {QStringLiteral("Right-click timeline"), QObject::tr("Cut pauses, zoom, waveform")},
             {QStringLiteral("Right-click speaker"), QObject::tr("Volume, sound in the output")},
-            {QStringLiteral("Double-click a cut"), QObject::tr("Restore it")}}},
+            {QStringLiteral("Right-click a cut"), QObject::tr("Restore it")}}},
     };
     return table;
 }

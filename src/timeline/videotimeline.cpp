@@ -73,16 +73,25 @@ void VideoTimeline::rebuildAxis() {
     ++m_waveRevision;
     m_axis = TimeMap(m_duration, m_in, m_out, m_fragments);
     // Each gap in the source between kept pieces becomes a piece of its own at 1x, no pause.
+    // A closed one is left out here too; a closed time no longer inside a gap is forgotten.
     QVector<Fragment> spans;
+    QVector<qint64> closed;
+    const auto gap = [&](double from, double to) {
+        bool shut = false;
+        for (const qint64 at : std::as_const(m_closed))
+            if (at >= from && at < to) { shut = true; closed.append(at); }
+        spans.append({qint64(from), 1.0, shut});
+    };
     m_keptAt.clear();
     double covered = 0;
     for (const TimePiece &p : m_axis.pieces()) {
-        if (p.srcStart > covered) spans.append({qint64(covered), 1.0, false});
-        m_keptAt.append(spans.size());
+        if (p.srcStart > covered) gap(covered, p.srcStart);
+        m_keptAt.append(int(std::count_if(spans.cbegin(), spans.cend(), [](const Fragment &f) { return !f.removed; })));
         spans.append({qint64(p.srcStart), p.speed, false, qint64(p.pauseBefore), p.pauseBlack});
         covered = p.srcEnd;
     }
-    if (covered < m_duration && !spans.isEmpty()) spans.append({qint64(covered), 1.0, false});
+    if (covered < m_duration && !spans.isEmpty()) gap(covered, m_duration);
+    m_closed = closed;
     m_display = spans.isEmpty() ? TimeMap() : TimeMap(m_duration, 0, m_duration, spans);
 }
 
@@ -159,6 +168,7 @@ QImage VideoTimeline::thumbnailNear(qint64 time, qint64 *sampleTime) const {
 
 void VideoTimeline::setDuration(qint64 durationMs) {
     const bool fullView = m_viewStart == 0 && m_viewEnd == shownDuration();
+    if (qMax<qint64>(0, durationMs) != m_duration) m_closed.clear();   // another video
     m_duration = qMax<qint64>(0, durationMs);
     m_markAnchor = m_markHead = -1;
     m_markOpen = false;

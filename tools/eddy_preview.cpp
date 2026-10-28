@@ -29,6 +29,7 @@
 #include <QPixmap>
 #include <QEventLoop>
 #include <QTimer>
+#include <QMouseEvent>
 #include <QMediaPlayer>
 #include <QAudioOutput>
 #include <QGraphicsVideoItem>
@@ -318,8 +319,14 @@ int main(int argc, char **argv) {
             doc.fragments[3].pauseMs = d / 8;
             doc.fragments[3].pauseBlack = true;
         }
+        if (mode.contains(QStringLiteral("closed"))) doc.fragments.append({d * 9 / 10, 1.0, true});
         window->setStudioDocument(doc);
         emit timeline->stripClicked(d * 6 / 10);
+        if (mode.contains(QStringLiteral("closed"))) {   // the first ghost's gap closed, the last one open
+            const QPointF at = timeline->ghostRects().first().center();
+            QMouseEvent click(QEvent::MouseButtonDblClick, at, timeline->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QApplication::sendEvent(timeline, &click);
+        }
         QEventLoop settle;
         QTimer::singleShot(200, &settle, &QEventLoop::quit);
         settle.exec();

@@ -278,6 +278,12 @@ void VideoTimeline::setClip(qint64 inMs, qint64 outMs, const QVector<Fragment> &
     if (fullView) fitClip();
     else setViewRange(qRound64(shown(sourceStart)), qRound64(shown(sourceEnd)));
 
+    glideFrom(from, !before.isEmpty());
+    emit viewRangeChanged();
+    update();
+}
+
+void VideoTimeline::glideFrom(const QVector<std::pair<qreal, qreal>> &from, bool animate) {
     m_ripple.clear();
     bool moves = false;
     const QVector<TimePiece> &now = m_axis.pieces();
@@ -286,13 +292,50 @@ void VideoTimeline::setClip(qint64 inMs, qint64 outMs, const QVector<Fragment> &
         m_ripple.append({dx0, dx1});
         moves = moves || qAbs(dx0) > 0.5 || qAbs(dx1) > 0.5;
     }
-    if (moves && isVisible() && Spring::enabled() && before.size() > 0) {
+    if (moves && animate && isVisible() && Spring::enabled()) {
         m_rippleGlide->jumpTo(1);
         m_rippleGlide->setTarget(0);
     } else {
         m_ripple.clear();
         m_rippleGlide->jumpTo(0);
     }
+}
+
+bool VideoTimeline::gapClosed(qint64 fromMs, qint64 toMs) const {
+    return std::any_of(m_closed.cbegin(), m_closed.cend(), [&](qint64 at) { return at >= fromMs && at < toMs; });
+}
+
+// A closed gap is the seam where it was: between two blocks, or at the strip's first or last edge.
+std::optional<std::pair<qint64, qint64>> VideoTimeline::closedAt(QPointF pos) const {
+    const QRectF track = trackRect();
+    if (m_drag != Drag::None || pos.y() < track.top() || pos.y() > belowWaveform()) return std::nullopt;
+    const QVector<TimePiece> &pieces = m_axis.pieces();
+    const QVector<QRectF> rects = pieceRects();
+    for (int i = 0; i <= pieces.size() && !rects.isEmpty(); ++i) {   // the gap before piece i, or after the last
+        const qint64 from = i == 0 ? 0 : qint64(pieces[i - 1].srcEnd);
+        const qint64 to = i == pieces.size() ? m_duration : qint64(pieces[i].srcStart);
+        if (to <= from || !gapClosed(from, to)) continue;
+        const QRectF pause = i < pieces.size() ? pauseRect(i) : QRectF();
+        const qreal right = i == pieces.size() ? rects.last().right() : pause.isEmpty() ? rects[i].left() : pause.left();
+        const qreal seam = i == 0 ? right : i == pieces.size() ? right : (rects[i - 1].right() + right) / 2;
+        if (qAbs(pos.x() - seam) <= kGripReach) return std::pair{from, to};
+    }
+    return std::nullopt;
+}
+
+void VideoTimeline::setGapClosed(std::pair<qint64, qint64> range, bool closed) {
+    if (gapClosed(range.first, range.second) == closed) return;
+    QVector<std::pair<qreal, qreal>> from;
+    for (const QRectF &r : pieceRects()) from.append({r.left() - kGap / 2, r.right() + kGap / 2});
+    const bool fullView = m_viewStart == 0 && m_viewEnd == shownDuration();
+    const qint64 sourceStart = sourceAt(m_viewStart), sourceEnd = sourceAt(m_viewEnd);
+    m_closed.removeIf([&](qint64 at) { return at >= range.first && at < range.second; });
+    if (closed) m_closed.append((range.first + range.second) / 2);
+    rebuildAxis();
+    m_hoverGhost = m_hoverEdge = -1;
+    if (fullView) fitClip();
+    else setViewRange(qRound64(shown(sourceStart)), qRound64(shown(sourceEnd)));
+    glideFrom(from, true);
     emit viewRangeChanged();
     update();
 }
@@ -327,8 +370,14 @@ void VideoTimeline::moveEdgeDrag(qreal x) {
     qint64 target = m_edgeSource + qRound64((pointerOut - m_edgeOut) * piece.speed);
     // The playhead from before the press holds the edge within 6 px.
     if (qAbs(double(target - m_beforePosition) / piece.speed / msPerPx) <= 6) target = m_beforePosition;
-    const auto [lo, hi] = m_edgeEnd ? fragments::endRange(m_clipBefore, m_edgePiece, m_duration)
-                                    : fragments::startRange(m_clipBefore, m_edgePiece, m_duration);
+    auto [lo, hi] = m_edgeEnd ? fragments::endRange(m_clipBefore, m_edgePiece, m_duration)
+                              : fragments::startRange(m_clipBefore, m_edgePiece, m_duration);
+    // Into a closed gap it holds at the seam: blocks never overlap. Opened, it takes back.
+    const QVector<TimePiece> &all = m_axis.pieces();
+    if (m_edgeEnd && gapClosed(m_edgeSource, m_edgePiece + 1 < all.size() ? qint64(all[m_edgePiece + 1].srcStart) : m_duration))
+        hi = m_edgeSource;
+    if (!m_edgeEnd && gapClosed(m_edgePiece > 0 ? qint64(all[m_edgePiece - 1].srcEnd) : 0, m_edgeSource))
+        lo = m_edgeSource;
     m_edgeNow = std::clamp(target, lo, hi);
     m_clipPreview = m_edgeEnd ? fragments::moveEnd(m_clipBefore, m_edgePiece, m_edgeNow, m_duration)
                               : fragments::moveStart(m_clipBefore, m_edgePiece, m_edgeNow, m_duration);

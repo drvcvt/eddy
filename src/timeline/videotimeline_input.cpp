@@ -25,8 +25,13 @@ void VideoTimeline::contextMenu(QPoint pos) {
     }
     QMenu menu(this);
     theme::roundMenu(&menu);
-    if (const auto ghost = ghostAt(pos)) {   // G: what was cut, back
-        menu.addAction(tr("Restore\tDouble-click"), this, [this, range = *ghost] { restoreGhost(range); });
+    if (const auto ghost = ghostAt(pos)) {   // G: the gap closed, or what was cut back
+        menu.addAction(tr("Close gap\tDouble-click"), this, [this, range = *ghost] { setGapClosed(range, true); });
+        menu.addAction(tr("Restore"), this, [this, range = *ghost] { restoreGhost(range); });
+        menu.addSeparator();
+    } else if (const auto seam = closedAt(pos)) {
+        menu.addAction(tr("Show cut\tDouble-click"), this, [this, range = *seam] { setGapClosed(range, false); });
+        menu.addAction(tr("Restore"), this, [this, range = *seam] { restoreGhost(range); });
         menu.addSeparator();
     }
     if (const int piece = pauseAt(pos); piece >= 0) {   // P: what the pause shows, or close it
@@ -37,7 +42,7 @@ void VideoTimeline::contextMenu(QPoint pos) {
         hold->setChecked(!black);
         dark->setCheckable(true);
         dark->setChecked(black);
-        menu.addAction(tr("Close pause\tShift+double-click"), this, [this, piece] { editPause(piece, 0, std::nullopt); });
+        menu.addAction(tr("Close pause\tDouble-click"), this, [this, piece] { editPause(piece, 0, std::nullopt); });
         menu.addSeparator();
     }
     if (m_waveform && !m_waveform->silent()) {   // a silent track has nothing to show
@@ -170,11 +175,14 @@ QString VideoTimeline::hintAt(QPointF pos) const {
     if (maskAt(pos, &part) >= 0) return tr("Drag to move, pull an end to resize");
     int piece = -1;
     bool end = false;
+    if (const auto seam = closedAt(pos))
+        return tr("Pull to trim this piece\nFine\tAlt\nShow the cut %1\u00a0s\tDouble-click")
+            .arg((seam->second - seam->first) / 1000.0, 0, 'f', 1);
     if (edgeAt(pos, &piece, &end)) return tr("Pull to trim this piece\nFine\tAlt\nPull apart for a pause\tShift");
     if (const auto ghost = ghostAt(pos))
-        return tr("Cut %1\u00a0s\nRestore\tDouble-click").arg((ghost->second - ghost->first) / 1000.0, 0, 'f', 1);
+        return tr("Cut %1\u00a0s\nClose the gap\tDouble-click\nRestore\tRight-click").arg((ghost->second - ghost->first) / 1000.0, 0, 'f', 1);
     if (const int paused = pauseAt(pos); paused >= 0)
-        return tr("Pause %1\u00a0s\nClose\tShift+double-click\nHold or black\tRight-click")
+        return tr("Pause %1\u00a0s\nClose\tDouble-click\nHold or black\tRight-click")
             .arg(m_axis.pieces()[paused].pauseBefore / 1000.0, 0, 'f', 1);
     return {};
 }
@@ -329,21 +337,16 @@ void VideoTimeline::mouseReleaseEvent(QMouseEvent *event) {
     event->accept();
 }
 
-// P: Shift and a double click in a pause close it; the piece moves back onto its neighbour.
-// G: a double click on a ghost takes it back.
+// A double click on empty space snaps what follows onto what is before: a ghost's gap closes
+// (the cut stays cut), a pause closes (P). On a closed gap's seam it opens again.
 void VideoTimeline::mouseDoubleClickEvent(QMouseEvent *event) {
-    if (const auto ghost = ghostAt(event->position()); ghost && event->button() == Qt::LeftButton) {
-        restoreGhost(*ghost);
-        event->accept();
-        return;
+    const QPointF pos = event->position();
+    if (event->button() == Qt::LeftButton) {
+        if (const auto ghost = ghostAt(pos)) { setGapClosed(*ghost, true); event->accept(); return; }
+        if (const auto seam = closedAt(pos)) { setGapClosed(*seam, false); event->accept(); return; }
+        if (const int piece = pauseAt(pos); piece >= 0) { editPause(piece, 0, std::nullopt); event->accept(); return; }
     }
-    const int piece = event->modifiers().testFlag(Qt::ShiftModifier) ? pauseAt(event->position()) : -1;
-    if (event->button() != Qt::LeftButton || piece < 0) {
-        mousePressEvent(event);   // a plain double click is two clicks
-        return;
-    }
-    editPause(piece, 0, std::nullopt);
-    event->accept();
+    mousePressEvent(event);   // elsewhere a double click is two clicks
 }
 
 void VideoTimeline::leaveEvent(QEvent *event) {

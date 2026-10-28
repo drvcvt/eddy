@@ -194,6 +194,13 @@ private:
     // G: the left-out source around `pos` (between two kept pieces), empty off a ghost.
     std::optional<std::pair<qint64, qint64>> ghostAt(QPointF pos) const;
     void restoreGhost(std::pair<qint64, qint64> range);
+    // A double click on a ghost closes its gap: what follows glides onto what is before, the
+    // cut stays cut. Only the strip changes; a double click on the seam opens it again.
+    bool gapClosed(qint64 fromMs, qint64 toMs) const;
+    std::optional<std::pair<qint64, qint64>> closedAt(QPointF pos) const;
+    void setGapClosed(std::pair<qint64, qint64> range, bool closed);
+    // Blocks drawn at `from` (left, right) glide to where they stand now on motion::kBase.
+    void glideFrom(const QVector<std::pair<qreal, qreal>> &from, bool animate);
     bool edgeAt(QPointF pos, int *piece, bool *end) const;
     void beginEdgeDrag(int piece, bool end, qreal x, Qt::KeyboardModifiers modifiers);
     void moveEdgeDrag(qreal x);
@@ -276,6 +283,7 @@ private:
     QVector<int> m_keptAt;          // piece i of m_axis is piece m_keptAt[i] of m_display
     int m_selectedFragment = -1;
     qint64 m_hoverGhost = -1;       // the source start of the ghost under the pointer
+    QVector<qint64> m_closed;       // a source time inside each cut whose gap is closed
     QVector<MaskBlock> m_masks;
     int m_dragMask = -1;
     QPointer<AudioWaveformProvider> m_waveform;

@@ -122,11 +122,12 @@ On videos:
 | Click a piece | Choose it (its speed, join, delete) |
 | Drag a piece's edge | Trim it, inner edges too (`Alt`: finer); what you trim stays on the strip, struck through, and nothing moves |
 | `Shift` + drag a piece or a seam | Pull apart: the piece (and what follows) moves on and leaves a pause before it; it snaps back within 8 px (`Ctrl`: no snapping) |
-| `Shift` + double-click a pause | Close it |
+| Double-click a pause | Close it |
 | Right-click a pause | Hold the last frame, or black |
 | `Alt` + drag on the timeline, or `Shift+I` / `Shift+O` | Mark a range |
 | `Delete` or Delete | Take the marked range or the chosen piece out; it stays on the strip, struck through |
-| Double-click what was cut | Restore it (or right-click › Restore) |
+| Double-click what was cut | Close the gap: what follows snaps onto what is before, the cut stays cut (double-click the seam to show it again) |
+| Right-click what was cut › Restore | Take it back |
 | Right-click the timeline › Cut pauses | Cut every stretch where nothing happens (or play it at 4×) |
 | `Z` | Add a zoom at the playhead |
 | Wheel, `Shift` + wheel | Zoom / pan the timeline |

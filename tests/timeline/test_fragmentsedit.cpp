@@ -270,9 +270,9 @@ private slots:
         QTRY_VERIFY(bar->isVisible());
         QVERIFY(w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // a chosen piece can go
     }
-    void deleteLeavesAGhostAndADoubleClickBringsItBack() {
+    void deleteLeavesAGhostAndADoubleClickClosesIt() {
         // K, G: Delete leaves the chosen piece out; it stays as a ghost where it was, nothing
-        // moves, and a double click on the ghost restores it.
+        // moves, and a double click on the ghost closes the gap: the cut stays cut.
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
         EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
@@ -300,9 +300,13 @@ private slots:
         QCOMPARE(undo->count(), steps + 1);
         QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // nothing chosen
         QTest::mouseDClick(timeline, Qt::LeftButton, Qt::NoModifier, timeline->ghostRects()[0].center().toPoint());
+        QVERIFY(timeline->ghostRects().isEmpty());
+        QVERIFY(qAbs(timeline->pieceRects()[1].left() - timeline->pieceRects()[0].right() - VideoTimeline::kGap) <= 0.5);
+        QVERIFY(w.studioDocument().fragments[1].removed);   // still cut, and no edit
+        QCOMPARE(undo->count(), steps + 1);
+        undo->undo();   // the piece back
         const auto parts = w.studioDocument().fragments;
         QVERIFY(std::none_of(parts.cbegin(), parts.cend(), [](const Fragment &f) { return f.removed; }));
-        QCOMPARE(undo->count(), steps + 2);
         // The last piece goes by its trim: the end moves onto the piece before.
         timeline->setPosition(3000);
         QTest::keyClick(&w, Qt::Key_S);

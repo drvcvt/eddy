@@ -140,6 +140,54 @@ private slots:
         QVERIFY(qMin(atRelease, settled) + 1 < midway && midway < qMax(atRelease, settled) - 1);
     }
 
+    // A double click on a ghost closes its gap: the next block glides onto the one before,
+    // the cut stays cut and nothing is edited. On the seam it opens again, back where it was.
+    void aDoubleClickClosesAGhostAndTheBlocksGlideOnto() {
+        Spring::setEnabled(true);
+        const auto off = qScopeGuard([] { Spring::setEnabled(false); });
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments(withCut());
+        place(timeline);
+        QVERIFY(QTest::qWaitForWindowExposed(&timeline));
+        QSignalSpy edits(&timeline, &VideoTimeline::clipEdited);
+        const QVector<QRectF> open = timeline.pieceRects();
+        QTest::mouseDClick(&timeline, Qt::LeftButton, Qt::NoModifier, timeline.ghostRects()[0].center().toPoint());
+        QCOMPARE(edits.count(), 0);
+        QCOMPARE(timeline.clip().list, withCut());
+        const qreal atClick = timeline.pieceRects()[1].left();
+        QTest::qWait(60);
+        const qreal midway = timeline.pieceRects()[1].left();
+        QTest::qWait(700);
+        const QVector<QRectF> closed = timeline.pieceRects();
+        qInfo("second block: %.1f at the click, %.1f after 60 ms, %.1f settled", atClick, midway, closed[1].left());
+        QVERIFY(qAbs(atClick - open[1].left()) <= 0.5 || midway < atClick);   // no jump, it glides
+        QVERIFY(closed[1].left() + 1 < midway && midway < open[1].left() - 1);
+        QVERIFY(qAbs(closed[1].left() - (closed[0].right() + VideoTimeline::kGap)) <= 0.5);
+        QVERIFY(timeline.ghostRects().isEmpty());
+        // Pulled outward the edge holds at the closed seam; the blocks never overlap.
+        const QPoint grip(qRound(closed[0].right() - VideoTimeline::kInset / 2), 30);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, grip);
+        QTest::mouseMove(&timeline, grip + QPoint(40, 0));
+        QVERIFY(timeline.pieceRects()[0].right() <= closed[1].left());
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, grip + QPoint(40, 0));
+        QCOMPARE(edits.count(), 0);
+        QTest::mouseDClick(&timeline, Qt::LeftButton, Qt::NoModifier,
+                           QPointF((closed[0].right() + closed[1].left()) / 2, 30).toPoint());
+        QTest::qWait(700);
+        QCOMPARE(timeline.ghostRects().size(), 1);
+        QCOMPARE(timeline.pieceRects(), open);
+    }
+
+    void aPlainDoubleClickClosesAPause() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments({{0, 1.0, false}, {4000, 1.0, true}, {6000, 1.0, false, 2000}});
+        place(timeline);
+        QTest::mouseDClick(&timeline, Qt::LeftButton, Qt::NoModifier, timeline.pauseRect(1).center().toPoint());
+        QCOMPARE(timeline.clip().list, withCut());
+    }
+
     // G: an edit that cuts (not a pull) turns the block into its ghost on `base`, no jump.
     void aCutFadesFromBlockToGhost() {
         Spring::setEnabled(true);
