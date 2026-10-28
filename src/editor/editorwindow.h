@@ -191,8 +191,6 @@ private:
     void positionZoomUi();
     void addZoomAt(qint64 sourceMs);
     void selectFragment(int index);
-    void toggleFragmentCut(int index);   // cut or restore one fragment
-    void restoreCut(int index);          // a click on a cut's notch
     void cutMarkedRange();               // Delete with a range marked on the timeline (C1)
     // K: the trim and the fragments as one undo step; `piece` (of the result) is chosen after.
     void applyClip(const fragments::Clip &after, int piece = -1);

@@ -263,6 +263,18 @@ std::optional<Clip> removePiece(Clip clip, int piece, qint64 durationMs) {
     return clip;
 }
 
+Clip restore(Clip clip, qint64 fromMs, qint64 toMs, qint64 durationMs) {
+    clip.inMs = std::min(clip.inMs, std::max<qint64>(0, fromMs));
+    clip.outMs = std::max(clip.outMs, std::min(toMs, durationMs));
+    // From the back: a melt removes the fragment or the one after it, never one before.
+    for (int i = int(expanded(clip.list).size()) - 1; i >= 0; --i) {
+        const QVector<Fragment> parts = expanded(clip.list);
+        if (i < parts.size() && parts[i].removed && parts[i].startMs < toMs && endOf(parts, i, durationMs) > fromMs)
+            setRemoved(clip.list, i, false);
+    }
+    return clip;
+}
+
 bool join(QVector<Fragment> &list, int index) {
     QVector<Fragment> parts = expanded(list);
     // Only two kept fragments join; joining into a cut would cut what was kept.

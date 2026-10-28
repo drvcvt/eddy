@@ -60,5 +60,8 @@ Clip setPauseBlack(Clip clip, int piece, bool black, qint64 durationMs);
 // Leaves piece `piece` out; the first or last moves the trim onto its neighbour. Empty
 // when it is the only piece: the output never goes empty.
 std::optional<Clip> removePiece(Clip clip, int piece, qint64 durationMs);
+// G: takes the left-out source [fromMs, toMs) back: the trim widens over it and every cut
+// fragment touching it is kept again, melting into equal neighbours as setRemoved does.
+Clip restore(Clip clip, qint64 fromMs, qint64 toMs, qint64 durationMs);
 
 }

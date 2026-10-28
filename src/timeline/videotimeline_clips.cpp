@@ -1,6 +1,7 @@
-// The clip model (K, docs/plans/2026-10/2026-10-27-clips.md): every kept piece is a block on
-// the output's axis, every block edge a grip. Pulling one moves only that edge under the
-// pointer; on release the edit lands and the blocks glide to where it puts them.
+// The clip model (K, docs/plans/2026-10/2026-10-27-clips.md): every kept piece is a block,
+// every block edge a grip, and what is left out a ghost at its place (G,
+// 2026-10-28-ghosts.md). Pulling an edge moves only that edge: the ghost beside it grows or
+// shrinks, nothing else moves.
 #include "timeline/videotimeline.h"
 #include "app/spring.h"
 #include "timeline/lanes/zoomlane.h"
@@ -8,10 +9,28 @@
 
 namespace eddy {
 
-qreal VideoTimeline::xForOutput(double outMs) const {
+namespace {
+// The source of `a` that `b` does not cover; both in source order, neither overlapping itself.
+QVector<std::pair<qint64, qint64>> minus(const QVector<TimePiece> &a, const QVector<TimePiece> &b) {
+    QVector<std::pair<qint64, qint64>> out;
+    for (const TimePiece &p : a) {
+        qint64 from = qint64(p.srcStart);
+        const qint64 to = qint64(p.srcEnd);
+        for (const TimePiece &q : b) {
+            if (q.srcEnd <= from || q.srcStart >= to) continue;
+            if (q.srcStart > from) out.append({from, qint64(q.srcStart)});
+            from = std::max(from, qint64(q.srcEnd));
+        }
+        if (from < to) out.append({from, to});
+    }
+    return out;
+}
+}
+
+qreal VideoTimeline::xForShown(double shownMs) const {
     const QRectF track = trackRect();
     if (m_viewEnd <= m_viewStart) return track.left();
-    return track.left() + track.width() * (outMs - m_viewStart) / (m_viewEnd - m_viewStart);
+    return track.left() + track.width() * (shownMs - m_viewStart) / (m_viewEnd - m_viewStart);
 }
 
 QVector<QRectF> VideoTimeline::pieceRects() const {
@@ -20,13 +39,13 @@ QVector<QRectF> VideoTimeline::pieceRects() const {
     const qreal glide = m_ripple.size() == pieces.size() ? m_rippleGlide->value() : 0;
     QVector<QRectF> rects;
     for (int i = 0; i < pieces.size(); ++i) {
-        const TimePiece &p = pieces[i];
-        double outStart = p.outStart, outEnd = p.outEnd();
+        const TimePiece &p = shownPiece(i);
+        double start = p.outStart, end = p.outEnd();
         if (m_drag == Drag::Edge && i == m_edgePiece) {   // the pulled edge sits under the pointer
             const double moved = double(m_edgeNow - m_edgeSource) / p.speed;
-            (m_edgeEnd ? outEnd : outStart) = m_edgeOut + moved;
+            (m_edgeEnd ? end : start) = m_edgeOut + moved;
         }
-        qreal x0 = xForOutput(outStart), x1 = xForOutput(outEnd);
+        qreal x0 = xForShown(start), x1 = xForShown(end);
         if (m_drag == Drag::Move && i >= m_movePiece) {   // P: the moved piece and all after it
             const qreal dx = (m_moveNow - m_movePause) * trackRect().width() / qMax<qint64>(1, m_viewEnd - m_viewStart);
             x0 += dx;
@@ -42,16 +61,70 @@ QVector<QRectF> VideoTimeline::pieceRects() const {
     return rects;
 }
 
+// It rides its piece's start: a pulled start or a moved piece takes it along.
 QRectF VideoTimeline::pauseRect(int piece) const {
     const QVector<TimePiece> &pieces = m_axis.pieces();
     if (piece < 0 || piece >= pieces.size()) return {};
-    const QVector<QRectF> rects = pieceRects();
     const bool moving = m_drag == Drag::Move && piece == m_movePiece;
-    if (pieces[piece].pauseBefore <= 0 && !(moving && m_moveNow > 0)) return {};
-    const qreal left = piece > 0 ? rects[piece - 1].right() + kGap : xForOutput(pieces[piece].pauseStart()) + kGap / 2;
-    const qreal right = rects[piece].left() - kGap;
-    if (right <= left) return {};
-    return QRectF(left, trackRect().top(), right - left, trackRect().height());
+    const double pause = moving ? m_moveNow : pieces[piece].pauseBefore;
+    if (pause <= 0) return {};
+    const qreal right = pieceRects()[piece].left() - kGap;
+    const qreal width = pause * trackRect().width() / qMax<qint64>(1, m_viewEnd - m_viewStart) - kGap;
+    if (width <= 0) return {};
+    return QRectF(right - width, trackRect().top(), width, trackRect().height());
+}
+
+QVector<QRectF> VideoTimeline::ghostRects() const {
+    const QVector<QRectF> rects = pieceRects();
+    QVector<QRectF> ghosts;
+    if (rects.isEmpty()) return ghosts;
+    const QRectF track = trackRect();
+    const auto add = [&](qreal left, qreal right) {
+        if (right - left >= 1) ghosts.append(QRectF(left, track.top(), right - left, track.height()));
+    };
+    qreal left = xForShown(0) + kGap / 2;
+    for (int i = 0; i < rects.size(); ++i) {
+        const QRectF pause = pauseRect(i);
+        add(left, (pause.isEmpty() ? rects[i].left() : pause.left()) - kGap);
+        left = rects[i].right() + kGap;
+    }
+    // The last ghost rides the last block while it is moved or glides; pulled, it gives way.
+    qreal shift = 0;
+    if (m_drag == Drag::Move)
+        shift = (m_moveNow - m_movePause) * track.width() / qMax<qint64>(1, m_viewEnd - m_viewStart);
+    if (m_ripple.size() == rects.size()) shift += m_ripple.last().second * m_rippleGlide->value();
+    add(left, xForShown(shownDuration()) - kGap / 2 + shift);
+    return ghosts;
+}
+
+std::optional<std::pair<qint64, qint64>> VideoTimeline::ghostAt(QPointF pos) const {
+    const QRectF track = trackRect();
+    if (m_drag != Drag::None || pos.y() < track.top() || pos.y() > belowWaveform()) return std::nullopt;
+    const QVector<QRectF> ghosts = ghostRects();
+    if (std::none_of(ghosts.cbegin(), ghosts.cend(), [&](const QRectF &g) { return pos.x() >= g.left() && pos.x() <= g.right(); }))
+        return std::nullopt;
+    // The source gap between the kept pieces around it.
+    const qint64 at = timeForX(pos.x());
+    qint64 from = 0, to = m_duration;
+    for (const TimePiece &p : m_axis.pieces()) {
+        if (p.srcEnd <= at) from = qint64(p.srcEnd);
+        else if (p.srcStart > at) { to = qint64(p.srcStart); break; }
+        else return std::nullopt;   // inside a kept piece after all
+    }
+    if (to <= from) return std::nullopt;
+    return std::pair{from, to};
+}
+
+void VideoTimeline::restoreGhost(std::pair<qint64, qint64> range) {
+    const fragments::Clip before = clip();
+    const fragments::Clip after = fragments::restore(before, range.first, range.second, m_duration);
+    if (after == before) return;
+    setClip(after.inMs, after.outMs, after.list);
+    int piece = -1;   // the piece that now plays its start
+    const QVector<TimePiece> pieces = m_axis.pieces();
+    for (int i = 0; i < pieces.size(); ++i)
+        if (pieces[i].srcStart <= range.first && pieces[i].srcEnd > range.first) piece = i;
+    emit clipEdited(before, after, piece);
 }
 
 int VideoTimeline::pieceAt(QPointF pos) const {
@@ -98,8 +171,7 @@ void VideoTimeline::moveMove(qreal x) {
     double pause = m_movePause + (x - m_dragX) * msPerPx + m_dragTime;
     if (!m_modifiers.testFlag(Qt::ControlModifier)) {   // Ctrl places it freely
         // Back onto its neighbour within 8 px, or its start onto the playhead from before the press.
-        const double startOut = m_axis.pieces()[m_movePiece].outStart;
-        const double onPlayhead = m_movePause + (edited(m_beforePosition) - startOut);
+        const double onPlayhead = m_movePause + (shown(m_beforePosition) - shownPiece(m_movePiece).outStart);
         if (pause / msPerPx <= 8) pause = 0;
         else if (onPlayhead > 0 && qAbs(pause - onPlayhead) / msPerPx <= 8) pause = onPlayhead;
     }
@@ -150,22 +222,6 @@ int VideoTimeline::selectedPiece() const {
     return -1;
 }
 
-bool VideoTimeline::notchShown(int fragment) const {
-    const QVector<Fragment> parts = fragments::expanded(m_fragments);
-    if (fragment < 0 || fragment >= parts.size() || !parts[fragment].removed) return false;
-    const double at = edited(parts[fragment].startMs);
-    return parts[fragment].startMs > m_in && parts[fragment].startMs < m_out && at > 0 && at < editedDuration();
-}
-
-// A cut has no width: it sits where the piece before it ends, ahead of any pause (P).
-qreal VideoTimeline::notchX(int fragment) const {
-    const qint64 at = fragments::expanded(m_fragments)[fragment].startMs;
-    double out = 0;
-    for (const TimePiece &p : m_axis.pieces())
-        if (p.srcEnd <= at) out = p.outEnd();
-    return xForOutput(out);
-}
-
 void VideoTimeline::setTrimRange(qint64 inMs, qint64 outMs) { setClip(inMs, outMs, m_fragments); }
 
 void VideoTimeline::setFragments(const QVector<Fragment> &fragments) { setClip(m_in, m_out, fragments); }
@@ -181,43 +237,52 @@ void VideoTimeline::setClip(qint64 inMs, qint64 outMs, const QVector<Fragment> &
     // Where each source time is shown now, a running glide or drag included: the new
     // blocks start their glide from there.
     const QVector<TimePiece> before = m_axis.pieces();
-    const QVector<QRectF> shown = pieceRects();
+    const QVector<QRectF> drawn = pieceRects();
     const auto shownX = [&](double src, bool isEnd) -> qreal {
         for (int i = 0; i < before.size(); ++i) {
             const TimePiece &p = before[i];
             const bool inside = isEnd ? src > p.srcStart && src <= p.srcEnd : src >= p.srcStart && src < p.srcEnd;
             if (!inside) continue;
             const double at = (src - p.srcStart) / qMax(1.0, p.srcEnd - p.srcStart);
-            const qreal x0 = shown[i].left() - kGap / 2, x1 = shown[i].right() + kGap / 2;
+            const qreal x0 = drawn[i].left() - kGap / 2, x1 = drawn[i].right() + kGap / 2;
             return x0 + (x1 - x0) * at;
         }
-        return xForOutput(m_axis.toOutputAfter(src));   // it was left out: where it would appear
+        return xForShown(shown(qint64(src)));   // it was a ghost: where that stood
     };
     QVector<std::pair<double, double>> sources;
     for (const TimePiece &p : TimeMap(m_duration, in, out, fragments).pieces()) sources.append({p.srcStart, p.srcEnd});
     QVector<std::pair<qreal, qreal>> from;
     for (const auto &[a, b] : std::as_const(sources)) from.append({shownX(a, false), shownX(b, true)});
 
-    const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
-    const qint64 sourceStart = source(m_viewStart), sourceEnd = source(m_viewEnd);   // the view keeps its stretch
+    const bool fullView = m_viewStart == 0 && m_viewEnd == shownDuration();
+    const qint64 sourceStart = sourceAt(m_viewStart), sourceEnd = sourceAt(m_viewEnd);   // the view keeps its stretch
     m_in = in;
     m_out = out;
     m_fragments = fragments;
     rebuildAxis();
+    // A pull showed its ghost all along; any other edit changes look where it cut or took back.
+    m_freshCut.clear();
+    m_freshKept.clear();
+    if (m_drag == Drag::None && isVisible() && Spring::enabled() && !before.isEmpty()) {
+        m_freshCut = minus(before, m_axis.pieces());
+        m_freshKept = minus(m_axis.pieces(), before);
+    }
+    if (m_freshCut.isEmpty() && m_freshKept.isEmpty()) m_fresh->jumpTo(0);
+    else { m_fresh->jumpTo(1); m_fresh->setTarget(0); }
     // Any edit of the pieces ends a mark: it was drawn against the old ones.
     m_markAnchor = m_markHead = -1;
     m_markOpen = false;
     m_markFade->jumpTo(0);
     if (m_selectedFragment >= fragments::expanded(m_fragments).size()) m_selectedFragment = -1;
-    m_hoverCut = m_hoverEdge = -1;
+    m_hoverGhost = m_hoverEdge = -1;
     if (fullView) fitClip();
-    else setViewRange(qRound64(edited(sourceStart)), qRound64(edited(sourceEnd)));
+    else setViewRange(qRound64(shown(sourceStart)), qRound64(shown(sourceEnd)));
 
     m_ripple.clear();
     bool moves = false;
     const QVector<TimePiece> &now = m_axis.pieces();
     for (int i = 0; i < now.size() && i < from.size(); ++i) {
-        const qreal dx0 = from[i].first - xForOutput(now[i].outStart), dx1 = from[i].second - xForOutput(now[i].outEnd());
+        const qreal dx0 = from[i].first - xForShown(shownPiece(i).outStart), dx1 = from[i].second - xForShown(shownPiece(i).outEnd());
         m_ripple.append({dx0, dx1});
         moves = moves || qAbs(dx0) > 0.5 || qAbs(dx1) > 0.5;
     }
@@ -240,10 +305,10 @@ void VideoTimeline::beginEdgeDrag(int piece, bool end, qreal x, Qt::KeyboardModi
     m_edgePiece = piece;
     m_edgeEnd = end;
     m_edgeSource = m_edgeNow = qRound64(end ? pieces[piece].srcEnd : pieces[piece].srcStart);
-    m_edgeOut = end ? pieces[piece].outEnd() : pieces[piece].outStart;
+    m_edgeOut = end ? shownPiece(piece).outEnd() : shownPiece(piece).outStart;
     m_dragTime = m_edgeOut;
     m_dragX = m_pressX = m_pointerX = x;
-    m_fine = modifiers.testFlag(Qt::ShiftModifier);
+    m_fine = modifiers.testFlag(Qt::AltModifier);   // G: Shift there opens a pause now
     m_modifiers = modifiers;
     m_clipBefore = m_clipPreview = clip();
     m_beforePosition = m_position;
@@ -251,7 +316,7 @@ void VideoTimeline::beginEdgeDrag(int piece, bool end, qreal x, Qt::KeyboardModi
 
 void VideoTimeline::moveEdgeDrag(qreal x) {
     const TimePiece &piece = m_axis.pieces()[m_edgePiece];
-    const bool fine = m_modifiers.testFlag(Qt::ShiftModifier);
+    const bool fine = m_modifiers.testFlag(Qt::AltModifier);
     if (fine != m_fine) {   // the edge stays where it is; from here on the pointer moves it finer
         m_dragTime = m_edgeOut + double(m_edgeNow - m_edgeSource) / piece.speed;
         m_dragX = x;
@@ -272,15 +337,6 @@ void VideoTimeline::moveEdgeDrag(qreal x) {
     emit seekRequested(m_position);
     emit hoverRequested(m_position, QPoint(qRound(x), int(kTrackTop)));
     update();
-}
-
-int VideoTimeline::cutAt(QPointF pos) const {
-    const QRectF track = trackRect();
-    if (pos.y() > track.top() + 4) return -1;
-    const QVector<Fragment> parts = fragments::expanded(m_fragments);
-    for (int i = 0; i < parts.size(); ++i)
-        if (parts[i].removed && notchShown(i) && qAbs(pos.x() - notchX(i)) <= 6) return i;
-    return -1;
 }
 
 bool VideoTimeline::hasMark() const {

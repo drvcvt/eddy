@@ -270,8 +270,9 @@ private slots:
         QTRY_VERIFY(bar->isVisible());
         QVERIFY(w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // a chosen piece can go
     }
-    void deleteTakesAPieceOutAndTheNotchBringsItBack() {
-        // K: Delete leaves the chosen piece out and the gap closes; the notch restores it.
+    void deleteLeavesAGhostAndADoubleClickBringsItBack() {
+        // K, G: Delete leaves the chosen piece out; it stays as a ghost where it was, nothing
+        // moves, and a double click on the ghost restores it.
         QTemporaryDir dir;
         Config cfg; cfg.animations = false;
         EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
@@ -286,14 +287,19 @@ private slots:
         emit timeline->stripClicked(1500);
         QTRY_VERIFY(bar->isVisible());
         const int steps = undo->count();
+        const QVector<QRectF> before = timeline->pieceRects();
         QTest::keyClick(&w, Qt::Key_Delete);
         QVERIFY(w.studioDocument().fragments[1].removed);
         QCOMPARE(timeline->pieceRects().size(), 2);
-        QCOMPARE(timeline->position(), 2000);   // where the next piece now starts
+        QCOMPARE(timeline->pieceRects()[0], before[0]);   // nothing closes up
+        QCOMPARE(timeline->pieceRects()[1], before[2]);
+        QCOMPARE(timeline->ghostRects().size(), 1);
+        QVERIFY(qAbs(timeline->ghostRects()[0].center().x() - before[1].center().x()) <= 0.5);
+        QCOMPARE(timeline->position(), 2000);   // where the next piece starts
         QTRY_VERIFY(!bar->isVisible());
         QCOMPARE(undo->count(), steps + 1);
         QVERIFY(!w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // nothing chosen
-        emit timeline->cutClicked(1);   // the notch: restore, as its hint says
+        QTest::mouseDClick(timeline, Qt::LeftButton, Qt::NoModifier, timeline->ghostRects()[0].center().toPoint());
         const auto parts = w.studioDocument().fragments;
         QVERIFY(std::none_of(parts.cbegin(), parts.cend(), [](const Fragment &f) { return f.removed; }));
         QCOMPARE(undo->count(), steps + 2);
@@ -654,6 +660,43 @@ private slots:
         timeline->setPosition(4000);
         fromPlayhead->click();
         QCOMPARE(redact->timeWindow(), (AnnotationItem::TimeWindow{{3900, 4000}}));
+    }
+    // G: a click on a ghost shows what was cut there; it splits nothing and chooses nothing;
+    // playing from it goes on with the next kept piece.
+    void aGhostShowsItsFramesAndPlaysOnPastThem() {
+        if (!have("ffmpeg")) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString clip = dir.filePath("colours.mp4");
+        QProcess ffmpeg;
+        ffmpeg.start("ffmpeg", {"-v", "error", "-f", "lavfi", "-i", "color=red:s=160x90:r=30:d=1",
+            "-f", "lavfi", "-i", "color=blue:s=160x90:r=30:d=1", "-f", "lavfi", "-i", "color=0x00ff00:s=160x90:r=30:d=1",
+            "-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0", "-g", "10", "-pix_fmt", "yuv420p", clip});
+        QVERIFY(ffmpeg.waitForFinished(20000) && ffmpeg.exitCode() == 0);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(clip, 3000), cfg, {});
+        w.show();
+        QTRY_VERIFY(w.findChild<QMediaPlayer *>());
+        auto *player = w.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        QTRY_VERIFY(player->isSeekable());
+        auto *timeline = w.findChild<VideoTimeline *>();
+        StudioDocument doc;
+        doc.fragments = {{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}};   // blue is cut
+        w.setStudioDocument(doc);
+        QCOMPARE(timeline->ghostRects().size(), 1);
+        const QPoint ghost = timeline->ghostRects()[0].center().toPoint();
+        QTest::mouseClick(timeline, Qt::LeftButton, Qt::NoModifier, ghost);
+        const auto colour = [&] { return video->videoSink()->videoFrame().toImage().pixelColor(80, 45); };
+        QTRY_VERIFY2(colour().blue() > 150 && colour().red() < 100, qPrintable(colour().name()));   // its frame
+        QVERIFY(!w.findChild<FragmentBar *>()->isVisible());   // nothing chosen
+        QTest::keyClick(&w, Qt::Key_S);
+        QCOMPARE(w.findChild<Toast *>()->text(), QStringLiteral("Nothing to split here"));
+        QCOMPARE(w.studioDocument().fragments, doc.fragments);
+        QTest::mouseClick(w.findChild<QToolButton *>(QStringLiteral("PlaybackPlay")), Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(colour().green() > 150 && colour().blue() < 100, 4000);   // on with green
+        QVERIFY(player->position() >= 2000);
+        player->pause();
     }
 };
 

@@ -437,11 +437,10 @@ QWidget *EditorWindow::createPlaybackBar() {
     connect(m_timeline, &VideoTimeline::zoomAddRequested, this, &EditorWindow::addZoomAt);
     connect(m_timeline, &VideoTimeline::zoomSelected, this, &EditorWindow::selectZoom);
     // A click (not a scrub) on the strip selects the fragment under it; a scrub leaves the
-    // selection and its bar alone. The cut notch restores, as its hint says.
+    // selection and its bar alone. A click on a ghost chooses nothing (G).
     connect(m_timeline, &VideoTimeline::stripClicked, this, [this](qint64 at) {
-        selectFragment(fragments::indexAt(m_studio.fragments, at));
+        selectFragment(clipMap().toOutput(double(at)) ? fragments::indexAt(m_studio.fragments, at) : -1);
     });
-    connect(m_timeline, &VideoTimeline::cutClicked, this, &EditorWindow::restoreCut);
     connect(m_timeline, &VideoTimeline::pausesRequested, this, &EditorWindow::findPauses);
     // One target at a time: a mark lets go of annotations, a zoom and a fragment.
     connect(m_timeline, &VideoTimeline::markChanged, this, [this] {

@@ -39,15 +39,18 @@ public:
     void setMinimumRange(qint64 durationMs);
     void setPosition(qint64 positionMs);
     void setTrimRange(qint64 inMs, qint64 outMs);
-    // The clip model (K): the trim and the fragments together. The strip shows the output:
-    // every kept piece a block, everything left out (ends and cuts alike) gone. A change
-    // glides the blocks from where they were (motion::kBase).
+    // The clip model (K): the trim and the fragments together. The strip shows the whole
+    // recording (G): every kept piece a block, everything left out (ends and cuts alike) a
+    // ghost at its place, so nothing moves when a piece shrinks or goes. A change that does
+    // move blocks (a pause closing) glides them from where they were (motion::kBase).
     void setClip(qint64 inMs, qint64 outMs, const QVector<Fragment> &fragments);
     fragments::Clip clip() const { return {m_in, m_out, m_fragments}; }
     // Blocks as shown, in widget pixels (gaps and a running glide included).
     QVector<QRectF> pieceRects() const;
     // P: the pause before piece `piece` as shown, empty without one.
     QRectF pauseRect(int piece) const;
+    // G: everything left out, as shown: the stretches between the blocks and pauses.
+    QVector<QRectF> ghostRects() const;
     bool movingPiece() const { return m_drag == Drag::Move; }
     // P: the playhead inside a pause, at output time `outMs` (it has no source time of its
     // own); setPosition() takes it out again.
@@ -59,12 +62,11 @@ public:
     void fitClip();
     void cancelInteraction();
     // Source times at the view's edges.
-    qint64 visibleStart() const { return source(m_viewStart); }
-    qint64 visibleEnd() const { return source(m_viewEnd); }
+    qint64 visibleStart() const { return sourceAt(m_viewStart); }
+    qint64 visibleEnd() const { return sourceAt(m_viewEnd); }
     // Pans so `sourceMs` is in view.
     void ensureVisible(qint64 sourceMs);
-    // Fragments (studio plan 6.6, Q5 = B): the timeline shows the edited
-    // time, cuts collapse to a notch in the ruler and 2x takes half the width.
+    // Fragments (studio plan 6.6): 2x takes half the width, a cut stays as a ghost (G).
     // Every public time stays source time.
     void setFragments(const QVector<Fragment> &fragments);
     void setSelectedFragment(int index);   // -1: none; the piece playing that fragment is framed
@@ -82,12 +84,12 @@ public:
     bool maskDragging() const {
         return m_drag == Drag::MaskMove || m_drag == Drag::MaskStart || m_drag == Drag::MaskEnd;
     }
-    // Ruler ticks as (x, edited ms).
+    // Ruler ticks as (x, output ms): none over a ghost, which the output does not have.
     QVector<QPair<qreal, qint64>> rulerTicks() const;
     QVector<qint64> thumbnailTimes() const;
     QImage thumbnailNear(qint64 time, qint64 *sampleTime) const;
     bool interacting() const { return m_drag != Drag::None; }
-    // A range marked to cut (C1): Shift-drag or Shift-click on the strip, or Shift+I and
+    // A range marked to cut (C1): Alt-drag or Alt-click on the strip, or Shift+I and
     // Shift+O at the playhead. Source time, not part of the document; the window cuts it.
     bool hasMark() const;
     std::pair<qint64, qint64> markRange() const;   // sorted, inside the trim; {0, 0} without one
@@ -142,7 +144,6 @@ signals:
     void zoomsPreviewed(const QVector<ZoomSegment> &zooms);
     void zoomsEdited(const QVector<ZoomSegment> &before, const QVector<ZoomSegment> &after);
     void zoomMenuRequested(quint32 id, QPoint globalPos);
-    void cutClicked(int fragment);
     // A press and release on the strip or waveform within 3 px: a click, not a scrub.
     void stripClicked(qint64 positionMs);
     void markChanged();
@@ -166,7 +167,6 @@ protected:
 private:
     QRectF trackRect() const;
     quint32 zoomAt(QPointF pos, Drag *part) const;
-    int cutAt(QPointF pos) const;
     int maskAt(QPointF pos, Drag *part) const;
     void moveMaskDrag(qreal x);
     void updateHeight();
@@ -176,9 +176,12 @@ private:
     void paintMaskLane(QPainter &painter, const std::function<QColor(qreal)> &ink);
     void contextMenu(QPoint pos);
     bool inZoomLane(QPointF pos) const;
-    double edited(qint64 sourceMs) const;
-    qint64 source(double editedMs) const;
-    qint64 editedDuration() const;
+    // G: the strip's own time, "shown" ms: the output with every left-out stretch back at
+    // its place at 1x (m_display). Ticks and labels stay output time (m_axis).
+    double shown(qint64 sourceMs) const;
+    qint64 sourceAt(double shownMs) const;
+    qint64 shownDuration() const;
+    double shownForOutput(double outMs) const;   // a kept or paused output time, on the strip
     void rebuildAxis();
     void moveZoomDrag(qreal x);
     qreal xForTime(qint64 timeMs) const;
@@ -186,7 +189,11 @@ private:
     void setViewRange(qint64 startMs, qint64 endMs);
     void moveDrag(qreal x, Qt::KeyboardModifiers modifiers);
     // Piece edges (videotimeline_clips.cpp).
-    qreal xForOutput(double outMs) const;
+    qreal xForShown(double shownMs) const;
+    const TimePiece &shownPiece(int piece) const { return m_display.pieces()[m_keptAt[piece]]; }
+    // G: the left-out source around `pos` (between two kept pieces), empty off a ghost.
+    std::optional<std::pair<qint64, qint64>> ghostAt(QPointF pos) const;
+    void restoreGhost(std::pair<qint64, qint64> range);
     bool edgeAt(QPointF pos, int *piece, bool *end) const;
     void beginEdgeDrag(int piece, bool end, qreal x, Qt::KeyboardModifiers modifiers);
     void moveEdgeDrag(qreal x);
@@ -199,16 +206,18 @@ private:
     int m_movePiece = -1;
     double m_movePause = 0, m_moveNow = 0;   // the moved piece's pause at the press, and now
     double m_pauseHead = -1;
-    bool notchShown(int fragment) const;   // a cut inside the output, not at its ends
-    qreal notchX(int fragment) const;      // where a cut sits: the end of what is kept before it
     int m_edgePiece = -1, m_hoverEdge = -1;   // hover: piece * 2 + (end ? 1 : 0)
     bool m_edgeEnd = false;
     qint64 m_edgeSource = 0, m_edgeNow = 0;   // the edge's source time at the press, and now
-    double m_edgeOut = 0;                      // its output time at the press
+    double m_edgeOut = 0;                      // its shown time at the press
     fragments::Clip m_clipBefore, m_clipPreview;
     // The glide after an edit: each piece's start and end, in px, from where they were.
     QVector<std::pair<qreal, qreal>> m_ripple;
     Spring *m_rippleGlide = nullptr;
+    // G: what an edit (not a pull) just cut or took back, in source ms: it changes look from
+    // block to ghost or back on motion::kBase, m_fresh going from 1 to 0.
+    QVector<std::pair<qint64, qint64>> m_freshCut, m_freshKept;
+    Spring *m_fresh = nullptr;
 
     qint64 m_duration = 0;
     qint64 m_position = 0;
@@ -233,13 +242,13 @@ private:
     qint64 m_markAnchor = -1, m_markHead = -1, m_markClickAnchor = -1;
     qint64 m_zoomAddAt = 0;   // a press on the empty zoom lane adds there on a still release
     // Every small state eases on motion::kFast (C9): grips, focus, chosen zooms and masks,
-    // lit notches, the fragments stepping back. Aimed while painting, read for the inks.
+    // the ghost under the pointer, the fragments stepping back. Aimed while painting, read for the inks.
     SpringLevels *m_states = nullptr;
     void syncStates();
     QString hintAt(QPointF pos) const;
     // Keys for the eased states: one space per kind, the item's own id below.
     static constexpr quint64 kFocus = 3;
-    static constexpr quint64 kZoom = 1, kMask = 2, kNotch = 3, kEdge = 4, kPicked = 5;
+    static constexpr quint64 kZoom = 1, kMask = 2, kGhost = 3, kEdge = 4, kPicked = 5;
     static constexpr quint64 stateKey(quint64 kind, quint64 id) {
         return (kind << 56) | (id & ((quint64(1) << 56) - 1));
     }
@@ -263,8 +272,10 @@ private:
     bool m_zoomMoved = false;
     QVector<Fragment> m_fragments;
     TimeMap m_axis;                 // source -> output time: the trim and the fragments
+    TimeMap m_display;              // source -> shown time (G): m_axis with its gaps back at 1x
+    QVector<int> m_keptAt;          // piece i of m_axis is piece m_keptAt[i] of m_display
     int m_selectedFragment = -1;
-    int m_hoverCut = -1;
+    qint64 m_hoverGhost = -1;       // the source start of the ghost under the pointer
     QVector<MaskBlock> m_masks;
     int m_dragMask = -1;
     QPointer<AudioWaveformProvider> m_waveform;

@@ -1,8 +1,9 @@
-// The timeline widget: its axis (the output, K), the view on it, the ruler, the thumbnails
+// The timeline widget: its axis (the whole recording, G), the view on it, the ruler, the thumbnails
 // and the states it eases. Input, pieces, lanes and painting live beside it.
 #include "timeline/videotimeline.h"
 #include "app/theme.h"
 #include "app/spring.h"
+#include <algorithm>
 #include <cmath>
 
 namespace eddy {
@@ -15,6 +16,8 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     m_states = new SpringLevels(motion::kFast, [this] { update(); }, this);
     m_rippleGlide = new Spring(motion::kBase, [this](qreal) { update(); }, this);
     m_rippleGlide->jumpTo(0);
+    m_fresh = new Spring(motion::kBase, [this](qreal) { update(); }, this);
+    m_fresh->jumpTo(0);
     m_glide = new Spring(motion::kBase, [this](qreal t) {
         m_gliding = true;
         setViewRange(qRound64(m_glideFrom.first + (m_glideTo.first - m_glideFrom.first) * t),
@@ -43,22 +46,44 @@ VideoTimeline::VideoTimeline(QWidget *parent) : QWidget(parent) {
     connect(this, &QWidget::customContextMenuRequested, this, &VideoTimeline::contextMenu);
 }
 
-// The axis is the output (K): what is trimmed or cut is not on it.
-double VideoTimeline::edited(qint64 sourceMs) const {
-    return m_axis.pieces().isEmpty() ? double(sourceMs) : m_axis.toOutputAfter(double(sourceMs));
+// The axis is the whole recording (G): the output, with what is trimmed or cut back at its
+// place at 1x, so a cut is seen where it was and nothing closes up behind it.
+double VideoTimeline::shown(qint64 sourceMs) const {
+    return m_display.pieces().isEmpty() ? double(sourceMs) : m_display.toOutputAfter(double(sourceMs));
 }
 
-qint64 VideoTimeline::source(double editedMs) const {
-    return m_axis.pieces().isEmpty() ? qRound64(editedMs) : qRound64(m_axis.toSource(editedMs));
+qint64 VideoTimeline::sourceAt(double shownMs) const {
+    return m_display.pieces().isEmpty() ? qRound64(shownMs) : qRound64(m_display.toSource(shownMs));
 }
 
-qint64 VideoTimeline::editedDuration() const {
-    return m_axis.pieces().isEmpty() ? m_duration : qRound64(m_axis.outputDurationMs());
+qint64 VideoTimeline::shownDuration() const {
+    return m_display.pieces().isEmpty() ? m_duration : qRound64(m_display.outputDurationMs());
+}
+
+// A piece and the pause before it sit on the strip shifted by the ghosts before them.
+double VideoTimeline::shownForOutput(double outMs) const {
+    const QVector<TimePiece> &pieces = m_axis.pieces();
+    if (pieces.isEmpty()) return outMs;
+    int i = 0;
+    while (i + 1 < pieces.size() && outMs >= pieces[i + 1].pauseStart()) ++i;
+    return outMs + shownPiece(i).outStart - pieces[i].outStart;
 }
 
 void VideoTimeline::rebuildAxis() {
     ++m_waveRevision;
     m_axis = TimeMap(m_duration, m_in, m_out, m_fragments);
+    // Each gap in the source between kept pieces becomes a piece of its own at 1x, no pause.
+    QVector<Fragment> spans;
+    m_keptAt.clear();
+    double covered = 0;
+    for (const TimePiece &p : m_axis.pieces()) {
+        if (p.srcStart > covered) spans.append({qint64(covered), 1.0, false});
+        m_keptAt.append(spans.size());
+        spans.append({qint64(p.srcStart), p.speed, false, qint64(p.pauseBefore), p.pauseBlack});
+        covered = p.srcEnd;
+    }
+    if (covered < m_duration && !spans.isEmpty()) spans.append({qint64(covered), 1.0, false});
+    m_display = spans.isEmpty() ? TimeMap() : TimeMap(m_duration, 0, m_duration, spans);
 }
 
 void VideoTimeline::setSelectedFragment(int index) {
@@ -68,7 +93,7 @@ void VideoTimeline::setSelectedFragment(int index) {
 }
 
 void VideoTimeline::ensureVisible(qint64 sourceMs) {
-    const double e = edited(sourceMs);
+    const double e = shown(sourceMs);
     if (e >= m_viewStart && e <= m_viewEnd) return;
     const qint64 span = m_viewEnd - m_viewStart;
     setViewRange(qRound64(e), qRound64(e) + span);
@@ -76,7 +101,7 @@ void VideoTimeline::ensureVisible(qint64 sourceMs) {
 
 void VideoTimeline::setViewRange(qint64 startMs, qint64 endMs) {
     if (!m_gliding && m_glide && m_glide->state() == QAbstractAnimation::Running) m_glide->stop();   // the wheel takes over
-    const qint64 total = editedDuration();
+    const qint64 total = shownDuration();
     const qint64 span = qBound<qint64>(qMin(total, m_minimumRange * 10), endMs - startMs, total);
     const qint64 start = qBound<qint64>(0, startMs, total - span);
     if (m_viewStart == start && m_viewEnd == start + span) return;
@@ -88,9 +113,9 @@ void VideoTimeline::setViewRange(qint64 startMs, qint64 endMs) {
 
 void VideoTimeline::zoomAt(qreal factor, qint64 anchorMs) {
     if (m_duration <= 0 || !std::isfinite(factor) || factor <= 0) return;
-    anchorMs = qBound(m_viewStart, qRound64(edited(anchorMs)), m_viewEnd);
+    anchorMs = qBound(m_viewStart, qRound64(shown(anchorMs)), m_viewEnd);
     const qint64 oldSpan = m_viewEnd - m_viewStart;
-    const qint64 total = editedDuration();
+    const qint64 total = shownDuration();
     const qint64 span = qBound(qMin(total, m_minimumRange * 10), qRound64(oldSpan / factor), total);
     const qreal fraction = oldSpan > 0 ? qreal(anchorMs - m_viewStart) / oldSpan : 0.5;
     const qint64 start = anchorMs - qRound64(fraction * span);
@@ -101,14 +126,14 @@ void VideoTimeline::panBy(qint64 deltaMs) {
     setViewRange(m_viewStart + deltaMs, m_viewEnd + deltaMs);
 }
 
-void VideoTimeline::fitClip() { setViewRange(0, editedDuration()); }
+void VideoTimeline::fitClip() { setViewRange(0, shownDuration()); }
 
 QVector<qint64> VideoTimeline::thumbnailTimes() const {
     QVector<qint64> times;
     if (m_duration <= 0) return times;
     const int count = qBound(6, width() / (2 * int(kTrackH)), 24);   // slots about 2:1 on the strip
     for (int i = 0; i < count; ++i)
-        times.append(qMin(m_duration - 1, source(m_viewStart + (i + 0.5) * (m_viewEnd - m_viewStart) / count)));
+        times.append(qMin(m_duration - 1, sourceAt(m_viewStart + (i + 0.5) * (m_viewEnd - m_viewStart) / count)));
     return times;
 }
 
@@ -133,7 +158,7 @@ QImage VideoTimeline::thumbnailNear(qint64 time, qint64 *sampleTime) const {
 }
 
 void VideoTimeline::setDuration(qint64 durationMs) {
-    const bool fullView = m_viewStart == 0 && m_viewEnd == editedDuration();
+    const bool fullView = m_viewStart == 0 && m_viewEnd == shownDuration();
     m_duration = qMax<qint64>(0, durationMs);
     m_markAnchor = m_markHead = -1;
     m_markOpen = false;
@@ -193,18 +218,18 @@ void VideoTimeline::updateHeight() {
 qreal VideoTimeline::xForTime(qint64 timeMs) const {
     const QRectF track = trackRect();
     if (m_viewEnd <= m_viewStart) return track.left();
-    return track.left() + track.width() * (edited(timeMs) - m_viewStart) / (m_viewEnd - m_viewStart);
+    return xForShown(shown(timeMs));
 }
 
 qint64 VideoTimeline::timeForX(qreal x) const {
     const QRectF track = trackRect();
     if (m_duration <= 0 || track.width() <= 0) return 0;
     const qreal fraction = qBound<qreal>(0, (x - track.left()) / track.width(), 1);
-    return source(m_viewStart + fraction * (m_viewEnd - m_viewStart));
+    return sourceAt(m_viewStart + fraction * (m_viewEnd - m_viewStart));
 }
 
-// Ticks count edited time at even x, so a cut or a fast fragment never
-// bunches them up; the labels are the output's own clock.
+// Ticks count output time at even x, so a fast fragment never bunches them up; the labels
+// are the output's own clock. Over a ghost they pause: the output has none of it (G).
 QVector<QPair<qreal, qint64>> VideoTimeline::rulerTicks() const {
     QVector<QPair<qreal, qint64>> ticks;
     const QRectF track = trackRect();
@@ -212,8 +237,19 @@ QVector<QPair<qreal, qint64>> VideoTimeline::rulerTicks() const {
     const qreal rawStep = qMax<qreal>(1, (m_viewEnd - m_viewStart) * 70.0 / track.width());
     const qreal base = std::pow(10.0, std::floor(std::log10(rawStep)));
     const qint64 step = qMax<qint64>(1, qRound64(base * (rawStep / base <= 2 ? 2 : rawStep / base <= 5 ? 5 : 10)));
-    for (qint64 t = (m_viewStart / step + 1) * step; t < m_viewEnd; t += step)
-        ticks.append({track.left() + track.width() * qreal(t - m_viewStart) / (m_viewEnd - m_viewStart), t});
+    const QVector<TimePiece> &pieces = m_axis.pieces();
+    if (pieces.isEmpty()) {
+        for (qint64 t = (m_viewStart / step + 1) * step; t < m_viewEnd; t += step) ticks.append({xForShown(t), t});
+        return ticks;
+    }
+    for (int i = 0; i < pieces.size(); ++i) {
+        // Piece i with the pause before it, on the strip from `offset` on; the end is the next one's.
+        const double offset = shownPiece(i).outStart - pieces[i].outStart;
+        const double from = std::max(i == 0 ? 0.0 : pieces[i].pauseStart(), m_viewStart - offset);
+        const double to = std::min(pieces[i].outEnd(), m_viewEnd - offset);
+        for (qint64 t = qint64(std::floor(from / step)) * step; t < to; t += step)
+            if (t >= from && t + offset > m_viewStart) ticks.append({xForShown(t + offset), t});
+    }
     return ticks;
 }
 
@@ -236,9 +272,8 @@ void VideoTimeline::syncStates() {
     m_states->aim(kFocus, hasFocus());
     for (const ZoomSegment &z : std::as_const(m_zooms)) m_states->aim(stateKey(kZoom, z.id), z.id == m_selectedZoom);
     for (const MaskBlock &mask : std::as_const(m_masks)) m_states->aim(stateKey(kMask, mask.key), mask.selected);
-    const QVector<Fragment> parts = fragments::expanded(m_fragments);
-    for (int i = 0; i < parts.size(); ++i)
-        m_states->aim(stateKey(kNotch, quint64(i)), i == m_hoverCut);
+    for (const TimePiece &p : m_display.pieces())
+        m_states->aim(stateKey(kGhost, quint64(p.srcStart)), qint64(p.srcStart) == m_hoverGhost);
     const int picked = selectedPiece();
     for (int i = 0; i < m_axis.pieces().size(); ++i) {
         m_states->aim(stateKey(kPicked, quint64(i)), i == picked);

@@ -157,7 +157,7 @@ void EditorWindow::keyPressEvent(QKeyEvent *e) {
     }
     if (m_selectedFragment >= 0 && !m_selectedZoom && m_scene->selectedItems().isEmpty()
         && (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace)) {
-        deleteChosen();   // the piece goes, the gap closes (K)
+        deleteChosen();   // the piece goes, a ghost stays (G)
         e->accept();
         return;
     }

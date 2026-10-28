@@ -161,6 +161,21 @@ private slots:
         QVERIFY(join(list, 1));
         QVERIFY(list.isEmpty());
     }
+    // G: a ghost comes back whole: a cut melts into its equal neighbours, a trimmed end
+    // widens the trim, and a cut inside a trimmed end comes with it.
+    void aGhostComesBackWhole() {
+        QCOMPARE(restore(withCut(), 3000, 5000, kDur), whole());
+        const Clip trimmed{2000, 8000, {}};
+        QCOMPARE(spans(restore(trimmed, 0, 2000, kDur)), (QVector<std::pair<qint64, qint64>>{{0, 8000}}));
+        QCOMPARE(spans(restore(trimmed, 8000, kDur, kDur)), (QVector<std::pair<qint64, qint64>>{{2000, kDur}}));
+        const Clip both{4000, kDur, {{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}}};   // 0-4 s one ghost
+        QCOMPARE(restore(both, 0, 4000, kDur), whole());
+        // A pause before the next piece keeps the two apart, as setRemoved does.
+        Clip paused = withCut();
+        paused.list[2].pauseMs = 500;
+        QCOMPARE(spans(restore(paused, 3000, 5000, kDur)), (QVector<std::pair<qint64, qint64>>{{0, 5000}, {5000, kDur}}));
+        QCOMPARE(restore(whole(), 0, kDur, kDur), whole());   // nothing left out: nothing changes
+    }
 };
 
 QTEST_GUILESS_MAIN(TestClip)

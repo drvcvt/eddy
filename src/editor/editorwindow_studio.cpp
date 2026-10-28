@@ -467,8 +467,8 @@ void EditorWindow::applyClip(const fragments::Clip &after, int piece) {
                    ? fragments::indexAt(after.list, qint64(pieces[piece].srcStart)) : -1);
 }
 
-// Delete: a marked range first (C1), else the chosen piece; the gap closes and the
-// playhead lands where the next piece now starts.
+// Delete: a marked range first (C1), else the chosen piece; it stays as a ghost (G) and
+// the playhead lands where the next piece starts.
 void EditorWindow::deleteChosen() {
     if (!isVideo() || !m_timeline) return;
     if (m_timeline->hasMark() || m_timeline->markOpen()) {
@@ -507,26 +507,6 @@ void EditorWindow::updateClipControls() {
     if (m_clipDuration)
         m_clipDuration->setText(formatPreciseTime(qRound64(
             TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments).outputDurationMs())));
-}
-
-// Cuts a kept fragment (it stays selected, its bar offers Restore) or restores a cut one.
-// A restore may melt the fragment into its neighbours, so nothing stays selected after it.
-void EditorWindow::toggleFragmentCut(int index) {
-    if (index < 0 || index >= m_studio.fragments.size()) return;
-    QVector<Fragment> list = m_studio.fragments;
-    const bool restoring = list[index].removed;
-    if (!fragments::setRemoved(list, index, !restoring)
-        || TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, list).pieces().isEmpty()) {
-        m_toast->showMessage(tr("Keep at least part of the clip"));
-        return;
-    }
-    editStudio([&](StudioDocument &d) { d.fragments = list; });
-    if (restoring) selectFragment(-1);
-}
-
-void EditorWindow::restoreCut(int index) {
-    if (index >= 0 && index < m_studio.fragments.size() && m_studio.fragments[index].removed)
-        toggleFragmentCut(index);
 }
 
 // One undo step: the marked range becomes one cut, melted with cuts beside it. The
@@ -640,6 +620,10 @@ void EditorWindow::findPauses(bool cut) {
 // S splits at the playhead and selects the part after it (studio plan 6.6).
 void EditorWindow::splitAtPlayhead() {
     const qint64 at = m_timeline->position();
+    if (!clipMap().toOutput(double(at))) {   // G: the playhead stands in a ghost
+        m_toast->showMessage(tr("Nothing to split here"));
+        return;
+    }
     QVector<Fragment> list = m_studio.fragments;
     if (!fragments::split(list, at, m_media.video.durationMs)) {
         m_toast->showMessage(tr("Too close to a split to split again"));
