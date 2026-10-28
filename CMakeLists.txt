@@ -58,6 +58,8 @@ add_library(eddy_core STATIC
     src/timeline/videotimeline.cpp
     src/timeline/videotimeline_paint.cpp
     src/timeline/videotimeline_clips.cpp
+    src/timeline/videotimeline_input.cpp
+    src/timeline/videotimeline_lanes.cpp
     src/video/videopreviewprovider.cpp
     src/chrome/toast.cpp
     src/chrome/dragpill.cpp

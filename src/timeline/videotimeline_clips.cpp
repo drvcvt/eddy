@@ -3,6 +3,7 @@
 // pointer; on release the edit lands and the blocks glide to where it puts them.
 #include "timeline/videotimeline.h"
 #include "app/spring.h"
+#include "timeline/lanes/zoomlane.h"
 #include <algorithm>
 
 namespace eddy {
@@ -181,6 +182,81 @@ void VideoTimeline::moveEdgeDrag(qreal x) {
     emit seekRequested(m_position);
     emit hoverRequested(m_position, QPoint(qRound(x), int(kTrackTop)));
     update();
+}
+
+int VideoTimeline::cutAt(QPointF pos) const {
+    const QRectF track = trackRect();
+    if (pos.y() > track.top() + 4) return -1;
+    const QVector<Fragment> parts = fragments::expanded(m_fragments);
+    for (int i = 0; i < parts.size(); ++i)
+        if (parts[i].removed && notchShown(i) && qAbs(pos.x() - xForTime(parts[i].startMs)) <= 6) return i;
+    return -1;
+}
+
+bool VideoTimeline::hasMark() const {
+    const auto [from, to] = markRange();
+    return to > from;
+}
+
+std::pair<qint64, qint64> VideoTimeline::markRange() const {
+    if (m_markAnchor < 0 || m_markHead < 0) return {0, 0};
+    const qint64 from = qBound(m_in, qMin(m_markAnchor, m_markHead), m_out);
+    const qint64 to = qBound(m_in, qMax(m_markAnchor, m_markHead), m_out);
+    if (to - from < m_minimumRange) return {0, 0};   // under a frame cuts nothing
+    return {from, to};
+}
+
+void VideoTimeline::showMark() {
+    m_markShown = markRange();
+    m_markFade->jumpTo(1);   // a new mark shows at once; only clearing fades
+}
+
+void VideoTimeline::setMark(qint64 anchorMs, qint64 headMs) {
+    m_markAnchor = qBound<qint64>(0, anchorMs, m_duration);
+    m_markHead = qBound<qint64>(0, headMs, m_duration);
+    m_markOpen = false;
+    showMark();
+    emit markChanged();
+    update();
+}
+
+void VideoTimeline::markFromPlayhead() {
+    m_markAnchor = m_markHead = m_position;
+    m_markOpen = true;
+    showMark();
+    emit markChanged();
+    update();
+}
+
+void VideoTimeline::markToPlayhead() {
+    if (m_markAnchor < 0) return;
+    m_markHead = m_position;
+    m_markOpen = false;
+    showMark();
+    emit markChanged();
+    update();
+}
+
+void VideoTimeline::clearMark() {
+    if (m_markAnchor < 0 && !m_markOpen) return;
+    m_markShown = markRange();
+    m_markAnchor = m_markHead = -1;
+    m_markOpen = false;
+    if (isVisible()) m_markFade->setTarget(0); else m_markFade->jumpTo(0);
+    emit markChanged();
+    update();
+}
+
+// Ends snap to the trim, the clip's ends and the playhead from before the press within
+// 6 px, and to seams within at least kMinFragmentMs, so no sliver is left beside one.
+qint64 VideoTimeline::snapMark(qint64 timeMs) const {
+    const qreal msPerPx = qreal(m_viewEnd - m_viewStart) / qMax<qreal>(1, trackRect().width());
+    const qint64 reach = qRound64(6 * msPerPx);
+    QVector<qint64> seams;
+    for (const Fragment &f : fragments::expanded(m_fragments)) if (f.startMs > 0) seams.append(f.startMs);
+    const qint64 onSeam = zoomlane::snap(timeMs, seams, qMax(reach, fragments::kMinFragmentMs));
+    if (onSeam != timeMs) return onSeam;
+    return zoomlane::snap(timeMs, {m_in, m_out, 0, m_duration, m_beforePosition}, reach);
 }
 
 }

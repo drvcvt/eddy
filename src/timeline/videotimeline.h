@@ -164,6 +164,9 @@ private:
     void updateHeight();
     qreal belowWaveform() const;   // the bottom of the film strip or the waveform under it
     void paintWaveform(QPainter &painter, const std::function<QColor(qreal)> &ink);
+    void paintZoomLane(QPainter &painter, const std::function<QColor(qreal)> &ink);
+    void paintMaskLane(QPainter &painter, const std::function<QColor(qreal)> &ink);
+    void contextMenu(QPoint pos);
     bool inZoomLane(QPointF pos) const;
     double edited(qint64 sourceMs) const;
     qint64 source(double editedMs) const;
