@@ -21,13 +21,16 @@ class TestZoomBar : public QObject {
     Q_OBJECT
 private slots:
     void motionCurvesAreTheCamerasSpring() {
-        // Critically damped step response: 1 - (1 + w t) e^(-w t).
-        auto step = [](double w, double t) { return 1 - (1 + w * t) * std::exp(-w * t); };
+        // Two critically damped springs in a row: 1 - (1 + u + u^2/2 + u^3/6) e^(-u), u = w t.
+        auto step = [](double w, double t) {
+            const double u = w * t;
+            return 1 - (1 + u + u * u / 2 + u * u * u / 6) * std::exp(-u);
+        };
         const QPolygonF focused = motionCurve(ZoomSegment::Motion::Focused);
         const QPolygonF smooth = motionCurve(ZoomSegment::Motion::Smooth);
         for (double t : {0.1, 0.3, 0.6}) {
-            QVERIFY(qAbs(curveAt(focused, t) - step(10, t)) < 0.04);
-            QVERIFY(qAbs(curveAt(smooth, t) - step(6, t)) < 0.04);
+            QVERIFY(qAbs(curveAt(focused, t) - step(13, t)) < 0.04);
+            QVERIFY(qAbs(curveAt(smooth, t) - step(8.3, t)) < 0.04);
         }
         QCOMPARE(curveAt(focused, -0.1), 0.0);
         const QPolygonF instant = motionCurve(ZoomSegment::Motion::Instant);

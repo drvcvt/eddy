@@ -44,6 +44,33 @@ private slots:
         canvas.setCamera(QRectF(0, 0, 400, 200));
         QVERIFY(canvas.camera().isEmpty());
     }
+    // A slow camera pan or zoom moves the picture by fractions of a pixel, not whole-pixel steps.
+    void aSlowCameraMovesByFractions() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(520, 320);
+        canvas.show();
+        canvas.resetZoom();
+        const QTransform base = canvas.viewportTransform();   // the user's own view
+        double worst = 0;
+        for (int i = 0; i <= 80; ++i) {
+            // Pan right and zoom in a little at once, as a ramp does between two frames.
+            const double w = 200 - i * 0.37, left = 100 + i * 0.05, top = 50 + i * 0.03;
+            const QRectF camera(left, top, w, w / 2);
+            canvas.setCamera(camera);
+            // Where the camera's corners must show: the content's place in the view without it.
+            const QTransform view = canvas.viewportTransform();
+            const QRectF content = canvas.contentRect();
+            const QPointF a = view.map(camera.topLeft()), b = view.map(camera.bottomRight());
+            const QPointF wantA = base.map(content.topLeft()), wantB = base.map(content.bottomRight());
+            worst = std::max({worst, QLineF(a, wantA).length(), QLineF(b, wantB).length()});
+        }
+        qInfo("worst distance from the exact place over a slow ramp: %.3f px", worst);
+        QVERIFY(worst <= 0.1);
+    }
     void cameraStaysInsideTheContentWithoutStudio() {
         QGraphicsScene scene(0, 0, 400, 200);
         scene.addRect(QRectF(0, 0, 400, 200), Qt::NoPen, Qt::red);

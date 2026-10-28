@@ -461,6 +461,43 @@ private slots:
         QTRY_VERIFY(!w.findChild<StudioPopover *>());
         QCOMPARE(undo->count(), steps + 1);
     }
+    // Playing, the camera moves with the screen's refresh, not only when a 30 fps frame comes,
+    // and a zoom-in never steps back.
+    void playingTheCameraMovesAtTheScreensRate() {
+        if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
+        QTemporaryDir dir;
+        const QString clip = markerClip(dir);
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(clip), cfg, {});
+        w.resize(900, 640);
+        w.show();
+        QTRY_VERIFY(w.findChild<QMediaPlayer *>());
+        auto *player = w.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);
+        auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
+        QTRY_VERIFY(player->isSeekable());
+        QTRY_VERIFY(video->videoSink()->videoFrame().isValid());
+        StudioDocument doc;
+        doc.zooms = {{1, 500, 3500, 2.0, ZoomSegment::Target::Point, QPointF(240, 60), ZoomSegment::Motion::Smooth}};
+        w.setStudioDocument(doc);
+        auto *canvas = w.findChild<Canvas *>();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        timeline->setPosition(400);
+        emit timeline->seekRequested(400);
+        QTRY_VERIFY(qAbs(w.property("presentedStart").toLongLong() - 400) < 40);
+        int frames = 0;
+        connect(video->videoSink(), &QVideoSink::videoFrameChanged, this, [&] { ++frames; });
+        QVector<double> widths;
+        connect(canvas, &Canvas::viewChanged, this, [&] { if (!canvas->camera().isEmpty()) widths.append(canvas->camera().width()); });
+        player->play();
+        QTest::qWait(700);   // inside the ramp in (Smooth: ~1.1 s)
+        player->pause();
+        qInfo("%d frames, %d camera steps", frames, int(widths.size()));
+        QVERIFY(widths.size() > frames * 3 / 2);
+        for (int i = 1; i < widths.size(); ++i)
+            QVERIFY2(widths[i] <= widths[i - 1] + 1e-6, qPrintable(QStringLiteral("%1 -> %2 at %3").arg(widths[i - 1]).arg(widths[i]).arg(i)));
+    }
+
     void exportedZoomMatchesThePreview() {
         if (!have(QStringLiteral("ffmpeg"))) QSKIP("ffmpeg not available");
         QTemporaryDir dir;

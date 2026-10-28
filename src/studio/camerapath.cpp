@@ -4,10 +4,11 @@
 
 namespace eddy {
 
+// Each stage of the two in a row (glide below); to 2 % they take 9.08 / omega.
 double cameraOmega(ZoomSegment::Motion motion) {
     switch (motion) {
-    case ZoomSegment::Motion::Focused: return 10.0;   // stiffness 100, damping 20: ~0.58 s to 2 %
-    case ZoomSegment::Motion::Smooth: return 6.0;     // stiffness 36, damping 12: ~0.97 s
+    case ZoomSegment::Motion::Focused: return 13.0;   // ~0.70 s
+    case ZoomSegment::Motion::Smooth: return 8.3;     // ~1.09 s
     case ZoomSegment::Motion::Instant: return 0.0;
     }
     return 10.0;
@@ -20,6 +21,14 @@ void springStep(double omega, double target, double dt, double &x, double &v) {
     x = target + (x0 + b * dt) * e;
     v = (v - omega * b * dt) * e;
 }
+
+// The second spring follows the first's mean over the step.
+void glideStep(double omega, double target, double dt, CameraGlide &g) {
+    const double from = g.a;
+    springStep(omega, target, dt, g.a, g.va);
+    springStep(omega, (from + g.a) / 2, dt, g.x, g.v);
+}
+static void land(CameraGlide &g, double target) { g = {target, 0, target, 0}; }
 
 QPointF followWithDeadZone(QPointF centre, QPointF pointer, QSizeF window, double deadZone) {
     const double hx = window.width() * deadZone / 2, hy = window.height() * deadZone / 2;
@@ -58,8 +67,8 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
     const int count = int(std::ceil(time.outputDurationMs() * kRate / 1000.0)) + 1;
     const double dt = 1.0 / kRate;
     QPointF home = m_base.center();
-    double x = home.x(), y = home.y(), ls = 0, vx = 0, vy = 0, vls = 0;
-    double tx = x, ty = y, tls = 0;
+    CameraGlide gx{home.x(), 0, home.x(), 0}, gy{home.y(), 0, home.y(), 0}, gls;
+    double tx = home.x(), ty = home.y(), tls = 0;
     double omega = cameraOmega(ZoomSegment::Motion::Focused);
     int current = -1, next = 0;
     QPointF followed;   // a Cursor zoom's dead-zoned centre
@@ -75,8 +84,10 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
             const QPointF moved = followWithDeadZone(home, *first, m_base.size());
             home = QPointF(clampCentre(moved.x(), m_base.width() / 2, m_content.left(), m_content.right()),
                            clampCentre(moved.y(), m_base.height() / 2, m_content.top(), m_content.bottom()));
-            x = tx = home.x();
-            y = ty = home.y();
+            tx = home.x();
+            ty = home.y();
+            land(gx, tx);
+            land(gy, ty);
         }
     }
     m_samples.reserve(count);
@@ -86,12 +97,11 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
         if (i > 0 && omega == 0) {
             // Instant: no travel, but it still follows a moving target (the pointer, or a
             // base view that follows it); a spring with omega 0 would never move again.
-            x = tx; y = ty; ls = tls;
-            vx = vy = vls = 0;
+            land(gx, tx); land(gy, ty); land(gls, tls);
         } else if (i > 0) {
-            springStep(omega, tx, dt, x, vx);
-            springStep(omega, ty, dt, y, vy);
-            springStep(omega, tls, dt, ls, vls);
+            glideStep(omega, tx, dt, gx);
+            glideStep(omega, ty, dt, gy);
+            glideStep(omega, tls, dt, gls);
         }
         const double t = i * 1000.0 / kRate;
         const std::optional<QPointF> at = pointer(t);
@@ -121,10 +131,9 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
             }
             if (omega == 0) {
                 if (!zoom) { tx = home.x(); ty = home.y(); }
-                x = tx;
-                y = ty;
-                ls = tls;
-                vx = vy = vls = 0;
+                land(gx, tx);
+                land(gy, ty);
+                land(gls, tls);
                 jump = true;
             }
         }
@@ -138,7 +147,7 @@ CameraPath::CameraPath(const QVector<ZoomSegment> &zooms, const TimeMap &time, c
             tx = home.x();
             ty = home.y();
         }
-        m_samples.append({float(x), float(y), float(ls), float(vx), float(vy), float(vls),
+        m_samples.append({float(gx.x), float(gy.x), float(gls.x), float(gx.v), float(gy.v), float(gls.v),
                           float(home.x()), float(home.y()), jump});
     }
 }

@@ -100,10 +100,19 @@ template <typename Change> void Canvas::withoutCamera(Change change) {
 }
 
 void Canvas::applyCamera() {
-    const qreal k = m_camera.m11();
-    setTransform(QTransform::fromScale(m_viewZoom * k, m_viewZoom * k));
+    const qreal scale = m_viewZoom * m_camera.m11();
+    const QPointF centre = m_camera.inverted().map(m_viewCentre);
+    setTransform(QTransform::fromScale(scale, scale));
     updateNavigationBounds();
-    centerOn(m_camera.inverted().map(m_viewCentre));
+    centerOn(centre);
+    // The scrollbars place the view on whole pixels; a moving camera would wobble by up to
+    // one. The rest goes into the transform, so the camera lands exactly. Without one the
+    // view stays on whole pixels, as the user left it.
+    if (m_camera.isIdentity()) return;
+    const QPointF middle(viewport()->width() / 2.0, viewport()->height() / 2.0);
+    const QPointF rest = middle - viewportTransform().map(centre);
+    if (qAbs(rest.x()) > 1e-6 || qAbs(rest.y()) > 1e-6)
+        setTransform(QTransform::fromScale(scale, scale) * QTransform::fromTranslate(rest.x(), rest.y()));
 }
 
 QTransform Canvas::viewWithoutCamera() const {

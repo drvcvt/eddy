@@ -18,10 +18,10 @@ QPolygonF motionCurve(ZoomSegment::Motion motion) {
     QPolygonF curve{{px(0), py(0)}, {px(kLead), py(0)}};
     constexpr int kSteps = 72;
     const double dt = (kShown - kLead) / kSteps;
-    double x = 0, v = 0;
+    CameraGlide glide;
     for (int i = 1; i <= kSteps; ++i) {
-        springStep(omega, 1, dt, x, v);
-        curve << QPointF(px(kLead + i * dt), py(x));
+        glideStep(omega, 1, dt, glide);
+        curve << QPointF(px(kLead + i * dt), py(glide.x));
     }
     return curve;
 }

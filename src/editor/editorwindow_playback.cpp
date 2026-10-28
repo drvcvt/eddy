@@ -494,6 +494,7 @@ void EditorWindow::ensureVideoPlayer() {
                 && m_seekTarget < (m_presentedEnd > m_presentedStart ? m_presentedEnd
                     : m_presentedStart + qMax<qint64>(1, qRound64(1000 / qMax(1.0, m_media.video.fps)))))
                 finishVideoSeek();
+            if (m_presentedStart >= 0 && m_player->playbackState() == QMediaPlayer::PlayingState) syncPlayClock();
             updateCamera();
             // Paused, the playhead is what was asked for; a frame may start a little before it.
             if (m_player->playbackState() != QMediaPlayer::PlayingState) applyTimeWindows(m_timeline->position());
@@ -512,6 +513,14 @@ void EditorWindow::ensureVideoPlayer() {
     m_player->setVideoOutput(m_videoItem);
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state){
         if (state != QMediaPlayer::PlayingState) showVideoStill();
+        // Playing, the camera moves with every refresh of the screen, on its own clock.
+        m_playClock.invalidate();
+        if (m_cameraTick && state == QMediaPlayer::PlayingState) {
+            m_cameraTick->setInterval(qMax(1, int(1000 / qMax(1.0, screen() ? screen()->refreshRate() : 60.0))));
+            m_cameraTick->start();
+        } else if (m_cameraTick) {
+            m_cameraTick->stop();
+        }
         updateCamera();
         refreshZoomUi();
         if (m_playButton) {

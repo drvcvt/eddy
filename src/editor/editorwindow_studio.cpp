@@ -82,6 +82,7 @@
 #include <QThread>
 #include <QPointer>
 #include <QScreen>
+#include <algorithm>
 #include <QSettings>
 #include <QHelpEvent>
 #include <QLineEdit>
@@ -375,11 +376,37 @@ QRectF EditorWindow::currentCamera() const {
     return m_cameraPath.rectAt(cameraTime());
 }
 
-// Output time of what the canvas shows: the presented frame while playing.
+// Output time of what the canvas shows. Playing, the presented frame's time runs on with the
+// wall clock between frames, at most three frames ahead: a stall holds the camera.
 double EditorWindow::cameraTime() const {
     const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
-    const qint64 source = playing && m_presentedStart >= 0 ? m_presentedStart : m_timeline->position();
-    return source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(double(source));
+    double source = double(m_timeline->position());
+    if (playing && m_presentedStart >= 0) {
+        const double frame = 1000.0 / qMax(1.0, m_media.video.fps);
+        source = m_playClock.isValid() ? qMin(playClock(), m_presentedStart + 3 * frame) : double(m_presentedStart);
+    }
+    return source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(source);
+}
+
+double EditorWindow::playClock() const {
+    return m_playClockOrigin + m_playClock.nsecsElapsed() / 1e6 * m_playClockRate;
+}
+
+// Each presented frame draws the clock towards its time by a tenth, at most 1 ms, so frames
+// arriving unevenly never jolt the camera; a seek, a stall or a new rate sets it anew.
+void EditorWindow::syncPlayClock() {
+    const double frame = 1000.0 / qMax(1.0, m_media.video.fps);
+    const double rate = m_player->playbackRate();
+    if (m_playClock.isValid() && qFuzzyCompare(rate, m_playClockRate)) {
+        const double error = m_presentedStart - playClock();
+        if (qAbs(error) <= 3 * frame) {
+            m_playClockOrigin += std::clamp(error * 0.1, -1.0, 1.0);
+            return;
+        }
+    }
+    m_playClockOrigin = double(m_presentedStart);
+    m_playClockRate = rate;
+    m_playClock.restart();
 }
 
 void EditorWindow::updateCamera() {

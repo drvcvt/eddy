@@ -1,4 +1,5 @@
 #include "canvas/previewitems.h"
+#include "canvas/canvas.h"
 #include <QApplication>
 #include <QPainter>
 #include <QPointer>
@@ -42,8 +43,25 @@ static QImage shrink(QImage image, QSize size) {
     return image.size() == size ? image : image.scaled(size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 }
 
-QSize DownscaledImage::shrunkSize(const QTransform &device, const QRectF &target, QSize image) {
+// Halved while it stays at least `size`.
+static QSize halvedSize(QSize image, QSizeF size) {
+    while (image.width() >= 2 * size.width() && image.height() >= 2 * size.height())
+        image = QSize((image.width() + 1) / 2, (image.height() + 1) / 2);
+    return image;
+}
+
+// A camera on the canvas (the zoom effect) moves the picture by fractions of a pixel.
+static bool underCamera(const QWidget *viewport) {
+    const auto *canvas = viewport ? qobject_cast<const Canvas *>(viewport->parentWidget()) : nullptr;
+    return canvas && !canvas->camera().isEmpty();
+}
+
+QSize DownscaledImage::shrunkSize(const QTransform &device, const QRectF &target, QSize image, bool moving) {
     const QRectF mapped = device.mapRect(target);
+    if (moving) {
+        const QSize halved = halvedSize(image, mapped.size());
+        return halved == image ? QSize() : halved;
+    }
     if (device.type() > QTransform::TxScale
         || mapped.width() > image.width() + 0.5 || mapped.height() > image.height() + 0.5) return {};
     return QSize(qRound(mapped.right()) - qRound(mapped.left()), qRound(mapped.bottom()) - qRound(mapped.top()));
@@ -53,10 +71,25 @@ QImage DownscaledImage::shrunk(const QImage &image, QSize size) {
     return size.isEmpty() ? image : shrink(image, size);
 }
 
-void DownscaledImage::draw(QPainter *painter, const QRectF &target, const QImage &image) {
+void DownscaledImage::draw(QPainter *painter, const QRectF &target, const QImage &image, bool moving) {
     if (image.isNull()) return;
     const QTransform device = painter->deviceTransform();
     const QRectF mapped = device.mapRect(target);
+    if (moving) {
+        const QImage *source = &image;
+        if (const QSize halved = halvedSize(image.size(), mapped.size()); halved != image.size()) {
+            if (m_halvedKey != image.cacheKey() || m_halved.size() != halved) {
+                m_halved = shrink(image, halved);   // exact halvings only
+                m_halvedKey = image.cacheKey();
+            }
+            source = &m_halved;
+        }
+        painter->save();
+        painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter->drawImage(target, *source);
+        painter->restore();
+        return;
+    }
     // An image shrunk ahead for this view (off the GUI thread) is used as it is.
     const bool ready = device.type() <= QTransform::TxScale
         && image.size() == QSize(qRound(mapped.right()) - qRound(mapped.left()), qRound(mapped.bottom()) - qRound(mapped.top()));
@@ -86,10 +119,10 @@ void DownscaledImage::draw(QPainter *painter, const QRectF &target, const QImage
     painter->restore();
 }
 
-void PreviewPixmapItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) {
+void PreviewPixmapItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *widget) {
     const QPixmap pixmap = this->pixmap();
     painter->setRenderHint(QPainter::SmoothPixmapTransform, transformationMode() == Qt::SmoothTransformation);
-    m_image.draw(painter, QRectF(offset(), pixmap.deviceIndependentSize()), pixmap.toImage());
+    m_image.draw(painter, QRectF(offset(), pixmap.deviceIndependentSize()), pixmap.toImage(), underCamera(widget));
 }
 
 PreviewVideoItem::PreviewVideoItem(QGraphicsItem *parent) : QGraphicsVideoItem(parent) {}
@@ -136,7 +169,8 @@ void PreviewVideoItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *
                 m_shown = frame;
                 m_converted.restart();
                 m_converting = true;
-                const QSize size = DownscaledImage::shrunkSize(painter->deviceTransform(), boundingRect(), frame.size());
+                const QSize size = DownscaledImage::shrunkSize(painter->deviceTransform(), boundingRect(), frame.size(),
+                                                               underCamera(widget));
                 QPointer<PreviewVideoItem> self(this);
                 QThreadPool::globalInstance()->start([self, frame, size] {
                     const QImage image = DownscaledImage::shrunk(frame.toImage(), size);
@@ -158,7 +192,7 @@ void PreviewVideoItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *
             });
         }
     }
-    m_image.draw(painter, boundingRect(), m_frameImage);
+    m_image.draw(painter, boundingRect(), m_frameImage, underCamera(widget));
 }
 
 }

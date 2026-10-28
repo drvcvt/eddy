@@ -185,6 +185,8 @@ private:
     QRect cameraContent() const;
     QRectF currentCamera() const;
     double cameraTime() const;
+    double playClock() const;
+    void syncPlayClock();
     void rebuildCamera();
     void updateCamera();
     void refreshZoomUi();
@@ -331,6 +333,11 @@ private:
     QTimer *m_seekSettleTimer = nullptr;
     qint64 m_seekTarget = -1;
     qint64 m_presentedStart = -1, m_presentedEnd = -1;
+    // The zoom effect's clock while playing (2026-10-28-zoom-motion.md): wall time since a
+    // frame, drawn gently onto the frames, so the camera moves at the screen's rate, not the video's.
+    QElapsedTimer m_playClock;
+    double m_playClockOrigin = 0, m_playClockRate = 1;
+    QTimer *m_cameraTick = nullptr;
     qint64 m_frameTimeOrigin = 0;
     bool m_timelineActive = false;
     bool m_seekSettling = false;

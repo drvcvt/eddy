@@ -53,20 +53,43 @@ private slots:
             QVERIFY(near(p.rectAt(t), kContent, 0));
     }
 
-    void focusedSettlesInAboutSixTenthsOfASecond() {
+    void focusedSettlesInAboutSevenTenthsOfASecond() {
         const CameraPath p = path({zoom(1000, 5000, 2, kContent.center())});
         const double target = std::log(2.0);
         QVERIFY(near(p.rectAt(999), kContent, 0));   // nothing moves before the zoom
         QVERIFY(near(p.rectAt(1000), kContent, 0));
-        QVERIFY(qAbs(logZoom(p, 1500) - target) > 0.02 * target);
-        QVERIFY(qAbs(logZoom(p, 1620) - target) < 0.02 * target);
+        QVERIFY(qAbs(logZoom(p, 1620) - target) > 0.02 * target);
+        QVERIFY(qAbs(logZoom(p, 1740) - target) < 0.02 * target);
     }
 
     void smoothTakesAboutASecond() {
         const CameraPath p = path({zoom(1000, 5000, 2, kContent.center(), ZoomSegment::Motion::Smooth)});
         const double target = std::log(2.0);
-        QVERIFY(qAbs(logZoom(p, 1900) - target) > 0.02 * target);
-        QVERIFY(qAbs(logZoom(p, 2000) - target) < 0.02 * target);
+        QVERIFY(qAbs(logZoom(p, 2000) - target) > 0.02 * target);
+        QVERIFY(qAbs(logZoom(p, 2140) - target) < 0.02 * target);
+    }
+
+    // An S-curve: it leaves rest with no speed and no jolt, is fastest about a third of the
+    // way to settled, and never overshoots.
+    void aZoomEasesInAndOut() {
+        for (const auto motion : {ZoomSegment::Motion::Focused, ZoomSegment::Motion::Smooth}) {
+            const CameraPath p = path({zoom(1000, 5000, 2, kContent.center(), motion)});
+            const double target = std::log(2.0);
+            QVector<double> speed;   // per ms
+            double settled = 0;
+            for (int t = 1000; t < 3000; ++t) {
+                speed.append(logZoom(p, t + 1) - logZoom(p, t));
+                if (!settled && qAbs(logZoom(p, t) - target) < 0.02 * target) settled = t - 1000;
+                QVERIFY(logZoom(p, t) <= target + 1e-6);
+            }
+            const auto peak = std::max_element(speed.cbegin(), speed.cend());
+            const double peakAt = (peak - speed.cbegin()) / settled;
+            qInfo("settled after %.0f ms, fastest at %.2f of it; speed in the first 10 ms: %.4f of the peak",
+                  settled, peakAt, speed[9] / *peak);
+            QVERIFY(peakAt > 0.25 && peakAt < 0.45);
+            QVERIFY(speed[9] < 0.02 * *peak);   // a soft start, not the old jolt
+            QVERIFY(speed[1] <= speed[5] && speed[5] <= speed[9]);
+        }
     }
 
     void instantJumpsExactlyBothWays() {

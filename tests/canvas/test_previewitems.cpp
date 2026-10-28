@@ -1,6 +1,7 @@
 #include <QtTest>
 #include <QGraphicsScene>
 #include <QPainter>
+#include <QElapsedTimer>
 #include <QSignalSpy>
 #include <QVideoFrame>
 #include <QVideoSink>
@@ -153,6 +154,35 @@ private slots:
         still->hide();   // playing on, from elsewhere
         video->videoSink()->setVideoFrame(QVideoFrame(blue));
         QCOMPARE(render(scene, 0.5).pixelColor(10, 10), QColor(Qt::blue));
+    }
+
+    // Under the zoom effect's camera the picture follows a quarter-pixel move (whole pixels at
+    // rest), stays smooth past 2x, and a ramp step costs well under a 240 Hz refresh.
+    void underACameraThePictureGlides() {
+        const QImage source = checkerboard(QSize(1394, 898));
+        const auto drawAt = [&](DownscaledImage &image, qreal dx, qreal scale, bool moving) {
+            QImage out(1200, 800, QImage::Format_ARGB32_Premultiplied);
+            out.fill(Qt::black);
+            QPainter painter(&out);
+            painter.translate(10.25 + dx, 10);
+            painter.scale(scale, scale);
+            image.draw(&painter, QRectF(QPointF(), QSizeF(source.size())), source, moving);
+            return out;
+        };
+        DownscaledImage still, moving;
+        QCOMPARE(drawAt(still, 0, 0.7, false), drawAt(still, 0.2, 0.7, false));   // at rest: snapped
+        QVERIFY(drawAt(moving, 0, 0.7, true) != drawAt(moving, 0.2, 0.7, true));  // moving: it moves
+        // Past 2x it stays blended: a checkerboard enlarged smoothly has greys, squares have none.
+        const QImage big = drawAt(moving, 0, 2.5, true);
+        bool grey = false;
+        for (int x = 100; x < 140 && !grey; ++x) grey = qGray(big.pixel(x, 100)) > 40 && qGray(big.pixel(x, 100)) < 215;
+        QVERIFY(grey);
+        QElapsedTimer clock;
+        clock.start();
+        for (int i = 0; i < 40; ++i) drawAt(moving, i * 0.1, 0.7 + i * 0.01, true);
+        const double each = clock.nsecsElapsed() / 1e6 / 40;
+        qInfo("one ramp step of a 1394x898 frame: %.2f ms", each);
+        QVERIFY(each < 4);
     }
 };
 QTEST_MAIN(TestPreviewItems)

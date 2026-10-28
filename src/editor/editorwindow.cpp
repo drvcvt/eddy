@@ -622,6 +622,9 @@ EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const 
         m_cameraRebuild->setSingleShot(true);
         m_cameraRebuild->setInterval(16);
         connect(m_cameraRebuild, &QTimer::timeout, this, &EditorWindow::rebuildCamera);
+        m_cameraTick = new QTimer(this);   // runs while playing
+        m_cameraTick->setTimerType(Qt::PreciseTimer);
+        connect(m_cameraTick, &QTimer::timeout, this, &EditorWindow::updateCamera);
         m_zoomBar = new ZoomBar(m_canvas->viewport());
         m_zoomBar->hide();
         m_miniMap = new MiniMap(m_canvas->viewport());

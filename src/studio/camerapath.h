@@ -9,12 +9,17 @@
 
 namespace eddy {
 
-// Critically damped spring with mass 1, the model Boltsnap uses for its
-// cursor: stiffness omega^2, damping 2 omega. 0 means Instant, a jump.
+// Each of the camera's two springs (glideStep): critically damped, mass 1, stiffness
+// omega^2, damping 2 omega. 0 means Instant, a jump.
 double cameraOmega(ZoomSegment::Motion motion);
 // Exact solution over `dt` seconds towards a fixed target: stable for any
 // step and identical on every machine, unlike an Euler integrator.
 void springStep(double omega, double target, double dt, double &x, double &v);
+// The camera's motion: two critically damped springs in a row (target -> a -> x). From rest
+// it starts with no speed and no acceleration, is fastest a third of the way in and settles
+// without a tail (2026-10-28-zoom-motion.md).
+struct CameraGlide { double a = 0, va = 0, x = 0, v = 0; };
+void glideStep(double omega, double target, double dt, CameraGlide &g);
 
 struct CameraFrame {
     QRectF content;      // document pixels the camera may show: the crop or the whole frame
