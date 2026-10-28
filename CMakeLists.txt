@@ -40,8 +40,8 @@ add_library(eddy_core STATIC
     src/edit/cropcontroller.cpp
     src/bars/cropbar.cpp
     src/chrome/motionicon.cpp
-    src/timeline/zoombar.cpp
-    src/timeline/fragmentbar.cpp
+    src/timeline/bars/zoombar.cpp
+    src/timeline/bars/fragmentbar.cpp
     src/output/exportsettings.cpp
     src/popovers/exportpanel.cpp
     src/project/projectcodec.cpp
@@ -87,13 +87,13 @@ add_library(eddy_core STATIC
     src/studio/studiodocument.cpp
     src/video/timemap.cpp
     src/studio/camerapath.cpp
-    src/timeline/zoomlane.cpp
+    src/timeline/lanes/zoomlane.cpp
     src/video/fragments.cpp
     src/studio/zoomsuggest.cpp
     src/bars/stepbar.cpp
     src/canvas/snapping.cpp
     src/bars/selectionbar.cpp
-    src/timeline/audiowaveform.cpp
+    src/timeline/lanes/audiowaveform.cpp
     src/studio/studiorenderer.cpp
     src/output/renderexport.cpp
     src/popovers/studiopopover.cpp

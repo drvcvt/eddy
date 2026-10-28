@@ -1,8 +1,8 @@
 #include "timeline/videotimeline.h"
-#include "timeline/audiowaveform.h"
+#include "timeline/lanes/audiowaveform.h"
 #include "app/theme.h"
 #include "app/spring.h"
-#include "timeline/zoomlane.h"
+#include "timeline/lanes/zoomlane.h"
 #include "chrome/motionicon.h"
 #include "video/fragments.h"
 #include <QFontDatabase>

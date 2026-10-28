@@ -4,7 +4,7 @@
 #include <QScopeGuard>
 #include "timeline/videotimeline.h"
 #include "app/spring.h"
-#include "timeline/audiowaveform.h"
+#include "timeline/lanes/audiowaveform.h"
 #include <QPainter>
 #include <QProcess>
 #include <QStandardPaths>

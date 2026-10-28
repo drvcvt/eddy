@@ -17,10 +17,10 @@
 #include "chrome/toast.h"
 #include "app/theme.h"
 #include "output/exportsettings.h"
-#include "timeline/fragmentbar.h"
+#include "timeline/bars/fragmentbar.h"
 #include "timeline/videotimeline.h"
 #include <QTimer>
-#include "timeline/audiowaveform.h"
+#include "timeline/lanes/audiowaveform.h"
 #include "bars/redactbar.h"
 #include "items/regions/redactitem.h"
 #include <QGraphicsScene>

@@ -1,5 +1,5 @@
 #include <QtTest>
-#include "timeline/zoomlane.h"
+#include "timeline/lanes/zoomlane.h"
 
 using namespace eddy;
 

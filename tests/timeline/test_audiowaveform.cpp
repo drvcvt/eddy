@@ -2,7 +2,7 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
-#include "timeline/audiowaveform.h"
+#include "timeline/lanes/audiowaveform.h"
 #include "video/mediaio.h"
 
 using namespace eddy;

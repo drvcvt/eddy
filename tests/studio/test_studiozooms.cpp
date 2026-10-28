@@ -18,7 +18,7 @@
 #include "chrome/minimap.h"
 #include "popovers/studiopopover.h"
 #include "timeline/videotimeline.h"
-#include "timeline/zoombar.h"
+#include "timeline/bars/zoombar.h"
 #include "studio/studiopresets.h"
 #include "popovers/exportpanel.h"
 #include "output/exportsettings.h"

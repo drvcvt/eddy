@@ -1,4 +1,4 @@
-#include "timeline/zoombar.h"
+#include "timeline/bars/zoombar.h"
 #include "app/fills.h"
 #include <QButtonGroup>
 #include "chrome/motionicon.h"

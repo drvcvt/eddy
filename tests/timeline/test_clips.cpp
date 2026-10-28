@@ -2,7 +2,7 @@
 // block edge pulls; the edit lands on release as one step and the blocks glide there.
 #include "../editor/editortest.h"
 #include "app/spring.h"
-#include "timeline/fragmentbar.h"
+#include "timeline/bars/fragmentbar.h"
 #include <QScopeGuard>
 
 namespace {

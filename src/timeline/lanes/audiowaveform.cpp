@@ -1,4 +1,4 @@
-#include "timeline/audiowaveform.h"
+#include "timeline/lanes/audiowaveform.h"
 #include <QProcess>
 #include <QStandardPaths>
 #include <algorithm>

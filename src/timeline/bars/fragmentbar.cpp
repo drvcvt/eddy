@@ -1,4 +1,4 @@
-#include "timeline/fragmentbar.h"
+#include "timeline/bars/fragmentbar.h"
 #include "app/theme.h"
 #include <QHBoxLayout>
 #include <QMenu>

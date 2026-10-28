@@ -4,7 +4,7 @@
 #include <QToolButton>
 #include <cmath>
 #include "chrome/motionicon.h"
-#include "timeline/zoombar.h"
+#include "timeline/bars/zoombar.h"
 
 using namespace eddy;
 

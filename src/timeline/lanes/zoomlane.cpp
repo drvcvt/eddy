@@ -1,4 +1,4 @@
-#include "timeline/zoomlane.h"
+#include "timeline/lanes/zoomlane.h"
 #include <QtGlobal>
 #include <algorithm>
 
