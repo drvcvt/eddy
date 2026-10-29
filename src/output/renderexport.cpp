@@ -8,6 +8,8 @@
 #include <mutex>
 #include <optional>
 #include <thread>
+#include <vector>
+#include <unistd.h>
 
 namespace eddy {
 
@@ -80,6 +82,9 @@ void finishProcess(QProcess &process, const std::atomic_bool &stop) {
     }
 }
 
+// ffmpeg below the editor, so it stays responsive while an export runs.
+void niced() { if (::nice(5) == -1) {} }   // a failed nice only costs the editor some speed
+
 bool succeeded(const QProcess &process) {
     return process.error() != QProcess::FailedToStart && process.exitStatus() == QProcess::NormalExit
         && process.exitCode() == 0;
@@ -100,6 +105,7 @@ DeliverResult runRenderPipeline(const RenderPipeline &job) {
 
     std::thread decoder([&] {
         QProcess process;
+        process.setChildProcessModifier(niced);
         process.start(job.ffmpeg, job.decodeArgs);
         if (!process.waitForStarted()) {
             decodeError = QStringLiteral("cannot start ffmpeg: ") + process.errorString();
@@ -129,6 +135,7 @@ DeliverResult runRenderPipeline(const RenderPipeline &job) {
 
     std::thread encoder([&] {
         QProcess process;
+        process.setChildProcessModifier(niced);
         process.start(job.ffmpeg, job.encodeArgs);
         if (!process.waitForStarted()) {
             encodeError = QStringLiteral("cannot start ffmpeg: ") + process.errorString();
@@ -177,20 +184,39 @@ DeliverResult runRenderPipeline(const RenderPipeline &job) {
         return !result.error.isEmpty();
     };
 
+    // Frames are drawn a few at once, as many as are decoded (one thread each), and go to
+    // the encoder in order: the drawing was the zoom export's narrowest stage.
+    const int batch = std::clamp(int(std::thread::hardware_concurrency()) / 3, 1, 4);
     qint64 index = 0;
     bool aborted = false;
     bool encoderGone = false;   // it closed its queue: nothing more will be written
-    while (!aborted) {
+    bool ended = false;
+    while (!aborted && !ended && !encoderGone) {
         if ((aborted = interrupted())) break;
-        std::optional<QImage> source = decoded.pop(kPollMs);
-        if (!source) continue;
-        if (source->isNull()) break;
-        QImage output(job.outputSize, QImage::Format_RGB32);
-        job.render(index++, *source, output);
-        FrameQueue::Push pushed;
-        while ((pushed = rendered.push(output, kPollMs)) == FrameQueue::Push::Full)
-            if ((aborted = interrupted())) break;
-        if (pushed == FrameQueue::Push::Closed) { encoderGone = true; break; }
+        std::vector<QImage> sources;
+        while (int(sources.size()) < batch) {
+            std::optional<QImage> source = decoded.pop(sources.empty() ? kPollMs : 0);
+            if (!source) break;
+            if (source->isNull()) { ended = true; break; }
+            sources.push_back(std::move(*source));
+        }
+        std::vector<QImage> outputs;
+        for (size_t i = 0; i < sources.size(); ++i) outputs.emplace_back(job.outputSize, QImage::Format_RGB32);
+        {
+            std::vector<std::thread> helpers;
+            for (size_t i = 1; i < sources.size(); ++i)
+                helpers.emplace_back([&, i] { job.render(index + qint64(i), sources[i], outputs[i]); });
+            if (!sources.empty()) job.render(index, sources[0], outputs[0]);
+            for (std::thread &helper : helpers) helper.join();
+        }
+        index += qint64(sources.size());
+        for (QImage &output : outputs) {
+            FrameQueue::Push pushed;
+            while ((pushed = rendered.push(output, kPollMs)) == FrameQueue::Push::Full)
+                if ((aborted = interrupted())) break;
+            if (aborted) break;
+            if (pushed == FrameQueue::Push::Closed) { encoderGone = true; break; }
+        }
     }
     rendered.finish();
     while (!aborted && !encoderDone) {

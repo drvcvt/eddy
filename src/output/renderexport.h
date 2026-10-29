@@ -17,7 +17,8 @@ struct RenderPipeline {
     QStringList encodeArgs;     // must read rawvideo bgra frames of outputSize from stdin
     QSize outputSize;
     qint64 expectedFrames = 0;  // for progress; 0 while unknown
-    // Draws output frame `index` from the decoded `source`.
+    // Draws output frame `index` from the decoded `source`. Called for several frames at
+    // once from different threads, so it must only read shared state.
     std::function<void(qint64 index, const QImage &source, QImage &output)> render;
     int timeoutMs = -1;
     // Nothing reaching the encoder this long stops the export.
