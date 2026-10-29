@@ -19,6 +19,7 @@
 #include <QCoreApplication>
 #include <QApplication>
 #include <QtMath>
+#include <algorithm>
 #include "items/labels/textitem.h"
 
 namespace eddy {
@@ -122,8 +123,23 @@ QTransform Canvas::viewWithoutCamera() const {
          * QTransform::fromTranslate(viewport()->width() / 2.0, viewport()->height() / 2.0);
 }
 
-void Canvas::setCamera(const QRectF &camera) {
+void Canvas::setCamera(const QRectF &wanted) {
     const QRectF base = contentRect();
+    QRectF camera = wanted;
+    if (!camera.isEmpty() && !base.isEmpty()) {
+        // The springs never land exactly. A move under 1/16 of a device pixel cannot be
+        // seen, so a camera at rest repaints nothing, and one that close to the base view
+        // is the base view (no camera at all).
+        const qreal device = (m_camera.isIdentity() ? transform().m11() : m_viewZoom) * devicePixelRatioF()
+                           * base.width() / camera.width();
+        const auto apart = [&](const QRectF &a, const QRectF &b) {
+            return device * std::max({qAbs(a.left() - b.left()), qAbs(a.top() - b.top()),
+                                      qAbs(a.right() - b.right()), qAbs(a.bottom() - b.bottom())});
+        };
+        constexpr qreal kUnseen = 1.0 / 16;
+        if (apart(camera, base) < kUnseen) camera = base;
+        else if (!m_cameraRect.isEmpty() && apart(camera, m_cameraRect) < kUnseen) return;
+    }
     QTransform next;
     if (!camera.isEmpty() && !base.isEmpty() && camera != base) {
         const qreal k = base.width() / camera.width();
@@ -137,9 +153,31 @@ void Canvas::setCamera(const QRectF &camera) {
         m_viewCentre = viewportCentreInScene();
     }
     m_camera = next;
+    cacheForCamera(!m_camera.isIdentity());
     applyCamera();
     viewport()->update();
     emit viewChanged();
+}
+
+// A device cache is drawn anew whenever the view scales, so under a moving camera a long
+// stroke and an arrow cost a full redraw each tick (31 ms against 2 ms, docs/probes/
+// camera_paint.cpp). Under a camera they keep an item cache instead, at up to 4x (the
+// deepest zoom) and at most 2048 px, which the camera scales smoothly; without one, the
+// exact device cache again. Items drawn under a camera join on its next move.
+void Canvas::cacheForCamera(bool camera) {
+    constexpr int key = AnnotationItem::kCameraCacheKey;
+    for (QGraphicsItem *item : scene()->items()) {
+        if (camera && item->cacheMode() == QGraphicsItem::DeviceCoordinateCache) {
+            const QSizeF size = item->boundingRect().size();
+            const qreal scale = std::clamp(2048.0 / std::max({size.width(), size.height(), 1.0}), 1.0, 4.0);
+            const QSize cache = (size * scale).toSize();
+            item->setCacheMode(QGraphicsItem::ItemCoordinateCache, cache);
+            item->setData(key, cache);
+        } else if (!camera && item->data(key).isValid()) {
+            item->setCacheMode(QGraphicsItem::DeviceCoordinateCache);
+            item->setData(key, QVariant());
+        }
+    }
 }
 
 void Canvas::cancelCameraDrag() {

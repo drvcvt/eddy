@@ -1,4 +1,5 @@
 #include "output/exporter.h"
+#include "items/annotationitem.h"
 #include <QPainter>
 #include <QFile>
 #include <QBuffer>
@@ -12,7 +13,17 @@ QImage renderToImage(QGraphicsScene &scene, const QSize &nativeSize) {
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     const QRectF target(QPointF(0,0), QSizeF(nativeSize));
+    // A camera's item cache (Canvas::cacheForCamera) is a scaled copy: the export draws
+    // those items directly. A device cache is only ever used on screen.
+    QList<QGraphicsItem *> cached;
+    for (QGraphicsItem *item : scene.items())
+        if (item->cacheMode() == QGraphicsItem::ItemCoordinateCache && item->data(AnnotationItem::kCameraCacheKey).isValid()) {
+            item->setCacheMode(QGraphicsItem::NoCache);
+            cached.append(item);
+        }
     scene.render(&p, target, QRectF(0,0,nativeSize.width(),nativeSize.height()));
+    for (QGraphicsItem *item : std::as_const(cached))
+        item->setCacheMode(QGraphicsItem::ItemCoordinateCache, item->data(AnnotationItem::kCameraCacheKey).toSize());
     p.end();
     return img;
 }

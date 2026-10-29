@@ -83,6 +83,7 @@ private:
     QPointF sceneAt(QPointF viewPos) const;
     template <typename Change> void withoutCamera(Change change);
     void applyCamera();
+    void cacheForCamera(bool camera);
     QTransform viewWithoutCamera() const;
     QPointF viewportCentreInScene() const;
     QTransform m_camera;         // scene -> scene: the camera window onto the content rect

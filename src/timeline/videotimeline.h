@@ -190,6 +190,7 @@ private:
     void moveDrag(qreal x, Qt::KeyboardModifiers modifiers);
     // Piece edges (videotimeline_clips.cpp).
     qreal xForShown(double shownMs) const;
+    qreal playheadX() const;   // P: in a pause, where it stands in it
     const TimePiece &shownPiece(int piece) const { return m_display.pieces()[m_keptAt[piece]]; }
     // G: the left-out source around `pos` (between two kept pieces), empty off a ghost.
     std::optional<std::pair<qint64, qint64>> ghostAt(QPointF pos) const;

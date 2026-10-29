@@ -289,7 +289,7 @@ void VideoTimeline::paintEvent(QPaintEvent *) {
     if (m_viewEnd < shownDuration()) chevron(width() - kInset / 2, -1);
 
     // The playhead over everything, its head in the gap above the strip.
-    const qreal playX = m_pauseHead >= 0 ? xForShown(shownForOutput(m_pauseHead)) : xForTime(m_position);   // P: in a pause
+    const qreal playX = playheadX();
     if (playX >= track.left() && playX <= track.right()) {
         const qreal playBottom = !m_masks.isEmpty() ? maskLaneRect().bottom()
             : m_laneVisible ? zoomLaneRect().bottom() : waveformShown() ? waveformRect().bottom() : track.bottom();

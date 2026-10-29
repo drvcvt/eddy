@@ -22,6 +22,9 @@ public:
     virtual QRectF rect() const { return QRectF(); }     // overridden by rect-shaped items
     virtual void setRect(const QRectF &) {}              // no-op for arrow/pen
     virtual AnnotationItem *clone() const = 0;
+    // Item data: the size of the item cache a camera gave it (Canvas::cacheForCamera); the
+    // export draws such items directly and puts the cache back.
+    static constexpr int kCameraCacheKey = 0x6564;
 
     // Redactions and spotlights may show for a stretch of a video only (studio
     // plan 6.7): [from, to) in source ms; empty is the whole clip.

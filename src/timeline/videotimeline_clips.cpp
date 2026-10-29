@@ -147,9 +147,15 @@ int VideoTimeline::pauseAt(QPointF pos) const {
 }
 
 void VideoTimeline::setPausePosition(double outMs) {
+    // Only the playhead moves, as in setPosition: its old and new column.
+    const qreal was = playheadX();
     m_position = qRound64(m_axis.toSource(outMs));
     m_pauseHead = m_axis.pauseAt(outMs) ? outMs : -1;
-    update();
+    for (const qreal x : {was, playheadX()}) update(QRectF(x - 5, 0, 10, height()).toAlignedRect());
+}
+
+qreal VideoTimeline::playheadX() const {
+    return m_pauseHead >= 0 ? xForShown(shownForOutput(m_pauseHead)) : xForTime(m_position);
 }
 
 // P: Shift on a block's body moves it, and everything after it, along the output: the pause

@@ -5,6 +5,10 @@
 #include <QSignalSpy>
 #include <QScrollBar>
 #include "canvas/canvas.h"
+#include "studio/camerapath.h"
+#include "video/timemap.h"
+#include "output/exporter.h"
+#include "items/shapes/arrowitem.h"
 #include "edit/toolcontroller.h"
 #include "items/shapes/rectitem.h"
 #include "items/labels/textitem.h"
@@ -70,6 +74,51 @@ private slots:
         }
         qInfo("worst distance from the exact place over a slow ramp: %.3f px", worst);
         QVERIFY(worst <= 0.1);
+    }
+    // A held zoom, and the view after it settled out, paint nothing: no camera tick at the
+    // screen's rate may redraw a picture that does not move.
+    void aCameraAtRestPaintsNothing() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(520, 320);
+        canvas.show();
+        canvas.resetZoom();
+        ZoomSegment zoom;
+        zoom.id = 1; zoom.startMs = 0; zoom.endMs = 3000; zoom.scale = 2.3; zoom.point = QPointF(130, 70);
+        const CameraPath path({zoom}, TimeMap(8000, 0, 8000, {}), CameraFrame{QRectF(0, 0, 400, 200), 0, QPointF(200, 100)});
+        const double tick = 1000.0 / 240;
+        for (const auto &[from, to] : {std::pair{1500.0, 2950.0}, std::pair{5500.0, 7900.0}}) {
+            canvas.setCamera(path.rectAt(from));
+            QSignalSpy changes(&canvas, &Canvas::viewChanged);
+            for (double t = from + tick; t < to; t += tick) canvas.setCamera(path.rectAt(t));
+            qInfo("%.0f-%.0f ms: %lld view changes at rest", from, to, qlonglong(changes.count()));
+            QCOMPARE(changes.count(), 0);
+        }
+    }
+    // Under a camera, arrows and strokes keep an item cache the camera scales (one device
+    // cache redraw per tick otherwise); the export still draws them exactly.
+    void underACameraItemsKeepAScalableCacheButExportExactly() {
+        QGraphicsScene scene(0, 0, 400, 200);
+        QUndoStack undo;
+        ToolController tools(&scene, &undo, QImage(400, 200, QImage::Format_ARGB32_Premultiplied));
+        Canvas canvas(&scene, &tools);
+        canvas.setAnimationsEnabled(false);
+        canvas.resize(520, 320);
+        canvas.show();
+        auto *arrow = new ArrowItem(QPointF(20, 20), QPointF(300, 150));
+        scene.addItem(arrow);
+        const QImage exact = renderToImage(scene, QSize(400, 200));
+        QCOMPARE(arrow->cacheMode(), QGraphicsItem::DeviceCoordinateCache);
+        canvas.setCamera(QRectF(50, 25, 200, 100));
+        QCOMPARE(arrow->cacheMode(), QGraphicsItem::ItemCoordinateCache);
+        (void)canvas.viewport()->grab();   // the cache is drawn
+        QCOMPARE(renderToImage(scene, QSize(400, 200)), exact);
+        QCOMPARE(arrow->cacheMode(), QGraphicsItem::ItemCoordinateCache);
+        canvas.setCamera(QRectF());
+        QCOMPARE(arrow->cacheMode(), QGraphicsItem::DeviceCoordinateCache);
     }
     void cameraStaysInsideTheContentWithoutStudio() {
         QGraphicsScene scene(0, 0, 400, 200);
