@@ -108,6 +108,7 @@ private slots:
         QCOMPARE(map.pieces()[1].outStart, 5000.0);
         QCOMPARE(map.pieces()[1].pauseStart(), 4000.0);
         QCOMPARE(map.toSource(4500), 3999.0);            // the last frame of the piece before
+        QCOMPARE(map.toSource(4000), 3999.0);            // from the pause's first moment
         QCOMPARE(map.toSource(5000), 4000.0);            // the next piece's first
         QCOMPARE(map.toSource(3000), 3000.0);
         QCOMPARE(map.toOutputAfter(4000), 5000.0);

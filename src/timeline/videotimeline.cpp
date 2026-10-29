@@ -53,7 +53,13 @@ double VideoTimeline::shown(qint64 sourceMs) const {
 }
 
 qint64 VideoTimeline::sourceAt(double shownMs) const {
-    return m_display.pieces().isEmpty() ? qRound64(shownMs) : qRound64(m_display.toSource(shownMs));
+    if (m_display.pieces().isEmpty()) return qRound64(shownMs);
+    // P: in a pause, the frame it holds, not the end of a ghost shown before it.
+    if (const auto pause = m_display.pauseAt(shownMs)) {
+        const int piece = int(m_keptAt.indexOf(pause->piece));
+        if (piece >= 0) return qRound64(m_axis.toSource(m_axis.pieces()[piece].pauseStart() + pause->intoMs));
+    }
+    return qRound64(m_display.toSource(shownMs));
 }
 
 qint64 VideoTimeline::shownDuration() const {

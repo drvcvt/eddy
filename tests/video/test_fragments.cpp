@@ -103,6 +103,18 @@ private slots:
         QVERIFY(fragments::cutRange(list, 2000, 4950, 10000));
         QCOMPARE(list[1], f(2000, 1, true));
         QCOMPARE(list[2].startMs, 5000);
+        // P: cutting a piece's head keeps its pause before what is left; the whole piece takes it along.
+        Fragment paused = f(4000, 1, false);
+        paused.pauseMs = 700;
+        list = {f(0, 1, false), paused};
+        QVERIFY(fragments::cutRange(list, 4000, 6000, 10000));
+        QCOMPARE(list.size(), 3);
+        QCOMPARE(list[2].startMs, qint64(6000));
+        QCOMPARE(list[2].pauseMs, qint64(700));
+        QCOMPARE(list[1].pauseMs, qint64(0));
+        list = {f(0, 1, false), paused, f(8000, 1, false)};
+        QVERIFY(fragments::cutRange(list, 4000, 8000, 10000));
+        QCOMPARE(list.last().pauseMs, qint64(0));
         list = {};
         QVERIFY(fragments::cutRange(list, 2000, 2040, 10000));          // a frame is enough
         list = {};

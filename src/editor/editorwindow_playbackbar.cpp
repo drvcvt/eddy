@@ -420,8 +420,11 @@ QWidget *EditorWindow::createPlaybackBar() {
         ensureVideoPlayer();
         m_timelineActive = true;
         // A mark pauses for good: the next step is Delete, not watching on.
+        // P: a held pause is playing too, and ends here rather than play on mid-drag.
+        const bool held = holdingPause();
         m_resumeAfterSeek = !trimming && !m_timeline->marking() && m_player
-            && m_player->playbackState() == QMediaPlayer::PlayingState;
+            && (held || m_player->playbackState() == QMediaPlayer::PlayingState);
+        if (held) stopPauseHold(false);
         if (m_player) m_player->pause();
         if (m_videoExportTimer) m_videoExportTimer->stop();
     });

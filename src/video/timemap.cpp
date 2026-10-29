@@ -46,7 +46,8 @@ double TimeMap::toSource(double outMs) const {
         [](double value, const TimePiece &p) { return value < p.outStart; });
     const TimePiece &p = *(after == m_pieces.cbegin() ? after : after - 1);
     if (t < p.outStart) return p.srcStart;                                   // a pause opening the output
-    if (t > p.outEnd()) return std::max(p.srcStart, p.srcEnd - 1);           // the pause after p: its last frame
+    if (t > p.outEnd() || (t == p.outEnd() && after != m_pieces.cend()))    // the pause after p: its last frame
+        return std::max(p.srcStart, p.srcEnd - 1);
     return std::min(p.srcEnd, p.srcStart + (t - p.outStart) * p.speed);
 }
 

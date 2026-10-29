@@ -180,7 +180,7 @@ void EditorWindow::beginPauseHold(int piece, double intoMs) {
     m_player->setPosition(qRound64(m_timeMap.toSource(pieces[piece].pauseStart() + intoMs)));
     if (!m_pauseTimer) {
         m_pauseTimer = new QTimer(this);
-        m_pauseTimer->setInterval(16);
+        m_pauseTimer->setTimerType(Qt::PreciseTimer);
         connect(m_pauseTimer, &QTimer::timeout, this, [this] {
             const QVector<TimePiece> &all = m_timeMap.pieces();
             if (m_pausePiece < 0 || m_pausePiece >= all.size()) { stopPauseHold(false); return; }
@@ -189,8 +189,11 @@ void EditorWindow::beginPauseHold(int piece, double intoMs) {
             if (into >= p.pauseBefore) { stopPauseHold(true); return; }
             m_timeline->setPausePosition(p.pauseStart() + into);
             if (m_timeLabel) m_timeLabel->setText(formatPreciseTime(qRound64(p.pauseStart() + into)));
+            updateCamera();
         });
     }
+    // Every refresh of the screen, like the camera while playing.
+    m_pauseTimer->setInterval(qMax(1, int(1000 / qMax(1.0, screen() ? screen()->refreshRate() : 60.0))));
     m_pauseClock.start();
     m_pauseTimer->start();
     m_timeline->setPausePosition(pieces[piece].pauseStart() + intoMs);

@@ -43,6 +43,19 @@ private slots:
         QCOMPARE(c.outMs, qint64(kMinFragmentMs));
     }
 
+    // Taking a trim back inside the piece's own fragment moves only the trim: no new seam,
+    // and the first piece keeps its pause.
+    void takingATrimBackAddsNoSeam() {
+        Clip c = setPause(moveStart(whole(), 0, 500, kDur), 0, 1000, kDur);
+        c = moveStart(c, 0, 200, kDur);
+        QCOMPARE(c.inMs, qint64(200));
+        QCOMPARE(c.pieces(kDur).first().pauseBefore, 1000.0);
+        QCOMPARE(c.list.size(), 1);
+        c = moveEnd(moveEnd(whole(), 0, 8000, kDur), 0, 9000, kDur);
+        QCOMPARE(c.outMs, qint64(9000));
+        QVERIFY(c.list.isEmpty());
+    }
+
     void anInnerEdgeCutsWhatItLeaves() {
         // Pulling the first piece's end in from 3 s to 2 s cuts 2..5 s in one fragment.
         Clip c = moveEnd(withCut(), 0, 2000, kDur);

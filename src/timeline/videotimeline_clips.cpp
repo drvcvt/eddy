@@ -250,7 +250,8 @@ void VideoTimeline::setClip(qint64 inMs, qint64 outMs, const QVector<Fragment> &
         return xForShown(shown(qint64(src)));   // it was a ghost: where that stood
     };
     QVector<std::pair<double, double>> sources;
-    for (const TimePiece &p : TimeMap(m_duration, in, out, fragments).pieces()) sources.append({p.srcStart, p.srcEnd});
+    const TimeMap next(m_duration, in, out, fragments);   // named: pieces() is a reference into it
+    for (const TimePiece &p : next.pieces()) sources.append({p.srcStart, p.srcEnd});
     QVector<std::pair<qreal, qreal>> from;
     for (const auto &[a, b] : std::as_const(sources)) from.append({shownX(a, false), shownX(b, true)});
 

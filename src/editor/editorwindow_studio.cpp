@@ -83,6 +83,7 @@
 #include <QPointer>
 #include <QScreen>
 #include <algorithm>
+#include <tuple>
 #include <QSettings>
 #include <QHelpEvent>
 #include <QLineEdit>
@@ -132,7 +133,8 @@ void EditorWindow::setStudioDocument(const StudioDocument &doc) {
     m_studio = doc;
     m_toolbar->setStudioActive(doc.style.active());
     if (zoomlane::indexOf(m_studio.zooms, m_selectedZoom) < 0) m_selectedZoom = 0;
-    if (m_studio.fragments.isEmpty() || m_selectedFragment >= m_studio.fragments.size()) m_selectedFragment = -1;
+    // K: an unsplit clip is one piece and stays chosen; the index counts the expanded list.
+    if (m_selectedFragment >= fragments::expanded(m_studio.fragments).size()) m_selectedFragment = -1;
     if (m_timeline) m_timeline->setSelectedFragment(m_selectedFragment);
     setCropRect(m_cropRect);   // the base view follows the ratio and "keep zoomed in"
     if (m_outputAudio) {
@@ -338,6 +340,10 @@ void EditorWindow::rebuildCamera() {
     CameraInputs inputs{m_studio.zooms, m_studio.fragments, content, base,
                         m_trimInMs, m_trimOutMs, m_media.video.durationMs, follows};
     if (inputs != m_cameraInputs) {
+        // P: a held pause counts pieces of the old clip; an edit of the clip ends it.
+        if (holdingPause() && std::tie(inputs.fragments, inputs.trimIn, inputs.trimOut)
+                != std::tie(m_cameraInputs.fragments, m_cameraInputs.trimIn, m_cameraInputs.trimOut))
+            stopPauseHold(false);
         m_cameraInputs = inputs;
         m_timeMap = TimeMap(m_media.video.durationMs, m_trimInMs, m_trimOutMs, m_studio.fragments);
         m_cameraPath = CameraPath(m_studio.zooms, m_timeMap,
@@ -379,6 +385,8 @@ QRectF EditorWindow::currentCamera() const {
 // Output time of what the canvas shows. Playing, the presented frame's time runs on with the
 // wall clock between frames, at most three frames ahead: a stall holds the camera.
 double EditorWindow::cameraTime() const {
+    // P: in a pause the camera runs on with it, as the export's does.
+    if (m_timeline->pausePosition() >= 0) return m_timeline->pausePosition();
     const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
     double source = double(m_timeline->position());
     if (playing && m_presentedStart >= 0) {

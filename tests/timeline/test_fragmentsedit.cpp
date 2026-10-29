@@ -16,6 +16,7 @@
 #include <QContextMenuEvent>
 #include "popovers/exportpanel.h"
 #include "editor/editorwindow.h"
+#include "canvas/canvas.h"
 #include "chrome/toast.h"
 #include "app/theme.h"
 #include "output/exportsettings.h"
@@ -270,6 +271,23 @@ private slots:
         QTRY_VERIFY(bar->isVisible());
         QVERIFY(w.findChild<QToolButton *>(QStringLiteral("ClipDelete"))->isEnabled());   // a chosen piece can go
     }
+    // K: an unsplit clip chosen for its speed stays chosen when its list is empty again.
+    void anUnsplitClipStaysChosen() {
+        QTemporaryDir dir;
+        Config cfg; cfg.animations = false;
+        EditorWindow w(videoDoc(dir.filePath("none.mp4")), cfg, {});
+        w.show();
+        auto *timeline = w.findChild<VideoTimeline *>();
+        auto *bar = w.findChild<FragmentBar *>();
+        emit timeline->stripClicked(1000);
+        QTRY_VERIFY(bar->isVisible());
+        StudioDocument doc = w.studioDocument();
+        doc.fragments = {{0, 2.0, false}};
+        w.setStudioDocument(doc);
+        doc.fragments.clear();   // back to 1x: no list at all
+        w.setStudioDocument(doc);
+        QVERIFY(bar->isVisible());
+    }
     void deleteLeavesAGhostAndADoubleClickClosesIt() {
         // K, G: Delete leaves the chosen piece out; it stays as a ghost where it was, nothing
         // moves, and a double click on the ghost closes the gap: the cut stays cut.
@@ -494,6 +512,11 @@ private slots:
         for (const bool black : {false, true}) {
             StudioDocument doc;
             doc.fragments = {{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false, 600, black}};
+            // A zoom that ends 200 ms before the first piece does: the camera's way out runs
+            // on into the pause, as the export's does.
+            ZoomSegment zoom;
+            zoom.id = 1; zoom.startMs = 0; zoom.endMs = 800; zoom.point = QPointF(40, 22);
+            doc.zooms = {zoom};
             w.setStudioDocument(doc);
             timeline->setPosition(0);
             emit timeline->seekRequested(0);   // as a click there would
@@ -501,9 +524,15 @@ private slots:
             QElapsedTimer clock;
             qint64 pauseFrom = -1, pauseTo = -1, greenAt = -1;
             bool coveredInPause = false, coveredAfter = false;
+            QSet<QString> camerasInPause;
+            auto *canvas = w.findChild<Canvas *>();
             QTimer poll;
             connect(&poll, &QTimer::timeout, &w, [&] {
                 const bool inPause = timeline->pausePosition() >= 0;
+                if (inPause) {
+                    const QRectF c = canvas->camera();
+                    camerasInPause.insert(QStringLiteral("%1 %2 %3").arg(c.x()).arg(c.y()).arg(c.width()));
+                }
                 if (inPause && pauseFrom < 0) pauseFrom = clock.elapsed();
                 if (inPause) pauseTo = clock.elapsed();
                 QGraphicsRectItem *cover = nullptr;
@@ -525,8 +554,30 @@ private slots:
             QVERIFY2(pauseTo - pauseFrom >= 450, qPrintable(QString::number(pauseTo - pauseFrom)));   // 600 ms, polled
             QVERIFY(greenAt >= pauseTo);
             QCOMPARE(coveredInPause, black);
+            QVERIFY2(camerasInPause.size() >= 5, qPrintable(QStringList(camerasInPause.values()).join(" | ")));
             QVERIFY(!coveredAfter);
         }
+        // Taking hold of the strip during a pause ends it: nothing plays on mid-drag.
+        timeline->setPosition(0);
+        emit timeline->seekRequested(0);
+        QTRY_VERIFY(player->position() < 100);
+        QTest::mouseClick(w.findChild<QToolButton *>(QStringLiteral("PlaybackPlay")), Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(timeline->pausePosition() >= 0, 5000);
+        emit timeline->interactionStarted(false);
+        QTest::qWait(900);   // past the pause's 600 ms
+        QVERIFY(player->playbackState() != QMediaPlayer::PlayingState);
+        emit timeline->interactionFinished(true);
+        // An edit of the clip during a pause (an undo, say) ends it: it counted the old pieces.
+        timeline->setPosition(0);
+        emit timeline->seekRequested(0);
+        QTRY_VERIFY(player->position() < 100);
+        QTest::mouseClick(w.findChild<QToolButton *>(QStringLiteral("PlaybackPlay")), Qt::LeftButton);
+        QTRY_VERIFY_WITH_TIMEOUT(timeline->pausePosition() >= 0, 5000);
+        StudioDocument plain = w.studioDocument();
+        plain.fragments = {{0, 1.0, false}, {1000, 1.0, true}, {2000, 1.0, false}};
+        w.setStudioDocument(plain);
+        QTest::qWait(900);
+        QVERIFY(player->playbackState() != QMediaPlayer::PlayingState);
     }
     void playbackSkipsACut() {
         if (!have("ffmpeg")) QSKIP("ffmpeg not available");

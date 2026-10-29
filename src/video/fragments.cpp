@@ -94,8 +94,11 @@ bool cutRange(QVector<Fragment> &list, qint64 fromMs, qint64 toMs, qint64 durati
         if (at >= durationMs) continue;
         const int i = indexAt(parts, at);
         if (parts[i].startMs == at) continue;
-        Fragment next = withoutPause(parts[i]);
+        // P: a piece cut from its start keeps its pause before what is left of it.
+        const bool headCut = at == to && parts[i].startMs >= from;
+        Fragment next = headCut ? parts[i] : withoutPause(parts[i]);
         next.startMs = at;
+        if (headCut) parts[i] = withoutPause(parts[i]);
         parts.insert(i + 1, next);
     }
     for (Fragment &f : parts)
@@ -184,7 +187,9 @@ Clip moveStart(Clip clip, int piece, qint64 sourceMs, qint64 durationMs) {
     if (to == from) return clip;
     QVector<Fragment> parts = expanded(clip.list);
     const int own = indexAt(parts, from);   // the fragment the piece plays
-    if (to < from) {
+    if (to < from && indexAt(parts, to) == own) {
+        // The first piece taken back within its own fragment: only the trim moves.
+    } else if (to < from) {
         // Taken back: the piece's fragment starts at `to`, swallowing what lay between.
         const int before = parts.size();
         const int first = seamAt(parts, to);
@@ -217,7 +222,9 @@ Clip moveEnd(Clip clip, int piece, qint64 sourceMs, qint64 durationMs) {
     const bool last = piece + 1 == pieces.size();
     if (to > from) {
         // Taken back: every seam between the piece and `to` goes, so its fragment runs on.
-        const int stop = to < durationMs ? seamAt(parts, to) : parts.size();
+        // Within its own fragment (the last piece's trim) no seam is needed at `to`.
+        const int stop = to >= durationMs ? int(parts.size())
+                       : indexAt(parts, to) == own ? own + 1 : seamAt(parts, to);
         parts.remove(own + 1, stop - own - 1);
     } else if (!last) {
         // Given up: [to, from) is cut and melts with the cut after it.

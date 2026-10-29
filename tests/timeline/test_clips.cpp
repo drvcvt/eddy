@@ -286,6 +286,27 @@ private slots:
         QCOMPARE(timeline.clip().list, withCut());
     }
 
+    // A click or hover in a pause after a ghost shows the frame the pause holds: the last kept
+    // one before the cut, not the cut's end.
+    void aPauseAfterAGhostShowsTheFrameItHolds() {
+        VideoTimeline timeline;
+        timeline.setDuration(10000);
+        timeline.setFragments({{0, 1.0, false}, {4000, 1.0, true}, {6000, 1.0, false, 1000}});
+        place(timeline);
+        QSignalSpy seeks(&timeline, &VideoTimeline::seekRequested);
+        QSignalSpy hovers(&timeline, &VideoTimeline::hoverRequested);
+        const QPoint in = timeline.pauseRect(1).center().toPoint();
+        QMouseEvent hover(QEvent::MouseMove, QPointF(in), timeline.mapToGlobal(QPointF(in)),
+                          Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&timeline, &hover);
+        QVERIFY(!hovers.isEmpty());
+        QCOMPARE(hovers.last().first().toLongLong(), 3999);
+        QTest::mousePress(&timeline, Qt::LeftButton, Qt::NoModifier, in);
+        QTest::mouseRelease(&timeline, Qt::LeftButton, Qt::NoModifier, in);
+        QVERIFY(!seeks.isEmpty());
+        QCOMPARE(seeks.last().first().toLongLong(), 3999);
+    }
+
     void aSmallPullSnapsBackUnlessCtrlIsHeld() {
         VideoTimeline timeline;
         timeline.setDuration(10000);
