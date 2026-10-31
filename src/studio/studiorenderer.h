@@ -35,6 +35,8 @@ public:
     void renderBlurred(const QImage &frame, const QVector<QRectF> &cameras, QImage &out, double sourceMs = -1) const;
 
 private:
+    void renderContent(const QImage &frame, const QRectF &camera, QImage &out, double sourceMs) const;   // no frame
+
     QSize m_source;
     QSize m_output;
     QRectF m_target;   // where the camera's window lands in the output

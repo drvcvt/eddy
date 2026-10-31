@@ -23,6 +23,9 @@ struct VideoInfo {
     bool hasAudio = false;
     // Where the first audio stream starts on the video's time axis.
     qint64 audioOffsetMs = 0;
+    // 8-bit 4:2:0 (either range) in a codec NVDEC takes, not rotated: decoded on the GPU it
+    // comes back exactly as ffmpeg's own decoder gives it (export-gpu plan).
+    bool gpuDecodable = false;
 };
 
 // "m:ss" or "h:mm:ss", and with milliseconds; the playback bar's clocks.

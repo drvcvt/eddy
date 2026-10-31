@@ -14,8 +14,9 @@ struct RenderPipeline {
     QString ffmpeg;
     QStringList decodeArgs;     // must write rawvideo bgra frames of sourceSize to stdout
     QSize sourceSize;
-    QStringList encodeArgs;     // must read rawvideo bgra frames of outputSize from stdin
-    QSize outputSize;
+    QStringList encodeArgs;     // must read rawvideo frames of outputSize from stdin:
+    QSize outputSize;           // bgra, or with yuvOutput yuv420p BT.709 limited range
+    bool yuvOutput = false;
     qint64 expectedFrames = 0;  // for progress; 0 while unknown
     // Draws output frame `index` from the decoded `source`. Called for several frames at
     // once from different threads, so it must only read shared state.

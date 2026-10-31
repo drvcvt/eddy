@@ -122,7 +122,7 @@ ProbeVideoResult probeVideoFile(const QString &path) {
     QProcess p;
     p.start(ffprobe, {
         QStringLiteral("-v"), QStringLiteral("error"),
-        QStringLiteral("-show_entries"), QStringLiteral("stream=codec_type,width,height,r_frame_rate,sample_aspect_ratio,start_time:stream_side_data=rotation,displaymatrix:format=duration"),
+        QStringLiteral("-show_entries"), QStringLiteral("stream=codec_type,codec_name,pix_fmt,width,height,r_frame_rate,sample_aspect_ratio,start_time:stream_side_data=rotation,displaymatrix:format=duration"),
         QStringLiteral("-of"), QStringLiteral("json"),
         path
     });
@@ -166,6 +166,11 @@ ProbeVideoResult probeVideoFile(const QString &path) {
     if (aspect > 0 && std::isfinite(aspect) && width * aspect <= std::numeric_limits<int>::max())
         width = qRound(width * aspect);
     else if (!sar.isEmpty() && sar != "N/A" && sar != "0:1") r.info.cropSupported = false;
+    const QString codec = stream.value("codec_name").toString();
+    const QString format = stream.value("pix_fmt").toString();
+    r.info.gpuDecodable = (format == QLatin1String("yuv420p") || format == QLatin1String("yuvj420p"))
+        && stream.value("side_data_list").toArray().isEmpty()
+        && QStringList{"h264", "hevc", "av1", "vp9"}.contains(codec);
     for (const auto &value : stream.value("side_data_list").toArray()) {
         const auto data = value.toObject();
         if (!data.contains("rotation")) {

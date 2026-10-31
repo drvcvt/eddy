@@ -109,6 +109,72 @@ private slots:
         }
     }
 
+    // eddy hands the encoder yuv420p of its own (plan E7): colours come back as drawn, tagged
+    // BT.709 limited range like the filter graph's.
+    void renderedColoursComeBackAsDrawn() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("gray.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=gray:s=320x180:d=1:r=10", "-pix_fmt", "yuv420p", input}));
+        const QColor colours[] = {QColor(230, 30, 40), QColor(20, 200, 60), QColor(30, 60, 220), Qt::white,
+                                  Qt::black, QColor(240, 200, 170), QColor(250, 220, 20), QColor(128, 128, 128)};
+        QImage overlay(320, 180, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        {
+            QPainter p(&overlay);
+            for (int i = 0; i < 8; ++i) p.fillRect(QRect(i % 4 * 80, i / 4 * 90, 80, 90), colours[i]);
+        }
+        VideoExportRequest request{input, dir.filePath(QStringLiteral("out.mp4")), overlay};
+        const DeliverResult result = writeVideoRendered(request);
+        QVERIFY2(result.ok, qPrintable(result.error));
+        QCOMPARE(processOutput(QStringLiteral("ffprobe"), {"-v", "error", "-select_streams", "v",
+            "-show_entries", "stream=pix_fmt,color_space,color_range", "-of", "csv=p=0", request.outputPath}),
+                 QByteArray("yuv420p,tv,bt709"));
+        const QString png = dir.filePath(QStringLiteral("frame.png"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-ss", "0.5", "-i", request.outputPath,
+            "-vf", "scale=in_color_matrix=bt709:in_range=tv", "-frames:v", "1", png}));
+        const QImage frame(png);
+        QCOMPARE(frame.size(), QSize(320, 180));
+        for (int i = 0; i < 8; ++i) {
+            const QColor want = colours[i], got = frame.pixelColor(i % 4 * 80 + 40, i / 4 * 90 + 45);
+            QVERIFY2(qAbs(want.red() - got.red()) <= 3 && qAbs(want.green() - got.green()) <= 3
+                         && qAbs(want.blue() - got.blue()) <= 3,
+                     qPrintable(QStringLiteral("%1: %2 vs %3").arg(i).arg(want.name(), got.name())));
+        }
+    }
+
+    // h264 wider than 4096 looks like a GPU source, but NVDEC refuses it: both export paths
+    // fall back to the CPU decoder instead of failing (without NVIDIA they start there).
+    void aSourceTheGpuRefusesExportsOnTheCpu() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
+            QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString input = dir.filePath(QStringLiteral("wide.mp4"));
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+            "color=c=red:s=4160x64:d=1:r=10", "-pix_fmt", "yuv420p", "-c:v", "libx264", input}));
+        QVERIFY(probeVideoFile(input).info.gpuDecodable);
+        QImage overlay(4160, 64, QImage::Format_ARGB32_Premultiplied);
+        overlay.fill(Qt::transparent);
+        VideoExportRequest request{input, QString(), overlay};
+        for (const bool zoomed : {false, true}) {
+            request.outputPath = dir.filePath(zoomed ? QStringLiteral("zoom.mp4") : QStringLiteral("plain.mp4"));
+            request.zooms.clear();
+            if (zoomed) request.zooms = {{1, 0, 1000, 2.0, ZoomSegment::Target::Point, QPointF(2080, 32),
+                                          ZoomSegment::Motion::Focused}};
+            const DeliverResult result = writeVideoWithOverlay(request);
+            QVERIFY2(result.ok, qPrintable(result.error));
+            const QString png = dir.filePath(QStringLiteral("frame.png"));
+            QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-y", "-ss", "0.5", "-i", request.outputPath,
+                                                          "-frames:v", "1", png}));
+            const QColor c = QImage(png).pixelColor(2080, 32);
+            QVERIFY2(c.red() > 200 && c.green() < 40 && c.blue() < 40, qPrintable(c.name()));
+        }
+    }
+
     void motionBlurSmearsOnlyAMovingCamera() {
         if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe")))
             QSKIP("ffmpeg/ffprobe not available");

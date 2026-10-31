@@ -19,6 +19,11 @@ StudioRenderer::StudioRenderer(QSize source, QRect content, const StudioStyle &s
 }
 
 void StudioRenderer::render(const QImage &frame, const QRectF &camera, QImage &out, double sourceMs) const {
+    renderContent(frame, camera, out, sourceMs);
+    if (!m_frame.isNull()) QPainter(&out).drawImage(0, 0, m_frame);
+}
+
+void StudioRenderer::renderContent(const QImage &frame, const QRectF &camera, QImage &out, double sourceMs) const {
     QPainter p(&out);
     p.setRenderHint(QPainter::SmoothPixmapTransform);
     p.drawImage(m_target, frame, camera);
@@ -31,22 +36,25 @@ void StudioRenderer::render(const QImage &frame, const QRectF &camera, QImage &o
     if (!m_overlay.isNull()) overlay(m_overlay);
     for (const TimedOverlay &timed : m_timed)
         if (sourceMs >= timed.fromMs && sourceMs < timed.toMs) overlay(timed.image);
-    if (!m_frame.isNull()) p.drawImage(0, 0, m_frame);
 }
 
 void StudioRenderer::renderBlurred(const QImage &frame, const QVector<QRectF> &cameras, QImage &out,
                                    double sourceMs) const {
     if (cameras.isEmpty()) return;
-    render(frame, cameras.first(), out, sourceMs);
-    if (std::all_of(cameras.cbegin(), cameras.cend(), [&](const QRectF &c) { return c == cameras.first(); })) return;
-    // A running mean: the n-th image goes in at 1/n.
+    if (std::all_of(cameras.cbegin(), cameras.cend(), [&](const QRectF &c) { return c == cameras.first(); }))
+        return render(frame, cameras.first(), out, sourceMs);
+    // A running mean: the n-th image goes in at 1/n. The frame stands still, so it goes over
+    // the mean once instead of into every image.
+    renderContent(frame, cameras.first(), out, sourceMs);
     QImage sub(out.size(), out.format());
     QPainter p(&out);
     for (int i = 1; i < cameras.size(); ++i) {
-        render(frame, cameras[i], sub, sourceMs);
+        renderContent(frame, cameras[i], sub, sourceMs);
         p.setOpacity(1.0 / (i + 1));
         p.drawImage(0, 0, sub);
     }
+    p.setOpacity(1);
+    if (!m_frame.isNull()) p.drawImage(0, 0, m_frame);
 }
 
 }

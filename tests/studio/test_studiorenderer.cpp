@@ -107,6 +107,35 @@ private slots:
         QVERIFY(near(zoomed.pixelColor(70, 30), Qt::white));    // (135 - 100) * 2, 15 * 2
         QVERIFY(near(zoomed.pixelColor(40, 30), Qt::blue));
     }
+
+    // The frame goes over the blur's mean once (export-gpu plan E4): the same picture as the
+    // mean of every camera's framed image, which is how it was drawn before.
+    void aBlurredFrameMatchesTheMeanOfFramedImages() {
+        StudioStyle style;
+        style.background = StudioStyle::Background::Gradient;
+        style.padding = 12;
+        style.radius = 16;
+        const StudioRenderer renderer(QSize(200, 100), QRect(0, 0, 200, 100), style, QImage());
+        const QVector<QRectF> cameras = {QRectF(0, 0, 200, 100), QRectF(10, 4, 180, 90), QRectF(20, 8, 160, 80),
+                                         QRectF(30, 12, 140, 70), QRectF(40, 16, 120, 60), QRectF(50, 20, 100, 50)};
+        QImage blurred(renderer.outputSize(), QImage::Format_RGB32);
+        renderer.renderBlurred(source(), cameras, blurred);
+        QImage mean = draw(renderer, source(), cameras.first());
+        {
+            QPainter p(&mean);
+            for (int i = 1; i < cameras.size(); ++i) {
+                p.setOpacity(1.0 / (i + 1));
+                p.drawImage(0, 0, draw(renderer, source(), cameras[i]));
+            }
+        }
+        int worst = 0;
+        for (int y = 0; y < mean.height(); ++y)
+            for (int x = 0; x < mean.width(); ++x) {
+                const QRgb a = mean.pixel(x, y), b = blurred.pixel(x, y);
+                worst = std::max({worst, qAbs(qRed(a) - qRed(b)), qAbs(qGreen(a) - qGreen(b)), qAbs(qBlue(a) - qBlue(b))});
+            }
+        QVERIFY2(worst <= 2, qPrintable(QString::number(worst)));
+    }
 };
 
 QTEST_GUILESS_MAIN(TestStudioRenderer)

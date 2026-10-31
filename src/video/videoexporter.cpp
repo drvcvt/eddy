@@ -60,14 +60,53 @@ static QString hardwareEncoder(const QString &ffmpeg) {
     return {};
 }
 
-static bool hasVisiblePixels(const QImage &image) {
+// Whether a CUDA device opens, once per executable, off the GUI thread.
+static bool cudaDecoder(const QString &ffmpeg) {
+    static QMutex mutex;
+    static QHash<QString, bool> cache;
+    QMutexLocker lock(&mutex);
+    if (const auto known = cache.constFind(ffmpeg); known != cache.cend()) return *known;
+    QProcess probe;
+    probe.start(ffmpeg, QStringList{"-v", "error", "-nostdin", "-init_hw_device", "cuda=eddy",
+                                    "-f", "lavfi", "-i", "color=size=64x64", "-frames:v", "1", "-f", "null", "-"});
+    bool works = false;
+    if (!probe.waitForFinished(2000)) { probe.kill(); probe.waitForFinished(1000); }
+    else works = probe.exitStatus() == QProcess::NormalExit && probe.exitCode() == 0;
+    cache.insert(ffmpeg, works);
+    return works;
+}
+
+// The source's input options and the start of its filter chain. On the GPU, surplus frames
+// go before the download (a 240 fps recording costs a quarter), and nv12 turns back into
+// yuv420p first: so the frames match ffmpeg's own decoder bit for bit (export-gpu plan).
+static QStringList decodeOptions(bool gpu) {
+    return gpu ? QStringList{"-hwaccel", "cuda", "-hwaccel_output_format", "cuda"} : QStringList();
+}
+
+static QString decodeHead(bool gpu, int fps) {
+    return QStringLiteral("[0:v]") + (fps > 0 ? QStringLiteral("fps=%1,").arg(fps) : QString())
+        + (gpu ? QStringLiteral("hwdownload,format=nv12,format=yuv420p,") : QString());
+}
+
+// Where `image` has ink, grown to even edges, empty when it has none. ffmpeg blends an
+// overlay over its whole size, so only this part goes in; on even edges the half-size
+// colour planes blend the same, the output is bit for bit as with the whole image (plan E5).
+static QRect inkRect(const QImage &image) {
     const QImage argb = image.convertToFormat(QImage::Format_ARGB32);
+    int left = argb.width(), top = argb.height(), right = -1, bottom = -1;
     for (int y = 0; y < argb.height(); ++y) {
         const auto *row = reinterpret_cast<const QRgb *>(argb.constScanLine(y));
         for (int x = 0; x < argb.width(); ++x)
-            if (qAlpha(row[x])) return true;
+            if (qAlpha(row[x])) {
+                left = std::min(left, x);
+                right = std::max(right, x);
+                top = std::min(top, y);
+                bottom = std::max(bottom, y);
+            }
     }
-    return false;
+    if (right < 0) return {};
+    const int x = left & ~1, y = top & ~1;
+    return QRect(x, y, std::min(argb.width(), (right + 2) & ~1) - x, std::min(argb.height(), (bottom + 2) & ~1) - y);
 }
 
 // Blurred patches over `current`, each a boxblurred crop overlaid in place.
@@ -262,8 +301,8 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     QStringList length;
     if (trimmed) length = {"-t", QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3)};
 
-    QString filter = QStringLiteral("[0:v]fps=%3,scale=%1:%2,setsar=1[base];")
-        .arg(req.overlay.width()).arg(req.overlay.height()).arg(fps);
+    QString filter = QStringLiteral("scale=%1:%2,setsar=1[base];")
+        .arg(req.overlay.width()).arg(req.overlay.height());
     const QString blurred = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
                                               req.overlay.size(), req.timedBlurs, req.trimInMs);
     if (pieces)   // sped-up pieces change the rate, so fps comes again after them
@@ -275,9 +314,12 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     job.ffmpeg = ffmpeg;
     job.sourceSize = req.overlay.size();
     // With pieces the length limits what is read, not what comes out.
-    job.decodeArgs = QStringList{"-hide_banner", "-loglevel", "error", "-nostdin"} + seek
-        + (pieces ? length : QStringList()) + QStringList{"-i", req.inputPath} + (pieces ? QStringList() : length)
-        + QStringList{"-filter_complex", filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "-"};
+    auto decodeArgs = [&](bool gpu) {
+        return QStringList{"-hide_banner", "-loglevel", "error", "-nostdin"} + seek
+            + (pieces ? length : QStringList()) + decodeOptions(gpu) + QStringList{"-i", req.inputPath}
+            + (pieces ? QStringList() : length)
+            + QStringList{"-filter_complex", decodeHead(gpu, fps) + filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "-"};
+    };
     job.outputSize = size;
     job.expectedFrames = qRound64(time.outputDurationMs() * fps / 1000.0);
     // Motion blur: six moments within a shutter of up to half a frame, only
@@ -313,33 +355,39 @@ static DeliverResult writeRendered(const VideoExportRequest &req, const QString 
     const QString shrink = finalSize == size ? QString()
         : QStringLiteral("scale=%1:%2:flags=lanczos,").arg(finalSize.width()).arg(finalSize.height());
     DeliverResult r;
-    for (const QString &encoder : encoders) {
+    bool gpu = source.gpuDecodable && cudaDecoder(ffmpeg);
+    for (int e = 0; e < encoders.size(); ++e) {
+        const QString &encoder = encoders[e];
         const QStringList device = deviceArgs(encoder);
+        // eddy turns its frames into BT.709 yuv420p, tagged so: a third of the bytes of bgra
+        // through the pipe, the zoom export's floor (plan E7). GIF keeps full colour for its palette.
+        job.yuvOutput = !gif;
         const QStringList input = QStringList{"-hide_banner", "-loglevel", "error", "-y"} + device
-            + QStringList{"-f", "rawvideo", "-pix_fmt", "bgra", "-s",
-                          QStringLiteral("%1x%2").arg(size.width()).arg(size.height()),
-                          "-r", QString::number(fps), "-i", "-"};
+            + QStringList{"-f", "rawvideo", "-pix_fmt", gif ? "bgra" : "yuv420p", "-s",
+                          QStringLiteral("%1x%2").arg(size.width()).arg(size.height()), "-r", QString::number(fps)}
+            + (gif ? QStringList() : QStringList{"-colorspace", "bt709", "-color_range", "tv"}) + QStringList{"-i", "-"};
         if (gif) {
             // One palette for the file; GIF has no sound.
             job.encodeArgs = input + QStringList{"-map", "0:v", "-vf", shrink + QStringLiteral(
                 "split[ga][gb];[ga]palettegen=stats_mode=diff[gp];"
                 "[gb][gp]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle"), "-an", output};
         } else {
-            // Qt draws RGB; the BT.709 matrix also tags the output, so players do not guess.
+            // The BT.709 tags of the input go on to the output, so players do not guess.
             const QStringList audio = !req.includeAudio ? QStringList()
                 : !pieces ? QStringList{"-map", "1:a?"}
                 : sound ? QStringList{"-filter_complex", fragmentAudio(time.pieces(), req.trimInMs, QStringLiteral("[1:a]")),
                                       "-map", "[aout]"}
                         : QStringList();
             job.encodeArgs = input + seek + length + QStringList{"-i", req.inputPath, "-map", "0:v"} + audio
-                + QStringList{"-vf", shrink + QStringLiteral("scale=out_color_matrix=bt709:out_range=tv,format=")
-                           + (device.isEmpty() ? QStringLiteral("yuv420p") : QStringLiteral("nv12,hwupload"))}
+                + QStringList{"-vf", shrink + (device.isEmpty() ? QStringLiteral("format=yuv420p") : QStringLiteral("format=nv12,hwupload"))}
                 + encoderCodecArgs(encoder, cpuCodecs, trimmed || pieces) + QStringList{"-shortest", output};
         }
+        job.decodeArgs = decodeArgs(gpu);
         job.timeoutMs = req.timeoutMs < 0 ? -1 : qMax(0, req.timeoutMs - int(elapsed.elapsed()));
         r = runRenderPipeline(job);
         if (r.ok || r.error.contains(QStringLiteral("cancelled")) || r.error.contains(QStringLiteral("timed out")))
             return r;
+        if (gpu) { gpu = false; --e; continue; }   // the same encoder again, decoding on the CPU
         if (!encoder.isEmpty()) r.error += QStringLiteral(" with ") + encoder;
     }
     return r;
@@ -390,14 +438,15 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         return r;
     }
 
-    const bool overlayVisible = hasVisiblePixels(req.overlay);
+    const QRect overlayInk = inkRect(req.overlay);
+    const bool overlayVisible = !overlayInk.isEmpty();
     QTemporaryFile overlayTmp(QDir::tempPath() + QStringLiteral("/eddy-overlay-XXXXXX.png"));
     if (overlayVisible && !render) {
         if (!overlayTmp.open()) {
             r.error = QStringLiteral("cannot create temporary overlay");
             return r;
         }
-        const QByteArray png = encodePng(req.overlay);
+        const QByteArray png = encodePng(req.overlay.copy(overlayInk));
         if (png.isEmpty() || overlayTmp.write(png) != png.size()) {
             r.error = QStringLiteral("cannot write temporary overlay");
             return r;
@@ -407,10 +456,14 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     const QString overlayPath = overlayTmp.fileName();
     // Timed overlays are stills too, one input each.
     std::vector<std::unique_ptr<QTemporaryFile>> timedFiles;
+    QVector<QPoint> timedAt;
     if (!render) {
         for (const TimedOverlay &timed : req.timedOverlays) {
             auto file = std::make_unique<QTemporaryFile>(QDir::tempPath() + QStringLiteral("/eddy-timed-XXXXXX.png"));
-            const QByteArray png = encodePng(timed.image);
+            const QRect ink = inkRect(timed.image);
+            const QRect part = ink.isEmpty() ? QRect(0, 0, std::min(2, timed.image.width()), std::min(2, timed.image.height())) : ink;
+            timedAt.append(part.topLeft());
+            const QByteArray png = encodePng(timed.image.copy(part));
             if (!file->open() || png.isEmpty() || file->write(png) != png.size()) {
                 r.error = QStringLiteral("cannot write a temporary overlay");
                 return r;
@@ -521,20 +574,20 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
                                                      overlayVisible, elapsed);
         return rendered.ok ? finishOutput(replaceInput, actualOutput, req.outputPath) : rendered;
     }
-    QString filter = QStringLiteral("[0:v]%1scale=%2:%3,setsar=1[base];")
-        .arg(highFps ? QStringLiteral("fps=%1,").arg(maxFps) : QString())
+    QString filter = QStringLiteral("scale=%1:%2,setsar=1[base];")   // after decodeHead
         .arg(req.overlay.width()).arg(req.overlay.height());
     const QString current = appendBlurFilters(filter, QStringLiteral("[base]"), req.blurRects,
                                               req.overlay.size(), req.timedBlurs, req.trimInMs);
-    filter += current + (overlayVisible ? QStringLiteral("[1:v]overlay=0:0:format=auto")
+    filter += current + (overlayVisible ? QStringLiteral("[1:v]overlay=%1:%2:format=auto").arg(overlayInk.x()).arg(overlayInk.y())
                                        : QStringLiteral("null"));
     // Timed overlays follow the static one, each only inside its stretch.
     const int firstTimed = overlayVisible ? 2 : 1;
     for (int i = 0; i < timedFiles.size(); ++i)
-        filter += QStringLiteral("[tov%1];[tov%1][%2:v]overlay=0:0:format=auto:enable='between(t\\,%3\\,%4)'")
+        filter += QStringLiteral("[tov%1];[tov%1][%2:v]overlay=%5:%6:format=auto:enable='between(t\\,%3\\,%4)'")
                       .arg(i).arg(firstTimed + i)
                       .arg((req.timedOverlays[i].fromMs - req.trimInMs) / 1000.0, 0, 'f', 3)
-                      .arg((req.timedOverlays[i].toMs - req.trimInMs) / 1000.0, 0, 'f', 3);
+                      .arg((req.timedOverlays[i].toMs - req.trimInMs) / 1000.0, 0, 'f', 3)
+                      .arg(timedAt[i].x()).arg(timedAt[i].y());
     // Pieces come after blur and annotations, which live in source time, and
     // before crop and framing (studio plan 4.3).
     if (pieces)
@@ -589,6 +642,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     // With pieces, the length only limits what is read; the pieces set the output.
     if (pieces && trimmed)
         args += {QStringLiteral("-t"), QString::number((req.trimOutMs - req.trimInMs) / 1000.0, 'f', 3)};
+    const qsizetype sourceAt = args.size();   // decodeOptions go here
     args += {QStringLiteral("-i"), req.inputPath};
     if (overlayVisible)
         args += {QStringLiteral("-i"), overlayPath};
@@ -621,16 +675,19 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
     QStringList encoders;
     if (!hardware.isEmpty()) encoders.append(hardware);
     encoders.append(QString()); // CPU fallback also handles unsupported sizes/formats.
-    for (const QString &encoder : encoders) {
+    bool gpu = source.gpuDecodable && cudaDecoder(ffmpeg);
+    for (qsizetype e = 0; e < encoders.size(); ++e) {
+        const QString &encoder = encoders[e];
         if (req.cancelled && req.cancelled()) {
             r.error = QStringLiteral("video export cancelled");
             return r;
         }
         const QStringList device = deviceArgs(encoder);
         const QStringList codecs = encoderCodecArgs(encoder, codecArgs, reencodeAudio);
+        const QStringList decoding = !gpu ? inputs : inputs.mid(0, sourceAt) + decodeOptions(true) + inputs.mid(sourceAt);
         QProcess p;
         p.setChildProcessModifier([] { if (::nice(5) == -1) {} });   // below the editor
-        p.start(ffmpeg, device + inputs + QStringList{"-filter_complex", filter
+        p.start(ffmpeg, device + decoding + QStringList{"-filter_complex", decodeHead(gpu, highFps ? maxFps : 0) + filter
             + (device.isEmpty() ? QString() : QStringLiteral(",format=nv12,hwupload"))
             + "[v]" + audioFilter} + maps + codecs + outputs);
         QElapsedTimer quiet;
@@ -677,6 +734,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         if (stalled) {
             r.error = QStringLiteral("ffmpeg stopped making progress")
                 + (encoder.isEmpty() ? QString() : QStringLiteral(" with ") + encoder);
+            if (gpu) { gpu = false; --e; }   // the same encoder again, decoding on the CPU
             continue;
         }
         if (p.error() == QProcess::FailedToStart) {
@@ -689,6 +747,7 @@ static DeliverResult writeVideo(const VideoExportRequest &req, bool render) {
         }
         r.error = QString::fromUtf8(p.readAllStandardError()).trimmed();
         if (r.error.isEmpty()) r.error = QStringLiteral("ffmpeg failed");
+        if (gpu) { gpu = false; --e; }
     }
     if (!r.error.isEmpty()) return r;
     return finishOutput(replaceInput, actualOutput, req.outputPath);

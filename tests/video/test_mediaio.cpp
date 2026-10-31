@@ -118,6 +118,28 @@ private slots:
         QCOMPARE(withSound.info.size, QSize(64, 48));
         QVERIFY(qAbs(withSound.info.audioOffsetMs) <= 30);
     }
+    void onlyPlain420GoesToTheGpuDecoder() {
+        if (!have(QStringLiteral("ffmpeg")) || !have(QStringLiteral("ffprobe"))) QSKIP("ffmpeg/ffprobe not available");
+        QTemporaryDir dir;
+        auto make = [&](const QString &name, const QString &format) {
+            const QString path = dir.filePath(name);
+            return runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-f", "lavfi", "-i",
+                "color=c=black:s=64x48:d=1:r=5", "-pix_fmt", format, path}) ? path : QString();
+        };
+        const QString plain = make(QStringLiteral("plain.mp4"), QStringLiteral("yuv420p"));
+        const QString fullRange = make(QStringLiteral("range.mp4"), QStringLiteral("yuvj420p"));
+        const QString full = make(QStringLiteral("full.mp4"), QStringLiteral("yuv444p"));
+        const QString deep = make(QStringLiteral("deep.mp4"), QStringLiteral("yuv420p10le"));
+        const QString turned = dir.filePath(QStringLiteral("turned.mp4"));
+        QVERIFY(!plain.isEmpty() && !fullRange.isEmpty() && !full.isEmpty() && !deep.isEmpty());
+        QVERIFY(runProcess(QStringLiteral("ffmpeg"), {"-v", "error", "-display_rotation", "90", "-i", plain,
+                                                      "-c", "copy", turned}));
+        QVERIFY(probeVideoFile(plain).info.gpuDecodable);
+        QVERIFY(probeVideoFile(fullRange).info.gpuDecodable);
+        QVERIFY(!probeVideoFile(full).info.gpuDecodable);
+        QVERIFY(!probeVideoFile(deep).info.gpuDecodable);
+        QVERIFY(!probeVideoFile(turned).info.gpuDecodable);
+    }
     void formatsTimesLikeThePlaybackBar() {
         QCOMPARE(formatTime(1999), QStringLiteral("0:01"));
         QCOMPARE(formatTime(3661900), QStringLiteral("1:01:01"));
