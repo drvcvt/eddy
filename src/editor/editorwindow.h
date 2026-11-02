@@ -164,6 +164,10 @@ private:
     void handlePlaybackEnd();
     void scheduleVideoLoad();
     void scheduleStripLoad();
+    // S2 (tempo plan 2026-11-01): the filmstrip's and the waveform's ffmpeg start once the
+    // video shows its first frame, or 1.5 s after the window, so they never race it.
+    void startSideLoads();
+    bool m_sideLoadsStarted = false;
     void hideVideoPreview();
     void showVideoPreview();
     void setVideoPreviewImage(const QImage &image);
@@ -220,7 +224,8 @@ private:
     void followPlaybackPieces(qint64 sourceMs);
     // P: playback holds through a pause. The player waits on the frame the pause shows (black
     // covers it for a black one) while a timer runs the playhead through the pause's output time.
-    bool holdPauseIfDue(qint64 sourceMs);
+    // Due inside its window, or (F6) when playback jumped from before its end to past it.
+    bool holdPauseIfDue(qint64 sourceMs, qint64 lastMs = -1);
     void beginPauseHold(int piece, double intoMs);
     void stopPauseHold(bool goOn);
     bool holdingPause() const;
@@ -228,6 +233,7 @@ private:
     QTimer *m_pauseTimer = nullptr;
     QElapsedTimer m_pauseClock;
     int m_pausePiece = -1, m_pauseDone = -1;   // held now; held already this pass
+    qint64 m_lastFollowMs = -1;   // F6: the position followPlaybackPieces saw last; -1 after a jump
     double m_pauseInto = 0;
     QGraphicsRectItem *m_blackout = nullptr;
     FragmentBar *m_fragmentBar = nullptr;
@@ -337,6 +343,7 @@ private:
     // frame, drawn gently onto the frames, so the camera moves at the screen's rate, not the video's.
     QElapsedTimer m_playClock;
     double m_playClockOrigin = 0, m_playClockRate = 1;
+    mutable double m_cameraFloor = -1;   // F7: the source time the camera last showed while playing
     QTimer *m_cameraTick = nullptr;
     qint64 m_frameTimeOrigin = 0;
     bool m_timelineActive = false;

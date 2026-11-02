@@ -25,9 +25,12 @@ public:
     static constexpr int kRate = 16000;
     static constexpr int kStallMs = 30000;
 
-    // `offsetMs`: where the audio starts on the video's time axis.
+    // `offsetMs`: where the audio starts on the video's time axis. Loading, but reads
+    // nothing until start().
     AudioWaveformProvider(const QString &path, qint64 durationMs, qint64 offsetMs, QObject *parent = nullptr);
     ~AudioWaveformProvider() override;
+    void start();
+    bool started() const { return m_started; }
 
     State state() const { return m_state; }
     // Read to the end and never above -60 dB, where the lane's scale starts: nothing to draw.
@@ -53,6 +56,8 @@ private:
     void finish(bool ok);
     void stopProcess();
 
+    QString m_path;
+    bool m_started = false;
     QProcess *m_process = nullptr;
     QTimer m_stall;
     QElapsedTimer m_sincePublish;

@@ -197,6 +197,7 @@ private slots:
         timeline.resize(400, VideoTimeline::kBaseH);
         timeline.setDuration(2000);
         AudioWaveformProvider waveform(file, 2000, 0);
+        waveform.start();
         timeline.setWaveform(&waveform);
         timeline.show();
         QTRY_VERIFY(waveform.silent());

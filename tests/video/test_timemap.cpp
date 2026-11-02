@@ -131,6 +131,32 @@ private slots:
         QVERIFY(map.pauseAt(0) && map.pauseAt(0)->black);
         QCOMPARE(map.outputDurationMs(), 2200.0);
     }
+    // F6: playback that steps over a pause's window (two frames at a seam) still holds it.
+    void aPauseSteppedOverIsStillDue() {
+        Fragment paused = part(4000);
+        paused.pauseMs = 1000;
+        const TimeMap seam(12000, 0, 12000, {part(0), paused});
+        QCOMPARE(seam.duePause(3000, -1, 40, -1), -1);
+        QCOMPARE(seam.duePause(3970, 3930, 40, -1), 1);    // inside [3960, 4040)
+        QCOMPARE(seam.duePause(4200, -1, 40, -1), -1);     // nothing to look back on: a seek lands here
+        QCOMPARE(seam.duePause(4200, 3000, 40, -1), 1);    // stepped from before it to past it
+        QCOMPARE(seam.duePause(4200, 4100, 40, -1), -1);   // past it already
+        QCOMPARE(seam.duePause(4200, 3000, 40, 1), -1);    // held this pass
+        Fragment after = part(5000);
+        after.pauseMs = 1000;
+        const TimeMap cut(12000, 0, 12000, {part(0), part(4000, 1, true), after});
+        QCOMPARE(cut.duePause(6500, 3900, 40, -1), 1);     // over the cut and the window [3960, 5040)
+        QCOMPARE(cut.duePause(4500, 3900, 40, -1), 1);
+    }
+    // F7: after a stall the next frame resets the clock behind the cap; the camera waits there.
+    void theCameraNeverStepsBackAfterAStall() {
+        QCOMPARE(playingCameraSource(2410, 2400, 2405, 40), 2410.0);   // steady
+        QCOMPARE(playingCameraSource(2700, 2400, 2500, 40), 2520.0);   // stalled: three frames ahead
+        QCOMPARE(playingCameraSource(2440, 2440, 2520, 40), 2520.0);   // the next frame in order
+        QCOMPARE(playingCameraSource(2530, 2480, 2520, 40), 2530.0);   // and on once the clock passes
+        QCOMPARE(playingCameraSource(400, 400, 2520, 40), 400.0);      // a seek back goes through
+        QCOMPARE(playingCameraSource(2440, 2440, -1, 40), 2440.0);     // nothing shown yet
+    }
 };
 
 QTEST_GUILESS_MAIN(TestTimeMap)

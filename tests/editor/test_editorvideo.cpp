@@ -132,6 +132,7 @@ private slots:
         window.show();
         QTRY_VERIFY(window.findChild<QMediaPlayer *>());
         auto *player = window.findChild<QMediaPlayer *>();
+        player->audioOutput()->setMuted(true);   // its track is silence, but never a sound
         auto *video = qobject_cast<QGraphicsVideoItem *>(player->videoOutput());
         auto *canvas = window.findChild<Canvas *>();
         QSignalSpy states(player, &QMediaPlayer::playbackStateChanged);

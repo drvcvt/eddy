@@ -60,6 +60,23 @@ std::optional<TimeMap::PauseHit> TimeMap::pauseAt(double outMs) const {
     return std::nullopt;
 }
 
+int TimeMap::duePause(double srcMs, double lastMs, double frameMs, int skip) const {
+    for (int k = 0; k < m_pieces.size(); ++k) {
+        if (m_pieces[k].pauseBefore <= 0 || k == skip) continue;
+        const double end = m_pieces[k].srcStart + frameMs;
+        const bool due = k == 0 ? srcMs <= end
+                                : (srcMs >= m_pieces[k - 1].srcEnd - frameMs && srcMs < end)
+                                      || (lastMs >= 0 && lastMs < end && srcMs >= end);
+        if (due) return k;
+    }
+    return -1;
+}
+
+double playingCameraSource(double clockMs, double presentedMs, double shownMs, double frameMs) {
+    const double source = std::min(clockMs, presentedMs + 3 * frameMs);
+    return source < shownMs && shownMs - source <= 3 * frameMs ? shownMs : source;
+}
+
 namespace {
 double gridFps(double fps) { return fps > 0 ? fps : 30.0; }
 qint64 msOf(qint64 index, double fps) { return qRound64(index * 1000.0 / fps); }

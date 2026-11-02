@@ -41,6 +41,18 @@ static QString lowerSuffix(const QString &path) {
     return QFileInfo(path).suffix().toLower();
 }
 
+void limitVideoDecoders() {
+#ifdef Q_OS_LINUX
+    if (qEnvironmentVariableIsSet("QT_FFMPEG_DECODING_HW_DEVICE_TYPES")
+        || qEnvironmentVariableIsSet("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES"))
+        return;
+    // CUDA and VA-API decode the preview; Vulkan is left out (its first frame comes later).
+    // eddy encodes with its own ffmpeg, never through Qt, so Qt gets no encoder at all.
+    qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "cuda,vaapi,vdpau,drm");
+    qputenv("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", ",");
+#endif
+}
+
 bool pathLooksLikeVideo(const QString &path) {
     const QString ext = lowerSuffix(path);
     if (ext == "mp4" || ext == "m4v" || ext == "mov" || ext == "webm"

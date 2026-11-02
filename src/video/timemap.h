@@ -35,11 +35,22 @@ public:
     // P: the pause at `outMs`, if any: the piece after it and how far in.
     struct PauseHit { int piece = -1; double intoMs = 0; double lengthMs = 0; bool black = false; };
     std::optional<PauseHit> pauseAt(double outMs) const;
+    // P: the piece whose pause playback at `srcMs` should hold now, or -1. Due from the last
+    // frame before it to the first one after (one opening the output: up to its first frame),
+    // or when playback stepped over that window: `lastMs` (-1: none) lay before its end (F6).
+    // `skip` is the piece this pass held already.
+    int duePause(double srcMs, double lastMs, double frameMs, int skip) const;
     const QVector<TimePiece> &pieces() const { return m_pieces; }
 
 private:
     QVector<TimePiece> m_pieces;
 };
+
+// F7: the source time the camera shows while playing. The wall clock runs on from the presented
+// frame, at most three frames ahead (a stall holds the camera there); it never falls back
+// behind `shownMs` (what it showed last, -1: nothing) by up to those three frames, where the
+// frame after a stall resets the clock. A larger step back is a seek or a loop.
+double playingCameraSource(double clockMs, double presentedMs, double shownMs, double frameMs);
 
 // Playhead steps for the keyboard (C3), on a map of the whole clip (no trim) so every
 // kept frame is reachable. Frames sit on J/L's grid, ms = round(index * 1000 / fps); a

@@ -250,6 +250,7 @@ EditorWindow::~EditorWindow() {
 EditorWindow::EditorWindow(const MediaDocument &media, const Config &cfg, const CliOptions &cli, QWidget *parent)
     : QWidget(parent), m_media(media), m_bg(toolBackgroundFor(media)), m_cfg(cfg), m_cli(cli) {
     preferPulseAudio();
+    limitVideoDecoders();
 #ifdef Q_OS_WIN
     setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowSystemMenuHint
                    | Qt::WindowMinMaxButtonsHint | Qt::WindowCloseButtonHint
@@ -713,7 +714,11 @@ void EditorWindow::showEvent(QShowEvent *e) {
     const QSize native = m_media.nativeSize();
     if (native.width() > viewport.width() || native.height() > viewport.height())
         m_canvas->fitMedia();
-    if (isVideo()) { scheduleVideoLoad(); scheduleStripLoad(); }
+    if (isVideo()) {
+        scheduleVideoLoad();
+        if (m_sideLoadsStarted) scheduleStripLoad();   // a frame came before the window (a seek)
+        else QTimer::singleShot(1500, this, &EditorWindow::startSideLoads);   // or never comes
+    }
     QTimer::singleShot(0, this, &EditorWindow::offerKeptEdit);
     if (!m_cfg.animations || !canFadeWindow()) return;
     auto *fade = new Spring(motion::kBase, [this](qreal opacity) { setWindowOpacity(opacity); }, this);

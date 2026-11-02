@@ -62,6 +62,12 @@ bool parseVideoTime(const QString &text, qint64 *milliseconds);
 ProbeVideoResult probeVideoFile(const QString &path);
 LoadMediaResult loadMediaInput(const InputSpec &spec);
 
+// Linux: names the GPU decoders Qt's FFmpeg backend may use, so it skips probing every device
+// type before the first video sink (500-620 ms in the GUI thread, Vulkan alone ~330 ms; tempo
+// plan 2026-11-01). Both lists are needed: with only the decoding one Qt still probes. A list
+// the user set wins; then neither is touched. Before the first multimedia object.
+void limitVideoDecoders();
+
 // C2: stretches where the picture does not change, from ffmpeg's freezedetect on a small
 // copy (10 fps, 320 px wide). Source ms; `fromMs` is where the analysis started.
 QVector<std::pair<qint64, qint64>> parseFreezes(const QByteArray &ffmpegLog, qint64 fromMs, qint64 toMs);

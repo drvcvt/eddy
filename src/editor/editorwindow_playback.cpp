@@ -155,19 +155,13 @@ qint64 EditorWindow::lastFrameMs() const {
 bool EditorWindow::holdingPause() const { return m_pauseTimer && m_pauseTimer->isActive(); }
 
 // A pause is due once playback reaches the last frame before it (or, for one opening the
-// output, the first frame after it), unless this pass held it already.
-bool EditorWindow::holdPauseIfDue(qint64 sourceMs) {
-    const QVector<TimePiece> &pieces = m_timeMap.pieces();
+// output, the first frame after it), unless this pass held it already (TimeMap::duePause).
+bool EditorWindow::holdPauseIfDue(qint64 sourceMs, qint64 lastMs) {
     const double frame = m_media.video.fps > 0 ? 1000.0 / m_media.video.fps : 33.0;
-    for (int k = 0; k < pieces.size(); ++k) {
-        if (pieces[k].pauseBefore <= 0 || k == m_pauseDone) continue;
-        const bool due = k == 0 ? sourceMs <= pieces[0].srcStart + frame
-                                : sourceMs >= pieces[k - 1].srcEnd - frame && sourceMs < pieces[k].srcStart + frame;
-        if (!due) continue;
-        beginPauseHold(k, 0);
-        return true;
-    }
-    return false;
+    const int piece = m_timeMap.duePause(double(sourceMs), double(lastMs), frame, m_pauseDone);
+    if (piece < 0) return false;
+    beginPauseHold(piece, 0);
+    return true;
 }
 
 void EditorWindow::beginPauseHold(int piece, double intoMs) {
@@ -320,8 +314,15 @@ bool EditorWindow::eventFilter(QObject *object, QEvent *event) {
     return QWidget::eventFilter(object, event);
 }
 
+void EditorWindow::startSideLoads() {
+    if (m_sideLoadsStarted || !isVideo()) return;
+    m_sideLoadsStarted = true;
+    if (m_timeline && m_timeline->waveform()) m_timeline->waveform()->start();
+    scheduleStripLoad();
+}
+
 void EditorWindow::scheduleStripLoad() {
-    if (!m_previewProvider || !isVisible()) return;
+    if (!m_sideLoadsStarted || !m_previewProvider || !isVisible()) return;
     m_previewProvider->requestStrip(m_timeline->thumbnailTimes(), QSize(128, 72) * devicePixelRatioF());
 }
 
@@ -488,6 +489,7 @@ void EditorWindow::ensureVideoPlayer() {
             if (!m_hasVideoFrame && !m_hasSentVideoSeek && frame.startTime() >= 0)
                 m_frameTimeOrigin = frame.startTime() / 1000;
             m_hasVideoFrame = true;
+            startSideLoads();
             m_presentedStart = frame.startTime() < 0 ? -1 : frame.startTime() / 1000 - m_frameTimeOrigin;
             m_presentedEnd = frame.endTime() < 0 ? -1 : frame.endTime() / 1000 - m_frameTimeOrigin;
             if (!m_timelineActive && !m_seekSettling && m_presentedStart >= 0
@@ -518,6 +520,7 @@ void EditorWindow::ensureVideoPlayer() {
         if (state != QMediaPlayer::PlayingState) showVideoStill();
         // Playing, the camera moves with every refresh of the screen, on its own clock.
         m_playClock.invalidate();
+        m_lastFollowMs = -1;   // F6: play, pause, a hold or a loop: no step to look back on
         if (m_cameraTick && state == QMediaPlayer::PlayingState) {
             m_cameraTick->setInterval(qMax(1, int(1000 / qMax(1.0, screen() ? screen()->refreshRate() : 60.0))));
             m_cameraTick->start();

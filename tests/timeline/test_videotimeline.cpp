@@ -580,6 +580,7 @@ private slots:
         const qreal zoomTop = timeline.zoomLaneRect().top();
         QVERIFY(timeline.waveformRect().isEmpty());
         AudioWaveformProvider waveform(file, 3000, 0);
+        waveform.start();
         timeline.setWaveform(&waveform);
         QCOMPARE(timeline.height(), VideoTimeline::kBaseH + VideoTimeline::kWaveStep + VideoTimeline::kLaneStep);
         const QRectF lane = timeline.waveformRect();
@@ -632,6 +633,7 @@ private slots:
         VideoTimeline timeline;
         timeline.setDuration(2000);
         AudioWaveformProvider waveform(file, 2000, 0);
+        waveform.start();
         timeline.setWaveform(&waveform);
         QVERIFY(timeline.waveformShown());   // while it is read, the lane stays
         QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
@@ -654,6 +656,7 @@ private slots:
         timeline.resize(612, 52);
         timeline.setDuration(3000);
         AudioWaveformProvider waveform(file, 3000, 0);
+        waveform.start();
         timeline.setWaveform(&waveform);
         QTRY_VERIFY(waveform.state() == AudioWaveformProvider::State::Ready);
         const QRectF lane = timeline.waveformRect();

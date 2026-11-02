@@ -15,7 +15,7 @@ static constexpr int kLevelFactor = 16;
 static constexpr int kChannels = 2;
 
 AudioWaveformProvider::AudioWaveformProvider(const QString &path, qint64 durationMs, qint64 offsetMs, QObject *parent)
-    : QObject(parent), m_offsetMs(offsetMs) {
+    : QObject(parent), m_path(path), m_offsetMs(offsetMs) {
     // Very long clips get coarser bins instead of more of them.
     const qint64 duration = std::max<qint64>(1, durationMs);
     m_binMs = kBinMs * std::max<qint64>(1, (duration + kBinMs * kMaxBins - 1) / (kBinMs * kMaxBins));
@@ -25,7 +25,14 @@ AudioWaveformProvider::AudioWaveformProvider(const QString &path, qint64 duratio
         bins = (bins + kLevelFactor - 1) / kLevelFactor;
         m_levels.append(QVector<Bin>(bins));
     }
+}
 
+// Started apart from the constructor, so the editor can reserve the lane at once and read the
+// sound after the video's first frame (tempo plan 2026-11-01, S2). Once; never after cancel().
+void AudioWaveformProvider::start() {
+    if (m_started) return;
+    m_started = true;
+    if (m_state != State::Loading) return;
     const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
     if (ffmpeg.isEmpty()) {
         m_state = State::Failed;
@@ -49,7 +56,7 @@ AudioWaveformProvider::AudioWaveformProvider(const QString &path, qint64 duratio
     connect(&m_stall, &QTimer::timeout, this, [this] { finish(false); });
     m_sincePublish.start();
     m_stall.start();
-    m_process->start(ffmpeg, {"-v", "error", "-nostdin", "-i", path, "-map", "0:a:0", "-vn",
+    m_process->start(ffmpeg, {"-v", "error", "-nostdin", "-i", m_path, "-map", "0:a:0", "-vn",
                               "-ac", QString::number(kChannels), "-ar", QString::number(kRate),
                               "-f", "f32le", "-"});
 }
@@ -60,7 +67,8 @@ AudioWaveformProvider::~AudioWaveformProvider() {
 
 void AudioWaveformProvider::cancel() {
     m_stall.stop();
-    if (!m_process) return;
+    if (!m_process && m_started) return;
+    m_started = true;
     stopProcess();
     if (m_state == State::Loading) m_state = State::Failed;
 }

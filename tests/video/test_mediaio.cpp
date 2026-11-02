@@ -145,6 +145,28 @@ private slots:
         QCOMPARE(formatTime(3661900), QStringLiteral("1:01:01"));
         QCOMPARE(formatPreciseTime(2500), QStringLiteral("0:02.500"));
     }
+    void videoDecodersAreNamedUnlessTheUserDid() {
+#ifndef Q_OS_LINUX
+        QSKIP("Linux only");
+#endif
+        const char *decoding = "QT_FFMPEG_DECODING_HW_DEVICE_TYPES", *encoding = "QT_FFMPEG_ENCODING_HW_DEVICE_TYPES";
+        qunsetenv(decoding);
+        qunsetenv(encoding);
+        limitVideoDecoders();
+        QCOMPARE(qgetenv(decoding), QByteArray("cuda,vaapi,vdpau,drm"));
+        QCOMPARE(qgetenv(encoding), QByteArray(","));
+        // One list of the user's: both stay as they are.
+        qunsetenv(encoding);
+        qputenv(decoding, "vaapi");
+        limitVideoDecoders();
+        QCOMPARE(qgetenv(decoding), QByteArray("vaapi"));
+        QVERIFY(!qEnvironmentVariableIsSet(encoding));
+        qunsetenv(decoding);
+        qputenv(encoding, "");
+        limitVideoDecoders();
+        QVERIFY(!qEnvironmentVariableIsSet(decoding));
+        qunsetenv(encoding);
+    }
 };
 
 QTEST_GUILESS_MAIN(TestMediaIo)

@@ -21,6 +21,7 @@ static const QString kClicks = QStringLiteral(
     "aevalsrc=exprs=if(between(t\\,1\\,1.01)+between(t\\,2.5\\,2.51)\\,0.9\\,0):s=48000:d=3");
 
 static bool settle(AudioWaveformProvider &p) {
+    p.start();
     QElapsedTimer t;
     t.start();
     while (p.state() == AudioWaveformProvider::State::Loading && t.elapsed() < 20000) QTest::qWait(10);
@@ -90,6 +91,7 @@ private slots:
         QVERIFY(ffmpeg({"-f", "lavfi", "-i", kVideo, "-f", "lavfi", "-i", kClicks, "-c:a", "pcm_s16le", clicks}));
         AudioWaveformProvider cancelled(clicks, 3000, 0);
         QSignalSpy changes(&cancelled, &AudioWaveformProvider::changed);
+        cancelled.start();
         cancelled.cancel();
         QCOMPARE(cancelled.state(), AudioWaveformProvider::State::Failed);
         QTest::qWait(300);
@@ -99,6 +101,24 @@ private slots:
         AudioWaveformProvider none(silent, 3000, 0);
         QVERIFY(!settle(none));
         QCOMPARE(none.state(), AudioWaveformProvider::State::Failed);
+    }
+    // S2: the lane is reserved at once, the sound read only once asked to.
+    void nothingIsReadBeforeStart() {
+        QTemporaryDir dir;
+        const QString clicks = dir.filePath(QStringLiteral("clicks.mkv"));
+        QVERIFY(ffmpeg({"-f", "lavfi", "-i", kVideo, "-f", "lavfi", "-i", kClicks, "-c:a", "pcm_s16le", clicks}));
+        AudioWaveformProvider p(clicks, 3000, 0);
+        QTest::qWait(300);
+        QCOMPARE(p.state(), AudioWaveformProvider::State::Loading);
+        QVERIFY(!p.findChild<QProcess *>());
+        p.start();
+        QVERIFY(p.findChild<QProcess *>());
+        QVERIFY(settle(p));
+        AudioWaveformProvider never(clicks, 3000, 0);
+        never.cancel();   // cancelled before it ever started: done, and start() stays a no-op
+        never.start();
+        QCOMPARE(never.state(), AudioWaveformProvider::State::Failed);
+        QVERIFY(!never.findChild<QProcess *>());
     }
 };
 

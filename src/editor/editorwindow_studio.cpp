@@ -383,15 +383,18 @@ QRectF EditorWindow::currentCamera() const {
 }
 
 // Output time of what the canvas shows. Playing, the presented frame's time runs on with the
-// wall clock between frames, at most three frames ahead: a stall holds the camera.
+// wall clock between frames (playingCameraSource: capped, and no step back after a stall).
 double EditorWindow::cameraTime() const {
+    const double shown = std::exchange(m_cameraFloor, -1.0);   // kept only while playing
     // P: in a pause the camera runs on with it, as the export's does.
     if (m_timeline->pausePosition() >= 0) return m_timeline->pausePosition();
     const bool playing = m_player && m_player->playbackState() == QMediaPlayer::PlayingState;
     double source = double(m_timeline->position());
     if (playing && m_presentedStart >= 0) {
         const double frame = 1000.0 / qMax(1.0, m_media.video.fps);
-        source = m_playClock.isValid() ? qMin(playClock(), m_presentedStart + 3 * frame) : double(m_presentedStart);
+        source = playingCameraSource(m_playClock.isValid() ? playClock() : double(m_presentedStart),
+                                     double(m_presentedStart), shown, frame);
+        m_cameraFloor = source;
     }
     return source <= m_trimInMs ? 0.0 : m_timeMap.toOutputAfter(source);
 }
@@ -672,11 +675,13 @@ void EditorWindow::splitAtPlayhead() {
 // rate. Seeks at a seam can stutter a frame; the export is exact.
 void EditorWindow::followPlaybackPieces(qint64 sourceMs) {
     if (!m_player || m_studio.fragments.isEmpty() || m_seekSettling) {
+        m_lastFollowMs = -1;
         if (m_player && m_studio.fragments.isEmpty() && !qFuzzyCompare(m_player->playbackRate(), m_previewRate))
             m_player->setPlaybackRate(m_previewRate);
         return;
     }
-    if (holdPauseIfDue(sourceMs)) return;   // P: a pause before the next piece holds first
+    // P: a pause before the next piece holds first
+    if (holdPauseIfDue(sourceMs, std::exchange(m_lastFollowMs, sourceMs))) return;
     const QVector<TimePiece> &pieces = m_timeMap.pieces();
     for (const TimePiece &piece : pieces) {
         if (sourceMs < piece.srcStart - 1) {   // in a cut: on to the next kept piece

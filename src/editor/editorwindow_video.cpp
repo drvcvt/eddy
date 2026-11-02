@@ -233,6 +233,7 @@ void EditorWindow::requestVideoSeek(qint64 position) {
     ensureVideoPlayer();
     if (holdingPause()) stopPauseHold(false);   // P: a seek ends a hold; the next pass holds again
     m_pauseDone = -1;
+    m_lastFollowMs = -1;   // F6: a seek over a pause does not hold
     m_seekTarget = qBound<qint64>(0, position, qMax<qint64>(0, m_media.video.durationMs - 1));
     m_seekSettling = true;
     m_seekSettleTimer->start();
